@@ -1125,8 +1125,6 @@
   "Mémoire GPU %s Go": "GPU メモリ %s GB",
   "Terminés : %d": "完成：%d 曲",
   "Mise à jour du pilote graphique disponible (AMD Software %s) : voir Réglages › Carte graphique.": "グラフィックドライバーのアップデートがあります（AMD Software %s）：設定 › グラフィックカードを参照してください。",
-  "Génération locale · YuE2-3B · CUDA": "ローカル生成 · YuE2-3B · CUDA",
-  "Génération locale · YuE2-3B · Vulkan": "ローカル生成 · YuE2-3B · Vulkan",
   "Modèle utilisé pour les prochains morceaux (Q8_0 = qualité maximale, Q6_K et Q5_K_M = plus légers).\nLe modèle par défaut au démarrage se règle dans Réglages.": "以降の曲に使うモデルです（Q8_0＝最高品質、Q6_K と Q5_K_M＝より軽量）。\n起動時の既定モデルは設定で変更できます。",
   "Solveur de la phase audio (NAR) pour les prochains morceaux :\nAB3 16, AB3 20, AB3 24, Euler 32, AB2 32, AB3 32, MP 32 (méthode + nombre de pas).\nMoins d'évaluations du réseau = génération plus rapide ; comparez à l'écoute.\nLe solveur par défaut au démarrage se règle dans Réglages.": "以降の曲に使う音声フェーズのソルバー（NAR）：\nAB3 16、AB3 20、AB3 24、Euler 32、AB2 32、AB3 32、MP 32（方法＋ステップ数）。\nネットワークの評価回数が少ないほど高速です。聴き比べてください。\n起動時の既定ソルバーは設定で変更できます。",
   "Pastilles de notification": "通知バッジ",

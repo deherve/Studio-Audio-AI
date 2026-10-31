@@ -11969,9 +11969,6 @@ struct App {
         ImGui::TextUnformatted("Audio AI");
         ImGui::PopFont();
         draw_version_badge();
-        ImGui::SameLine(0, 14 * g_dpi);
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextColored(P.muted, "%s", gpu_profile().cuda_active ? tr("Génération locale · YuE2-3B · CUDA") : tr("Génération locale · YuE2-3B · Vulkan"));
         ImGui::SameLine(0, 18 * g_dpi);
         ImGui::TextColored(P.muted, tr("Modèle"));
         ImGui::SameLine(0, 6 * g_dpi);

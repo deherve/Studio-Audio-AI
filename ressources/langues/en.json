@@ -1125,8 +1125,6 @@
   "Mémoire GPU %s Go": "GPU memory %s GB",
   "Terminés : %d": "Finished: %d",
   "Mise à jour du pilote graphique disponible (AMD Software %s) : voir Réglages › Carte graphique.": "Graphics driver update available (AMD Software %s): see Settings › Graphics card.",
-  "Génération locale · YuE2-3B · CUDA": "Local generation · YuE2-3B · CUDA",
-  "Génération locale · YuE2-3B · Vulkan": "Local generation · YuE2-3B · Vulkan",
   "Modèle utilisé pour les prochains morceaux (Q8_0 = qualité maximale, Q6_K et Q5_K_M = plus légers).\nLe modèle par défaut au démarrage se règle dans Réglages.": "Model used for the next tracks (Q8_0 = maximum quality, Q6_K and Q5_K_M = lighter).\nThe default model at startup is set in Settings.",
   "Solveur de la phase audio (NAR) pour les prochains morceaux :\nAB3 16, AB3 20, AB3 24, Euler 32, AB2 32, AB3 32, MP 32 (méthode + nombre de pas).\nMoins d'évaluations du réseau = génération plus rapide ; comparez à l'écoute.\nLe solveur par défaut au démarrage se règle dans Réglages.": "Audio-phase solver (NAR) for the next tracks:\nAB3 16, AB3 20, AB3 24, Euler 32, AB2 32, AB3 32, MP 32 (method + number of steps).\nFewer network evaluations = faster generation; compare by listening.\nThe default solver at startup is set in Settings.",
   "Pastilles de notification": "Notification badges",

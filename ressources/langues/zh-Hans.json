@@ -1125,8 +1125,6 @@
   "Mémoire GPU %s Go": "显存 %s GB",
   "Terminés : %d": "已完成：%d 首",
   "Mise à jour du pilote graphique disponible (AMD Software %s) : voir Réglages › Carte graphique.": "有可用的显卡驱动程序更新（AMD Software %s）：请查看“设置 › 显卡”。",
-  "Génération locale · YuE2-3B · CUDA": "本地生成 · YuE2-3B · CUDA",
-  "Génération locale · YuE2-3B · Vulkan": "本地生成 · YuE2-3B · Vulkan",
   "Modèle utilisé pour les prochains morceaux (Q8_0 = qualité maximale, Q6_K et Q5_K_M = plus légers).\nLe modèle par défaut au démarrage se règle dans Réglages.": "用于之后曲目的模型（Q8_0 = 最高质量，Q6_K 和 Q5_K_M = 更轻量）。\n启动时的默认模型在“设置”中指定。",
   "Solveur de la phase audio (NAR) pour les prochains morceaux :\nAB3 16, AB3 20, AB3 24, Euler 32, AB2 32, AB3 32, MP 32 (méthode + nombre de pas).\nMoins d'évaluations du réseau = génération plus rapide ; comparez à l'écoute.\nLe solveur par défaut au démarrage se règle dans Réglages.": "用于之后曲目的音频阶段求解器（NAR）：\nAB3 16、AB3 20、AB3 24、Euler 32、AB2 32、AB3 32、MP 32（方法 + 步数）。\n网络评估次数越少，生成越快；请通过试听比较。\n启动时的默认求解器在“设置”中指定。",
   "Pastilles de notification": "通知徽标",
