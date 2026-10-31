@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Help and overview · version 1.0.68 · updated 31 October 2026</p>
+  <p class="sub">Help and overview · version 1.0.69 · updated 31 October 2026</p>
   <input id="q" type="search" placeholder="Search the help…" aria-label="Search the help">
   <ol id="toc"></ol>
 </nav>
@@ -82,10 +82,10 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
   <div class="card"><h4>Fast</h4><p>The AB2 / AB3 solvers halve (or better) the longest phase: a 3-minute track is generated in about 3 minutes on an RX 6700 XT.</p></div>
   <div class="card"><h4>Customizable</h4><p>40 downloadable LoRA (French chanson, raspy rock, voices, instruments…), 3 model quantizations, 4 themes, several layouts.</p></div>
   <div class="card"><h4>A real library</h4><p>Albums, covers, approval, filters, FLAC/MP3/WAV export with tags and embedded cover, individual videos.</p></div>
-  <div class="card"><h4>Reliable</h4><p>Queue with pause and resume, automatic pause while you game, graphics card health test, video memory gauges.</p></div>
+  <div class="card"><h4>Reliable</h4><p>Queue with pause and resume, automatic pause while you game, graphics card health test, video memory dials.</p></div>
   <div class="card"><h4>Portable</h4><p>A single self-contained folder (engine, ffmpeg and help included); the models are downloaded on first launch.</p></div>
 </div>
-<figure><img src="img/principal.jpg" alt="Main window"><figcaption>The main window: the form on the left, the library and the generation queue on the right.</figcaption></figure>
+<figure><img src="img/en/principal.jpg" alt="Main window"><figcaption>The main window: the form on the left, the library and the generation queue on the right.</figcaption></figure>
 <h3>Requirements</h3>
 <ul>
 <li>Windows 10 or 11 (64-bit). Interface in 10 languages (see <a href="#langue-app">Application language</a>).</li>
@@ -128,13 +128,15 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Notification badges</b> — turns on the notification-area icon (see <a href="#notifications">Notifications</a>).</li>
 </ul>
 <h3 id="jauges">The four dials: video memory, overflow, CPU and GPU</h3>
+<figure><img src="img/en/compact.jpg" alt="Dials in Compact style"><figcaption>Compact style.</figcaption></figure>
+<figure><img src="img/en/sport.jpg" alt="Dials in Sport style"><figcaption>Sport style.</figcaption></figure>
 <p>In the header, between the solver and the Help button, four needle dials, refreshed every 2 seconds. Settings › System offers two styles: <b>Sport</b> (large dials) or <b>Compact</b> (more room for the library). Hovering shows the details. Next to the “Studio Audio AI” name, the header shows the <b>version number</b> and, when a newer version is published, an orange <b>“Update x.y.z”</b> chip that opens the download page (see <a href="#sante">Settings › System</a>).</p>
 <ul>
 <li><b>GPU memory</b> — dedicated memory occupied on the card, all programs combined (“9.7 GB”).</li>
 <li><b>Overflow</b> — system memory the card uses when its own memory is full. The dial is full at 2 GB; a few tens of MB are normal, overflow shows from 200 MB.</li>
 <li><b>CPU usage</b> — processor load, all programs combined (as in Task Manager).</li>
 <li><b>GPU usage</b> — graphics card load: busiest engine (3D, compute, video…), all programs combined. During a generation it should stay close to the maximum; a low value with a large overflow means the card is saturated by other programs.</li>
-<li>All gauges, like every progress bar in the application, fill with a <b>green to bright red gradient</b> (yellow then orange in between): the fuller the bar, the redder its end.</li>
+<li>The dials, like every progress bar in the application, follow a <b>green to bright red gradient</b> (yellow then orange in between). On the GPU dial, an <b>orange mark</b> shows the limit set in Settings › System; with a limit, the dial shows the average of the last 16 seconds.</li>
 </ul>
 <div class="box warn"><b class="t">A spill slows things down a lot</b>Beyond a few hundred MB, each computation step can become 2 to 8 times slower. Close the programs that use the card (file previewers, browsers, games); see <a href="#depannage">Troubleshooting</a>.</div>
 <h3>Keyboard shortcut and context menu</h3>
@@ -147,6 +149,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <section id="creer">
 <h2>4. Creating a track</h2>
+<figure><img src="img/en/formulaire.jpg" alt="New track form"><figcaption>The form, with the Track and Style blocks unfolded.</figcaption></figure>
 <p>The “New track” form has five blocks: <b>Track</b>, <b>Style</b>, <b>Lyrics</b> (or <b>Structure</b> for instrumentals), <b>LoRA</b> and <b>Generation</b>. Each block collapses with a click on its title (▾ / ▸ arrow); collapsed, it shows a summary of its content, and the state is remembered.</p>
 <div class="box info"><b class="t">What is remembered between sessions</b>The name and the style are <i>never</i> prefilled (to avoid relaunching an old track by mistake). Kept: the lyrics, the mode (song / instrumental), the ticked LoRA with their strength and the collapsed blocks.</div>
 <div class="box info"><b class="t">Form toolbar buttons</b><b>Adapt to YuE2 format</b> (converts a style and lyrics already pasted) and <b>Clear all</b> (resets the form so you can paste a new track).</div>
@@ -161,7 +164,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <h3 id="bloc-style">4.2 The Style block</h3>
 <p>The style is a list of <b>English</b> tags separated by commas (“alternative rock, 2000s, melancholic, 96 BPM, distorted guitar”). This text steers the genre, the mood, the voice and the instruments.</p>
-<figure><img src="img/style_pastilles.jpg" alt="Style block, Chips view"><figcaption>The Style block (here in the “Chips” view).</figcaption></figure>
+<figure><img src="img/en/style_pastilles.jpg" alt="Style block, Chips view"><figcaption>The Style block (here in the “Chips” view).</figcaption></figure>
 <ul>
 <li><b>Language</b> — not specified, English, French, Spanish, Italian, German, Portuguese, Japanese, Korean, Mandarin or Cantonese. The chosen language is placed as the <i>first</i> tag of the style (“French, …”). YuE2 mostly sings in English; other languages are possible but less natural. The choice is remembered.</li>
 <li><b>Influence profile…</b> — 42 profiles that fill the style with the singer (“Matt Bellamy vocals”) and the band's musicians (“Chris Wolstenholme bass”, “Dominic Howard drums”…), plus a few genre tags. These names are not documented for YuE2: they may influence the voice and the playing, with no guarantee. Profiles do <i>not</i> set a tempo (BPM).</li>
@@ -179,8 +182,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><b>Chips</b></td><td>The style's tags as colored <i>removable</i> chips (✕), then collapsible category sections.</td></tr>
 <tr><td><b>Builder</b></td><td>One selector per category (“Genres: rock, post-punk ▾”) that opens a list of tags to tick.</td></tr>
 </table>
-<figure><img src="img/style_constructeur.jpg" alt="Builder view"><figcaption>“Builder” view: one selector per category.</figcaption></figure>
-<figure><img src="img/preregles.jpg" alt="Preset list"><figcaption>The preset list (the “LoRA” and “structure” badges show their content).</figcaption></figure>
+<figure><img src="img/en/style_constructeur.jpg" alt="Builder view"><figcaption>“Builder” view: one selector per category.</figcaption></figure>
 <div class="box tip"><b class="t">Style tips</b>Keep the style short (about fifteen tags) and consistent: contradictory tags give a confused sound. Include the tempo, the voice and 3 or 4 dominant instruments. A BPM written in the lyrics (“[Verse | 96 BPM]”) overrides the style's.</div>
 
 <h3 id="import-ia">4.3 Adapt to YuE2 format</h3>
@@ -209,7 +211,6 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <h3 id="bloc-lora">4.5 The LoRA block</h3>
 <p>See the dedicated section: <a href="#lora">LoRA</a>. In short: cards to tick, one strength per LoRA, the trigger word added automatically to the style, stacking possible.</p>
-<figure><img src="img/formulaire_bas.jpg" alt="LoRA block as cards"><figcaption>The LoRA block: one card per installed LoRA.</figcaption></figure>
 
 <h3 id="bloc-generation">4.6 The Generation block</h3>
 <p>At the top of the block, <b>always visible</b> (even when collapsed): the <b>Generate the song / the instrumental / the cover</b> button and the <b>Add paused</b> button. They stay grayed out while the name, the style or (for a song) the lyrics are missing, with the corresponding message.</p>
@@ -227,6 +228,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <section id="instrumental">
 <h3 id="composer-ia">4.7 Compose with AI</h3>
+<figure><img src="img/en/composer.jpg" alt="Compose with AI tab"><figcaption>The “Compose with AI” tab.</figcaption></figure>
 <p>The <b>Compose with AI</b> tab, next to “New song”, has a language AI write a complete song. Fill in the sentence “Create a song in <i>language</i> inspired by <i>band or singer</i> on the theme <i>theme</i>” (mood, fixed title, length and other wishes are optional; tick <b>Instrumental</b> for a structure without lyrics), then click <b>Compose</b>.</p>
 <ul>
 <li><b>A whole album at once</b> (1.0.33): choose <b>An album</b> at the top of the tab, the number of tracks (1 to 50), and if you like the <b>album title</b> and the <b>band name</b> (empty: the AI chooses them). The type can be Song, Instrumental or <b>Mixed</b> (with “Of which instrumentals”: 0 lets the AI decide; never more than the <b>Max instrumentals per album</b> setting of Settings › AI, 2 by default). The AI first plans the album (band, title, a different title and subject for each track, with a shared sound but varying tempo and mood), then writes the tracks one by one; the local AI loads its model only once. Each track is added to the queue <b>paused</b> with the band, the album and its track number, the ticked LoRAs of “New song” (strength and trigger word) and its settings (duration, versions, model, solver); “New song” itself is not changed. “Stop” keeps the tracks already written.</li>
@@ -312,7 +314,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Shofar, duduk</b> — start the style with the instrument's name; with a score, keep the strength at 0.5 or below.</li>
 <li><b>Sliders</b> — very light: use them to nuance (female or male voice, a hint of metal…).</li>
 </ul>
-<figure><img src="img/reglages_3.jpg" alt="LoRA table in settings"><figcaption>The LoRA catalog in Settings.</figcaption></figure>
+<figure><img src="img/en/reglages_lora.jpg" alt="LoRA table in settings"><figcaption>The LoRA catalog in Settings.</figcaption></figure>
 </section>
 
 <section id="fin">
@@ -374,6 +376,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p>The queue always stays visible, whatever the filters.</p>
 
 <h3 id="cartes">Card layouts</h3>
+<figure><img src="img/en/cartes_detail.jpg" alt="Detailed cards"><figcaption>“Detailed” layout. At the top of each card, the YouTube, TikTok and Instagram logos: grey without a video, dimmed colour for a still video, full colour for a clip.</figcaption></figure>
 <p>The “Cards” list chooses how <b>finished</b> tracks are presented (running or failed tracks always keep the detailed card). The choice is remembered.</p>
 <table>
 <tr><th>Layout</th><th>Description</th></tr>
@@ -382,9 +385,9 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><b>With cover</b></td><td>The cover on the left, the information, the player and an <b>Actions ▾</b> menu grouping export, video, re-render, etc.</td></tr>
 <tr><td><b>Compact with cover</b></td><td>One line per track with a small cover; a click on the title expands the card with cover, the full style and all statistics; a click on the title collapses it.</td></tr>
 </table>
-<figure><img src="img/cartes_compactes.jpg" alt="Compact cards"><figcaption>“Compact” layout.</figcaption></figure>
-<figure><img src="img/cartes_pochette.jpg" alt="Cards with cover"><figcaption>“With cover” layout.</figcaption></figure>
-<figure><img src="img/cartes_pochette_compacte.jpg" alt="Compact with cover"><figcaption>“Compact with cover” layout (collapsed lines, with the small cover).</figcaption></figure>
+<figure><img src="img/en/cartes_compactes.jpg" alt="Compact cards"><figcaption>“Compact” layout.</figcaption></figure>
+<figure><img src="img/en/cartes_pochette.jpg" alt="Cards with cover"><figcaption>“With cover” layout.</figcaption></figure>
+<figure><img src="img/en/cartes_pochette_compacte.jpg" alt="Compact with cover"><figcaption>“Compact with cover” layout (collapsed lines, with the small cover).</figcaption></figure>
 <p><b>Album tracks</b> (1.0.37): a track that belongs to an album has a coloured stripe on the right edge of its card (the same colour for the whole album; status colours stay on the left) and a label with a small disc “Album · #track”. Hovering the label shows the band and the album; a click shows only that album (search field, clear it to see everything again).</p>
 <div class="box info"><b class="t">Where the cover comes from</b>A track's cover is its <i>album's</i> (one image per album, chosen in “Edit” or in “Albums…”). Without a square image, the album's YouTube or TikTok image is used, cropped at the center. Without an album, the cover belongs to the track alone. If there is no image at all, a colored block with the title's initial is displayed.</div>
 
@@ -399,7 +402,6 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><b>Check and cross</b></td><td>Two circles: solid green check for approved, solid red cross for with a problem; a second click removes the mark.</td></tr>
 <tr><td><b>Switch</b></td><td>Three segments “To listen / Approved / Problem”; a click picks the displayed state, “To listen” removes the marks.</td></tr>
 </table>
-<figure><img src="img/marques_commutateur.jpg" alt="Marks as a switch"><figcaption>The three-position switch (Settings › Track marks).</figcaption></figure>
 <p>The type filter offers Approved, Not approved and With a problem; album export can be limited to approved tracks.</p>
 
 <h3 id="nouveau">“New” tracks to listen to</h3>
@@ -419,31 +421,40 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><b>Reuse</b></td><td>Reloads the track's style, lyrics, LoRA and settings into the form.</td></tr>
 <tr><td><b>Delete</b></td><td>After confirmation, sends the track's folder to the <b>Windows recycle bin</b>: it can be restored from there (right click › Restore), unless you empty the bin. Not possible while the track is queued or running.</td></tr>
 </table>
-<figure><img src="img/modifier.jpg" alt="Edit the track window"><figcaption>“Edit”: title, band, album, track and cover.</figcaption></figure>
+<figure><img src="img/en/modifier.jpg" alt="Edit the track window"><figcaption>“Edit”: title, band, album, track and cover.</figcaption></figure>
 <div class="box tip"><b class="t">Crackling?</b>If a track crackles or saturates, use <b>Recompose</b> (new composition). A re-render keeps its composition. If the problem comes back on several tracks, run the <a href="#sante">health test</a>.</div>
 </section>
 
 <section id="albums">
 <h2>11. Albums, covers and exports</h2>
-<p>“Albums…” opens the list of albums: finished tracks with the same <b>band</b> and the same <b>album title</b> (filled in at import or in “Edit”).</p>
-<figure><img src="img/albums.jpg" alt="Albums window"><figcaption>The Albums window: three images per album, export and videos.</figcaption></figure>
+<p>“Albums…” opens the list of albums: finished tracks with the same <b>band</b> and the same <b>album title</b> (filled in at import or in “Edit”). Each album fits on one line: thumbnail, number of tracks, green lights for the images and videos already created, <b>Export</b>, <b>Videos…</b>, <b>Complete…</b> buttons and a <b>…</b> menu. The arrow unfolds its sheet, with two tabs: <b>Covers</b> and <b>Videos</b>.</p>
+<figure><img src="img/en/albums.jpg" alt="Albums window"><figcaption>An unfolded album sheet, Covers tab: the three images and the editable description.</figcaption></figure>
+<figure><img src="img/en/albums_videos.jpg" alt="Videos tab of the album sheet"><figcaption>The Videos tab: number of videos per platform and access to the folder.</figcaption></figure>
 <ul>
-<li><b>Three images per album</b>: <i>Cover 1:1</i> (embedded in exported files and displayed in cards), <i>YouTube 16:9</i> and <i>TikTok 9:16</i> (used for videos). <b>Rename…</b> (1.0.41) changes the band and/or the album title: its tracks' tags are rewritten, covers, video images and cover description are kept (not possible while one of its tracks is being generated). Buttons “Choose…” / “Change…” / ✕. Images are copied into the <code>pochettes</code> folder.</li>
-<li><b>AI-made images</b> (1.0.36): <b>Generate</b> button (or <b>Regenerate</b>, with confirmation) under each image, from the editable <b>cover description</b> under the album (in English, no text in the image). Albums whose tracks are still waiting in the queue are listed too, marked “waiting”.</li>
+<li><b>Three images per album</b>: <i>Cover 1:1</i> (embedded in exported files and displayed in cards), <i>YouTube 16:9</i> and <i>TikTok 9:16</i> (used for videos). Clicking an image shows it full size.</li>
+<li><b>AI-made images</b>: <b>Generate</b> or <b>Regenerate ▾</b> buttons under each image and <b>All covers ▾</b>, from the editable <b>description</b> (in English, no text in the image). The menu offers the default setting or a specific local model: FLUX.2 klein, Z-Image Turbo, MOSS-Image or SDXL-Lightning, with the estimated time.</li>
 <li><b>Export formats</b>: FLAC, MP3, WAV (checkboxes), and “Approved tracks only”.</li>
-<li><b>Export…</b> — choose a destination folder: the application creates “Band - Album” there with <code>NN - Title.ext</code> files (numbered), the tags (title, artist, album, track n/total) and the cover embedded in FLAC and MP3 files, plus <code>cover.jpg</code>. A background task shows progress.</li>
-<li><b>Videos…</b> — creates one video per title of the album (see below).</li>
+<li><b>Export</b>: files are written to the album's <code>Audios</code> subfolder as <code>NN - Title.ext</code>, with tags (title, artist, album, track n/total) and the cover embedded in FLAC and MP3, plus <code>cover.jpg</code>.</li>
+<li><b>Complete…</b>: opens “Compose with AI” to add tracks to this album, with the same band, the same sound and track numbers following on.</li>
+<li><b>… menu</b>: <b>Rename…</b> (band or album title; tags, folders and images follow), <b>Open the album folder</b>, <b>Write the descriptions (local AI)</b> (a <code>description.txt</code> file for the band, the album and each track, in the interface language, never overwriting an existing file) and <b>Delete the album…</b> (sent to the Recycle Bin, with confirmation).</li>
+<li><b>Videos…</b>: creates a still video or a clip per title of the album (see below).</li>
 </ul>
 </section>
 
 <section id="videos">
-<h2>12. YouTube and TikTok videos</h2>
+<h2>12. Videos and clips</h2>
 <p>The “Video” button of a track, or “Videos…” of an album, opens the “Create videos” window.</p>
-<figure><img src="img/videos.jpg" alt="Create videos window"><figcaption>Video creation: one image per network, a destination folder.</figcaption></figure>
+<figure><img src="img/en/videos.jpg" alt="Create videos window"><figcaption>The “Create videos” window: one image per network, and the true clip options.</figcaption></figure>
 <ul>
-<li>Each video is a <b>still image</b> with the track's sound (AAC 320 kbit/s), created <b>individually per title</b>, one per ticked network.</li>
+<li><b>Still video</b> (“True clip” unticked): an image with the track's sound (AAC 320 kbit/s), created <b>individually per title</b>, one per ticked network.</li>
+<li><b>True clip</b>: the local AI writes a story from the lyrics and the track's sheets, the local image model creates one image per scene, then the editing adds slow camera moves, fades and the lyrics synchronized as subtitles (choruses larger and orange). An instrumental has no subtitles. Files <code>&lt;title&gt;_&lt;Network&gt;_Clip.mp4</code> in the same folders.</li>
+<li><b>Render style</b> (realistic, comic book, manga, anime, watercolor…) and <b>image engine</b>: FLUX.2 klein, Z-Image Turbo, MOSS-Image or SDXL-Lightning, installed from Settings › AI › Covers.</li>
+<li><b>Number of images</b>: Recommended (from the lyrics and duration), More, Fewer or Fixed number (up to 60). The window shows the detail per track and a time estimate.</li>
+<li><b>Redo the story and the images</b>: otherwise those already made are reused (the track's <code>clip_scenes</code> folder): only the editing is redone, which is much faster. Lyrics can be corrected in the track's <code>paroles.txt</code> file.</li>
+<li><b>Start and end text</b>: shown on the opening card and during the last 8 seconds.</li>
+<li>Run it <b>when idle</b>: the text and image AIs use the graphics card.</li>
 <li><b>YouTube</b>: 16:9, 1920 × 1080, in <code>videos\YouTube</code>: <code>YouTube\&lt;title&gt;_YouTube.mp4</code>. <b>TikTok</b>: 9:16, 1080 × 1920, in <code>videos\TikTok</code>: <code>TikTok\&lt;title&gt;_TikTok.mp4</code>. <b>Instagram</b> (1.0.41): 1:1, 1080 × 1080, in <code>IG</code>: <code>IG\&lt;title&gt;_Instagram.mp4</code>, with the album's square cover. An image of another format is centered on a black background.</li>
-<li>The default destination folder is <code>videos</code> (changeable, remembered). The chosen images are remembered for the album.</li>
+<li>Videos are stored in the album's <code>videos</code> folder. The chosen images are remembered for the album.</li>
 <li>Titles are processed one after the other. Each video is written under a temporary name (<code>.part</code>), <b>checked</b> (full playback, a real non-black image) and then renamed: a failed video is reported instead of staying on disk.</li>
 <li>The task's “Cancel” button stops the creation.</li>
 </ul>
@@ -451,8 +462,8 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <section id="reglages">
 <h2>13. Settings</h2>
-<p>The “Settings…” window gathers the application's options. It opens wide (1100 px, or the screen width minus a margin) and can be <b>resized</b> by dragging its bottom-right corner (640 px minimum). The settings are sorted into <b>six categories</b>, each with its own color: <b>Interface</b> (language, theme, marks, notifications), <b>Generation</b> (model, track endings, solver), <b>Analysis and lyrics</b> (audio analysis, Whisper transcription), <b>LoRA</b>, <b>System</b> (games, graphics card) and <b>Library</b>. The category list is a column on the left; when the window is narrow it becomes a row of buttons at the top. Each block is a frame in its category's color, with a colored bar on the left like in the form; the content scrolls, “Close” stays at the bottom.</p>
-<figure><img src="img/reglages_1.jpg" alt="Settings, top part"><figcaption>Settings: theme, marks, notifications, games, model.</figcaption></figure>
+<p>The “Settings…” window gathers the application's options. It opens wide (1100 px, or the screen width minus a margin) and can be <b>resized</b> by dragging its bottom-right corner (640 px minimum). The settings are sorted into <b>seven categories</b>, each with its own color: <b>Interface</b> (language, theme, marks, notifications), <b>Generation</b> (model, track endings, solver), <b>Analysis and lyrics</b> (audio analysis, Whisper transcription), <b>LoRA</b>, <b>System</b> (games, graphics card) and <b>Library</b>. The category list is a column on the left; when the window is narrow it becomes a row of buttons at the top. Each block is a frame in its category's color, with a colored bar on the left like in the form; the content scrolls, “Close” stays at the bottom.</p>
+<figure><img src="img/en/reglages_interface.jpg" alt="Settings, top part"><figcaption>Settings: theme, marks, notifications, games, model.</figcaption></figure>
 <h3 id="langue-app">Application language</h3>
 <p>Studio Audio AI comes in <b>ten languages</b>: French, English, Spanish, Italian, German, Portuguese, Japanese, Korean, Chinese (Mandarin, simplified) and Cantonese (traditional). At first launch, the application uses Windows's language if available, otherwise English. The choice is made at the top of Settings and applies <b>immediately</b> (fonts are rebuilt: Segoe UI for the Latin script, Windows fonts for Japanese, Korean and Chinese). The texts you write (titles, styles, lyrics) and the style tags (in English) are not translated. This help page exists in French and English; the application opens the one matching its language (English for every language other than French).</p>
 <p><b>Each language is a file</b> in the <code>langues\</code> folder (<code>en.json</code>, <code>ja.json</code>…): a translator can fix a text by editing its file, or add a language by copying <code>_modele.json</code> (an added language appears at the next start). Missing texts of a language are shown in English, then in French. The “Open the languages folder” button opens this folder; the file <code>langues\LISEZMOI.md</code> details the rules (keep the <code>%d</code> / <code>%s</code> markers, line breaks, etc.).</p>
@@ -466,9 +477,9 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Light mint</b> — fresh light, turquoise.</li>
 </ul>
 <div class="grid">
-<figure><img src="img/theme_studio_gris.jpg" alt="Studio gray theme"><figcaption>Studio gray</figcaption></figure>
-<figure><img src="img/theme_papier_encre.jpg" alt="Paper and ink theme"><figcaption>Paper and ink</figcaption></figure>
-<figure><img src="img/theme_menthe.jpg" alt="Light mint theme"><figcaption>Light mint</figcaption></figure>
+<figure><img src="img/en/theme_gris.jpg" alt="Studio gray theme"><figcaption>Studio gray</figcaption></figure>
+<figure><img src="img/en/theme_papier.jpg" alt="Paper and ink theme"><figcaption>Paper and ink</figcaption></figure>
+<figure><img src="img/en/theme_menthe.jpg" alt="Light mint theme"><figcaption>Light mint</figcaption></figure>
 </div>
 <h3>Track marks</h3>
 <p>Thumbs, Check and cross or Switch (preview of the three states just below). See <a href="#marques">Approving or flagging a track</a>.</p>
@@ -477,6 +488,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3>Games</h3>
 <p>“Suspend the generation queue when a game is launched”, and the list of programs to watch. The detection state is displayed (“No game detected — the queue can run” or “Game detected: …”). See <a href="#jeux">Automatic pause</a>.</p>
 <h3>Generation model</h3>
+<figure><img src="img/en/reglages_generation.jpg" alt="Settings, Generation category"><figcaption>Settings › Generation: model, end of tracks, styles and packs.</figcaption></figure>
 <p>List of the startup <b>default model</b>, and a table of the three quantizations with a <b>Download ↗</b> button (opens the download in the browser; then place the file in the folder given by the tooltip) or “● installed”. “Open the models folder”. The list refreshes each time Settings is opened.</p>
 <h3>End of tracks</h3>
 <p>Length of the fade for tracks cut at the ceiling (1 to 30 s). See <a href="#fin">The end of tracks</a>.</p>
@@ -499,6 +511,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3>Deleting models and LoRA</h3>
 <p>The model and LoRA tables have a <b>Delete</b> column: the button appears on every installed row (including models and LoRA dropped in by hand). After confirmation, the file is <b>permanently deleted</b> from disk (it does not go through the recycle bin, as these files weigh several GB); catalog models and LoRA can be downloaded again. Tracks already generated are not affected. The button is grayed out during a generation. If you delete the model in use, the application picks another (Q6_K preferably).</p>
 <h3 id="analyse-reglage">Audio analysis</h3>
+<figure><img src="img/en/reglages_analyse.jpg" alt="Settings, Analysis and lyrics category"><figcaption>Settings › Analysis and lyrics.</figcaption></figure>
 <p>The analysis model (about 30 MB) is a set of <b>Discogs-EffNet</b> tagging networks and their classifiers (genre, mood, instruments, voice, key…) from the Music Technology Group (Universitat Pompeu Fabra, Essentia project), run on the CPU with ONNX Runtime; they are published under the <b>CC BY-NC-SA 4.0 licence (non-commercial use)</b>. Tempo, key, vocal range and structure come from the score transcribed by the SheetSage2 engine already used for covers. The section offers:</p>
 <ul>
 <li><b>Download the analysis model</b> — progress bar, ✕ to cancel, resumable; the files go to <code>modeles\analyse\</code>.</li>
@@ -512,6 +525,8 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3 id="traduction-reglage">Lyrics translation</h3>
 <p>Engines behind the Lyrics block's “Translate” button. <b>Use the Internet (Google Translate)</b>: on by default; the lyrics are then sent to Google. The connection is checked at startup (<b>Check</b> button). <b>Local engine</b>: llama.cpp, in the <code>traduction</code> folder next to the application (shipped with the portable version). <b>Local model</b>: Qwen2.5-3B-Instruct (about 2 GB, Qwen Research license, non-commercial use), downloaded here into <code>modeles\traduction</code>; it runs on the processor so the graphics card stays free for generations.</p>
 <h3 id="ia-reglage">AI (lyrics)</h3>
+<figure><img src="img/en/reglages_ia.jpg" alt="Settings, AI category"><figcaption>Settings › AI: engine, words to avoid, albums and covers.</figcaption></figure>
+<figure><img src="img/en/reglages_ia2.jpg" alt="Image models and local AI"><figcaption>Further down: the image models and the local AI models.</figcaption></figure>
 <p>Engine of the “Compose with AI” tab. Three options:</p>
 <ul>
 <li><b>Built-in local AI</b> (llama.cpp): pick a model in the table (Qwen, Llama, Gemma, Mistral… from 2 to 14 GB); each row shows its size, writing quality and whether it fits on the graphics card (fast), only on the processor (slow), or is too heavy for this PC. The model downloads from Hugging Face into <code>modeles\ia</code>. The local AI always uses the graphics card: this needs llama.cpp for the graphics card, downloaded once (<b>Download llama.cpp for the graphics card</b> button, about 37 MB, into <code>ia\llama</code>; also offered in the tab). A model larger than the video memory is shared between the card and the processor (“Card + processor” column).</li>
@@ -521,6 +536,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3 id="vider">Deleting all tracks</h3>
 <p>At the very bottom of Settings, the <b>Library</b> section offers “Delete all tracks…”. After confirmation, all the library folders are sent to the Windows recycle bin (restorable as long as it is not emptied). Album images (<code>pochettes\</code>) and videos are not touched. Unavailable during a generation or while the queue is not empty.</p>
 <h3 id="sante">Graphics card and health test</h3>
+<figure><img src="img/en/reglages_systeme.jpg" alt="Settings, System category"><figcaption>Settings › System: games, recommendations, graphics card.</figcaption></figure>
 <p>Shows the driver version. <b>Run the health test (≈ 1 min)</b> replays a short excerpt (48 s) twice and compares the results: a relative difference below 15 % means a <b>stable</b> card and driver; beyond that, the card produces unstable results (saturated or noisy tracks). The test is unavailable during a generation. The application remembers the driver version: if it changes, the Settings button turns orange and a new test is recommended.</p>
 <p><b>Version and updates.</b> At the top of the block: the installed version and the state of the update check (at startup, in the background; “Check now” runs it again). Until a publishing site is chosen, the check is disabled (“no publishing site yet”). Without a connection it gives up within a few seconds without blocking anything.</p>
 <p><b>Recommendations for this PC.</b> The app reads the graphics card, RAM, processor and the type of the disk holding the models (SSD or hard disk), then recommends: the model quantization (Q8_0 from 15 GB of video memory, Q6_K from 11 GB, otherwise Q5_K_M), the solver (ab2_32 if the card has at least 11 GB, otherwise the lighter ab3_20), and points out weak spots (less than 16 GB of RAM, models on a hard disk: slow loading). The <b>“Apply recommended settings”</b> button selects that model and solver (the model must be downloaded).</p>
@@ -531,9 +547,9 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>CUDA engine</b> (optional, Nvidia cards): <code>outils\moteur\cuda</code> folder of the application (the former <code>moteur_cuda</code> is still recognised), built by <code>build_yue2cpp_cuda.cmd</code> (CUDA Toolkit required) and shipped separately (<code>StudioAudioAI-moteur-CUDA.zip</code>, to unzip into the application folder). Untested, for lack of an Nvidia card.</li>
 <li>On an Nvidia card, an <b>Nvidia drivers</b> button opens the driver download page.</li>
 </ul>
-<p><b>GPU usage limit</b> (30 to 100%, “no limit” by default): the engine is paused for very short intervals (a fraction of each 200 ms cycle) to give the card a break: temperature, noise, other programs. At 90, a generation takes about 1.1 times longer. During the audio phase (x/32 steps), the engine pauses after each step, in proportion to its duration. The setting applies immediately, even during a generation (from the next step). On the “GPU usage” gauge, an orange arrow marks the limit; on a long song each step lasts several seconds at full power, followed by a pause: the limit applies <b>on average</b>, which is why the gauge then shows “instant value · average” (16 s average, the one to trust).</p>
+<p><b>GPU usage limit</b> (30 to 100%, “no limit” by default): the engine is paused for very short intervals (a fraction of each 200 ms cycle) to give the card a break: temperature, noise, other programs. At 90, a generation takes about 1.1 times longer. During the audio phase (x/32 steps), the engine pauses after each step, in proportion to its duration. The setting applies immediately, even during a generation (from the next step). On the “GPU usage” dial, an orange mark shows the limit; on a long song each step lasts several seconds at full power, followed by a pause: the limit applies <b>on average</b>, which is why the gauge then shows “instant value · average” (16 s average, the one to trust).</p>
 <p><b>Driver update.</b> For an AMD card, the application reads the installed AMD Software: Adrenalin Edition version (Windows registry) and compares it, <b>at launch</b>, with the latest stable version published (AMD release notes relayed on GitHub, an unofficial source; year and month are compared). If a newer version exists, an orange <b>“Update available”</b> button appears next to the driver version (and a notification is shown once); it opens AMD's driver download page. Offline, nothing is shown. After an update, run the health test again.</p>
-<figure><img src="img/reglages_4.jpg" alt="Settings, bottom part"><figcaption>Settings: LoRA catalog and health test.</figcaption></figure>
+<figure><img src="img/en/reglages_systeme2.jpg" alt="Settings, bottom part"><figcaption>Settings: LoRA catalog and health test.</figcaption></figure>
 </section>
 
 <section id="performances">
@@ -565,7 +581,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p>Test with identical seeds and lyrics on a 3-minute track: Q8_0, Q6_K and Q5_K_M run <b>just as fast as each other</b> (about twice the track's duration in Midpoint). The lighter quantizations only save 0.3 to 0.4 GB of video memory at peak, because only the NAR phase's weights are loaded at that moment; most of the memory comes from the attention buffers, which grow with duration. Quality was judged equivalent by ear; Q6_K is the default.</p>
 <h3>Video memory: what slows things down</h3>
 <ul>
-<li>A long track uses 8.5 to 10 GB. If other programs occupy the card, Windows pushes part of the memory to RAM: steps become 2 to 8 times slower (see the “Spill” gauge).</li>
+<li>A long track uses 8.5 to 10 GB. If other programs occupy the card, Windows pushes part of the memory to RAM: steps become 2 to 8 times slower (see the “Overflow” dial).</li>
 <li>The big consumers observed: a file previewer left open (up to 6 GB), the Windows window manager (<code>dwm</code>) which can grow over hours (from 0.2 to several GB), games, browsers with hardware acceleration.</li>
 <li>Remedies: close these programs before a long queue; sign out and back in to Windows if <code>dwm</code> exceeds 2 GB; shorten the tracks' maximum duration.</li>
 </ul>
@@ -599,6 +615,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><code>outils\whisper\</code></td><td>Lyrics transcription engine (Whisper).</td></tr>
 <tr><td><code>outils\llama\</code></td><td>llama.cpp for the processor: offline lyrics translation.</td></tr>
 <tr><td><code>outils\llama-vulkan\</code></td><td>llama.cpp for the graphics card, downloaded from the <b>Compose with AI</b> tab.</td></tr>
+<tr><td><code>outils\sd-vulkan\</code></td><td>stable-diffusion.cpp: creates the covers and clip images.</td></tr>
 <tr><td><code>ressources\aide\</code>, <code>ressources\langues\</code></td><td>This help (<code>aide.html</code> in French, <code>aide.en.html</code> in English) and the interface translation files (one JSON file per language).</td></tr>
 <tr><td><code>modeles\</code></td><td><code>musique\</code> (music models), <code>lora\</code> (LoRA), <code>analyse\</code>, <code>voix\</code>, <code>traduction\</code>, <code>ia\</code>: models downloaded at first launch or in the Settings.</td></tr>
 <tr><td><code>Audios\&lt;band&gt;\&lt;album&gt;\&lt;NN. title&gt;\</code></td><td>(1.0.43) One folder per band (“Sans groupe” when none is given), then per album (with its <code>pochette</code>, <code>pochette_youtube</code>, <code>pochette_tiktok</code> images and its videos in <code>videos\</code>), then one folder per track, named “01. Title” (without album: directly in the band folder). Changing the band, album or title (“Edit”, “Albums… › Rename…”) moves the folder. Each track: <code>meta.json</code> (record), <code>request.json</code> (request), <code>audio.json</code> (codes for re-render and extension), <code>audio.wav</code>, <code>audio.flac</code>, <code>audio.mp3</code>, <code>generation.log</code>. The package includes two demo tracks.</td></tr>
@@ -608,7 +625,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><code>Audios\…\videos\YouTube\</code>, <code>TikTok\</code>, <code>IG\</code></td><td>YouTube, TikTok and Instagram videos, in the album folder (or the band folder for a track without album); no folder to choose any more (1.0.43).</td></tr>
 <tr><td><code>LICENSES\</code></td><td>Component licences.</td></tr>
 </table>
-<p>Previous versions kept these items at the root (<code>yue-synth.exe</code>, <code>ffmpeg.exe</code>, <code>voix\</code>, <code>traduction\</code>, <code>aide\</code>, <code>langues\</code>, <code>moteur_cuda\</code>, settings): they are still recognised, and settings, draft, covers and health test are moved automatically into <code>donnees\</code> at first launch.</p>
+<p>Previous versions kept these items elsewhere (<code>voix\</code>, <code>traduction\</code>, <code>models\</code>, <code>bibliotheque\</code>…): on the first launch of a recent version, they are moved automatically to the right place, without overwriting anything (log: <code>cache\migration.log</code>).</p>
 </section>
 
 <section id="depannage">
@@ -617,7 +634,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><th>Symptom</th><th>Likely cause and remedy</th></tr>
 <tr><td>“Cannot find the synthesis engine”</td><td><code>yue-synth.exe</code> must be in the application's folder (or in <code>yue2.cpp\build\Release</code> for a development setup).</td></tr>
 <tr><td>The model download stopped</td><td>Restart the application: it resumes where it stopped.</td></tr>
-<tr><td>Very slow generation</td><td>Look at the “Spill” gauge. Close programs that use the card; sign out / back in to Windows if <code>dwm</code> is bloated.</td></tr>
+<tr><td>Very slow generation</td><td>Look at the “Overflow” dial. Close programs that use the card; sign out / back in to Windows if <code>dwm</code> is bloated.</td></tr>
 <tr><td>Crackling or saturated tracks</td><td>Recompose the track; run the health test; check the graphics driver (the orange Settings button signals a change).</td></tr>
 <tr><td>The track ends abruptly</td><td>Duration ceiling reached: increase the duration, or lengthen the fade / tick “Fade out on the structure”.</td></tr>
 <tr><td>The Generate button is grayed out</td><td>Fill in the name, the style and (for a song) the lyrics.</td></tr>
@@ -647,6 +664,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">This help is updated with every added or modified feature. The French version (aide.html) is the reference; this English version follows it.</p>
 <table>
 <tr><th>Date</th><th>Change</th></tr>
+<tr><td>31 Oct 2026 (1.0.69)</td><td>Help reviewed and updated (albums, clips, dials, folders), 26 new screenshots in French and English.</td></tr>
 <tr><td>31 Oct 2026 (1.0.68)</td><td>Header: the “Local generation · YuE2-3B · Vulkan” text is removed to leave more room for the dials.</td></tr>
 <tr><td>31 Oct 2026 (1.0.67)</td><td>Needle dials in the header instead of the four bars, in Sport or Compact style (Settings › System).</td></tr>
 <tr><td>31 Oct 2026 (1.0.66)</td><td>The window header now shows the new name, Studio Audio AI.</td></tr>

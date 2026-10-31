@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Aide et présentation · version 1.0.68 · mise à jour le 31 octobre 2026</p>
+  <p class="sub">Aide et présentation · version 1.0.69 · mise à jour le 31 octobre 2026</p>
   <input id="q" type="search" placeholder="Rechercher dans l'aide…" aria-label="Rechercher dans l'aide">
   <ol id="toc"></ol>
 </nav>
@@ -81,7 +81,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
   <div class="card"><h4>Rapide</h4><p>Les solveurs AB2 / AB3 divisent par deux, voire plus, la phase la plus longue : un morceau de 3 minutes se génère en environ 3 minutes sur une RX 6700 XT.</p></div>
   <div class="card"><h4>Personnalisable</h4><p>40 LoRA téléchargeables (chanson française, rock rauque, voix, instruments…), 3 quantifications du modèle, 4 thèmes, plusieurs présentations.</p></div>
   <div class="card"><h4>Une vraie bibliothèque</h4><p>Albums, pochettes, validation, filtres, export FLAC/MP3/WAV avec étiquettes et pochette intégrée, vidéos individuelles.</p></div>
-  <div class="card"><h4>Fiable</h4><p>File d'attente avec pause et reprise, pause automatique pendant un jeu, test de santé de la carte, jauges de mémoire vidéo.</p></div>
+  <div class="card"><h4>Fiable</h4><p>File d'attente avec pause et reprise, pause automatique pendant un jeu, test de santé de la carte, compteurs de mémoire vidéo.</p></div>
   <div class="card"><h4>Portable</h4><p>Un seul dossier autonome (moteur, ffmpeg et aide inclus) ; les modèles se téléchargent au premier lancement.</p></div>
 </div>
 <figure><img src="img/principal.jpg" alt="Fenêtre principale"><figcaption>La fenêtre principale : le formulaire à gauche, la bibliothèque et la file de génération à droite.</figcaption></figure>
@@ -127,13 +127,15 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Pastilles de notification</b> — active l'icône de la zone de notification (voir <a href="#notifications">Notifications</a>).</li>
 </ul>
 <h3 id="jauges">Les quatre compteurs : mémoire vidéo, débordement, CPU et GPU</h3>
+<figure><img src="img/compact.jpg" alt="Compteurs en style Compact"><figcaption>Style Compact.</figcaption></figure>
+<figure><img src="img/sport.jpg" alt="Compteurs en style Sport"><figcaption>Style Sport.</figcaption></figure>
 <p>Dans l'en-tête, entre le solveur et le bouton Aide, quatre compteurs à aiguille, relus toutes les 2 secondes. Réglages › Système propose deux styles : <b>Sport</b> (grands cadrans) ou <b>Compact</b> (plus de place pour la bibliothèque). Au survol, une bulle donne le détail. À côté du nom « Studio Audio AI », l'en-tête affiche le <b>numéro de version</b> et, quand une version plus récente est publiée, une pastille orange <b>« Mise à jour x.y.z »</b> qui ouvre la page de téléchargement (voir <a href="#sante">Réglages › Système</a>).</p>
 <ul>
 <li><b>Mémoire GPU</b> — mémoire dédiée occupée sur la carte, tous programmes confondus (« 9,7 Go »).</li>
 <li><b>Débordement</b> — mémoire système que la carte utilise quand sa mémoire est pleine. Le compteur est plein à 2 Go ; quelques dizaines de Mo sont normaux, un débordement se voit dès 200 Mo.</li>
 <li><b>Utilisation CPU</b> — charge du processeur, tous programmes confondus (comme le Gestionnaire des tâches).</li>
 <li><b>Utilisation GPU</b> — charge de la carte graphique : moteur le plus chargé (3D, calcul, vidéo…), tous programmes confondus. Pendant une génération, elle doit rester proche du maximum ; une valeur basse avec un débordement important signale une carte saturée par d'autres programmes.</li>
-<li>Toutes les jauges, comme toutes les barres de progression de l'application, se remplissent en <b>dégradé du vert au rouge vif</b> (jaune puis orange entre les deux) : plus la barre est remplie, plus son extrémité est rouge.</li>
+<li>Les compteurs, comme toutes les barres de progression de l'application, suivent un <b>dégradé du vert au rouge vif</b> (jaune puis orange entre les deux). Sur le compteur GPU, un <b>repère orange</b> marque la limite réglée dans Réglages › Système ; avec une limite, le compteur montre la moyenne des 16 dernières secondes.</li>
 </ul>
 <div class="box warn"><b class="t">Un débordement ralentit fortement</b>Au-delà de quelques centaines de Mo, chaque pas de calcul peut devenir 2 à 8 fois plus lent. Fermez les programmes qui utilisent la carte (aperçus de fichiers, navigateurs, jeux) ; voir <a href="#depannage">Dépannage</a>.</div>
 <h3>Le raccourci clavier et le menu contextuel</h3>
@@ -147,6 +149,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <section id="creer">
 <h2>4. Créer un morceau</h2>
 <p>Le formulaire « Nouveau morceau » se compose de cinq blocs : <b>Morceau</b>, <b>Style</b>, <b>Paroles</b> (ou <b>Structure</b> en instrumental), <b>LoRA</b> et <b>Génération</b>. Chaque bloc se replie d'un clic sur son titre (flèche ▾ / ▸) ; replié, il affiche un résumé de son contenu, et l'état est mémorisé.</p>
+<figure><img src="img/formulaire.jpg" alt="Formulaire Nouveau morceau"><figcaption>Le formulaire, avec les blocs Morceau et Style dépliés.</figcaption></figure>
 <div class="box info"><b class="t">Ce qui est mémorisé d'une session à l'autre</b>Le nom et le style ne sont <i>jamais</i> préremplis (pour éviter de relancer un ancien morceau par mégarde). Sont conservés : les paroles, le mode (chanson / instrumental), les LoRA cochées avec leur force et les blocs repliés.</div>
 <div class="box info"><b class="t">Boutons de la barre du formulaire</b><b>Adapter au format YuE2</b> (convertit un style et des paroles déjà collés) et <b>Tout vider</b> (remet le formulaire à zéro pour coller un nouveau morceau).</div>
 
@@ -179,7 +182,6 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><b>Constructeur</b></td><td>Un sélecteur par catégorie (« Genres : rock, post-punk ▾ ») qui ouvre une liste de balises à cocher.</td></tr>
 </table>
 <figure><img src="img/style_constructeur.jpg" alt="Présentation Constructeur"><figcaption>Présentation « Constructeur » : un sélecteur par catégorie.</figcaption></figure>
-<figure><img src="img/preregles.jpg" alt="Liste des préréglages"><figcaption>La liste des préréglages (les badges « LoRA » et « structure » indiquent leur contenu).</figcaption></figure>
 <div class="box tip"><b class="t">Conseils de style</b>Gardez un style court (une quinzaine de balises) et cohérent : des balises contradictoires donnent un son confus. Placez le tempo, la voix et 3 ou 4 instruments dominants. Un BPM écrit dans les paroles (« [Verse | 96 BPM] ») l'emporte sur celui du style.</div>
 
 <h3 id="import-ia">4.3 Adapter au format YuE2</h3>
@@ -208,7 +210,6 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <h3 id="bloc-lora">4.5 Le bloc LoRA</h3>
 <p>Voir la section dédiée : <a href="#lora">Les LoRA</a>. En résumé : des cartes à cocher, une force par LoRA, le mot déclencheur ajouté automatiquement au style, cumul possible.</p>
-<figure><img src="img/formulaire_bas.jpg" alt="Bloc LoRA en cartes"><figcaption>Le bloc LoRA : une carte par LoRA installée.</figcaption></figure>
 
 <h3 id="bloc-generation">4.6 Le bloc Génération</h3>
 <p>En haut du bloc, <b>toujours visibles</b> (même replié) : le bouton <b>Générer la chanson / l'instrumental / la reprise</b> et le bouton <b>Ajouter en pause</b>. Ils restent grisés tant que le nom, le style ou (pour une chanson) les paroles manquent, avec le message correspondant.</p>
@@ -226,6 +227,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <section id="instrumental">
 <h3 id="composer-ia">4.7 Composer avec l'IA</h3>
+<figure><img src="img/composer.jpg" alt="Onglet Composer avec l'IA"><figcaption>L'onglet « Composer avec l'IA ».</figcaption></figure>
 <p>L'onglet <b>Composer avec l'IA</b>, à côté de « Nouveau morceau », fait écrire un morceau complet par une IA de langage. Remplissez la phrase « Créer un morceau en <i>langue</i> inspiré par <i>groupe ou chanteur</i> sur le thème <i>thème</i> » (ambiance, titre imposé, longueur et autres souhaits sont facultatifs ; case <b>Instrumental</b> pour une structure sans paroles), puis cliquez sur <b>Composer</b>.</p>
 <ul>
 <li><b>Un album d'un coup</b> (1.0.33) : choisissez <b>Un album</b> en haut de l'onglet, le nombre de morceaux (1 à 50), et si vous le souhaitez le <b>titre de l'album</b> et le <b>nom du groupe</b> (vides : l'IA les choisit). Le type peut être Chanson, Instrumental ou <b>Mélangé</b> (avec « Dont instrumentaux » : 0 laisse l'IA répartir ; jamais plus que le réglage <b>Instrumentaux max par album</b> de Réglages › IA, 2 par défaut). L'IA établit d'abord le plan de l'album (groupe, titre, un titre et un sujet différents pour chaque morceau, avec un son commun mais un tempo et une ambiance qui varient), puis écrit les morceaux un par un ; l'IA locale ne charge son modèle qu'une fois. Chaque morceau est ajouté à la file <b>en pause</b> avec le groupe, l'album et son numéro de piste, les LoRA cochées de « Nouveau morceau » (force et mot déclencheur) et ses réglages (durée, versions, modèle, solveur) ; « Nouveau morceau » n'est pas modifié. « Arrêter » garde les morceaux déjà écrits.</li>
@@ -311,7 +313,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Shofar, duduk</b> — commencez le style par le nom de l'instrument ; avec une partition, gardez la force à 0,5 ou moins.</li>
 <li><b>Curseurs</b> — très légers : utilisez-les pour nuancer (voix féminine ou masculine, un soupçon de metal…).</li>
 </ul>
-<figure><img src="img/reglages_3.jpg" alt="Tableau des LoRA dans les réglages"><figcaption>Le catalogue de LoRA dans les Réglages.</figcaption></figure>
+<figure><img src="img/reglages_lora.jpg" alt="Tableau des LoRA dans les réglages"><figcaption>Le catalogue de LoRA dans les Réglages.</figcaption></figure>
 </section>
 
 <section id="fin">
@@ -373,6 +375,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p>La file reste toujours visible, quels que soient les filtres.</p>
 
 <h3 id="cartes">Les affichages de cartes</h3>
+<figure><img src="img/cartes_detail.jpg" alt="Cartes détaillées"><figcaption>Affichage « Détaillées ». En haut de chaque carte, les logos YouTube, TikTok et Instagram : gris sans vidéo, couleur atténuée pour une vidéo fixe, pleine couleur pour un clip.</figcaption></figure>
 <p>La liste « Cartes » choisit la présentation des morceaux <b>terminés</b> (les morceaux en cours ou en erreur gardent toujours la carte détaillée). Le choix est mémorisé.</p>
 <table>
 <tr><th>Affichage</th><th>Description</th></tr>
@@ -398,7 +401,6 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><b>Coche et croix</b></td><td>Deux cercles : coche verte pleine pour validé, croix rouge pleine pour à problème ; un second clic retire la marque.</td></tr>
 <tr><td><b>Commutateur</b></td><td>Trois segments « À écouter / Validé / Problème » ; un clic choisit l'état affiché, « À écouter » retire les marques.</td></tr>
 </table>
-<figure><img src="img/marques_commutateur.jpg" alt="Marques en commutateur"><figcaption>Le commutateur à trois positions (Réglages › Marques des morceaux).</figcaption></figure>
 <p>Le filtre de type propose Validés, Non validés et À problème ; l'export d'album peut se limiter aux morceaux validés.</p>
 
 <h3 id="nouveau">Les morceaux « neufs » à écouter</h3>
@@ -424,25 +426,34 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <section id="albums">
 <h2>11. Albums, pochettes et exports</h2>
-<p>« Albums… » ouvre la liste des albums : des morceaux terminés ayant le même <b>groupe</b> et le même <b>titre d'album</b> (renseignés à l'import ou dans « Modifier »).</p>
-<figure><img src="img/albums.jpg" alt="Fenêtre Albums"><figcaption>La fenêtre Albums : trois images par album, export et vidéos.</figcaption></figure>
+<p>« Albums… » ouvre la liste des albums : des morceaux terminés ayant le même <b>groupe</b> et le même <b>titre d'album</b> (renseignés à l'import ou dans « Modifier »). Chaque album tient sur une ligne : vignette, nombre de morceaux, voyants verts des images et des vidéos déjà créées, boutons <b>Exporter</b>, <b>Vidéos…</b>, <b>Compléter…</b> et menu <b>…</b>. La flèche déplie sa fiche, en deux onglets : <b>Pochettes</b> et <b>Vidéos</b>.</p>
+<figure><img src="img/albums.jpg" alt="Fenêtre Albums"><figcaption>Une fiche d'album dépliée, onglet Pochettes : les trois images et la description modifiable.</figcaption></figure>
+<figure><img src="img/albums_videos.jpg" alt="Onglet Vidéos de la fiche d'album"><figcaption>L'onglet Vidéos : nombre de vidéos par plateforme et accès au dossier.</figcaption></figure>
 <ul>
-<li><b>Trois images par album</b> : <i>Pochette 1:1</i> (intégrée aux fichiers exportés et affichée dans les cartes), <i>YouTube 16:9</i> et <i>TikTok 9:16</i> (servent aux vidéos). <b>Renommer…</b> (1.0.41) change le groupe et/ou le titre de l'album : les étiquettes de ses morceaux sont réécrites, les pochettes, images des vidéos et description de pochette sont gardées (impossible pendant la génération d'un de ses morceaux). Boutons « Choisir… » / « Changer… » / ✕. Les images sont copiées dans le dossier <code>pochettes</code>.</li>
-<li><b>Images créées par l'IA</b> (1.0.36) : bouton <b>Générer</b> (ou <b>Régénérer</b>, avec confirmation) sous chaque image, à partir de la <b>description de la pochette</b> modifiable sous l'album (en anglais, sans texte dans l'image). Les albums dont les morceaux attendent encore dans la file sont listés aussi, avec la mention « en attente ».</li>
+<li><b>Trois images par album</b> : <i>Pochette 1:1</i> (intégrée aux fichiers exportés et affichée dans les cartes), <i>YouTube 16:9</i> et <i>TikTok 9:16</i> (servent aux vidéos). Un clic sur une image l'affiche en grand.</li>
+<li><b>Images créées par l'IA</b> : boutons <b>Générer</b> ou <b>Régénérer ▾</b> sous chaque image et <b>Toutes les pochettes ▾</b>, à partir de la <b>description</b> modifiable (en anglais, sans texte dans l'image). Le menu propose le réglage par défaut ou un modèle local précis : FLUX.2 klein, Z-Image Turbo, MOSS-Image ou SDXL-Lightning, avec le temps estimé.</li>
 <li><b>Formats d'export</b> : FLAC, MP3, WAV (cases à cocher), et « Seulement les morceaux validés ».</li>
-<li><b>Exporter…</b> — choisissez un dossier de destination : l'application y crée « Groupe - Album » avec les fichiers <code>NN - Titre.ext</code> (numérotés), les étiquettes (titre, artiste, album, piste n/total) et la pochette intégrée aux FLAC et MP3, plus <code>cover.jpg</code>. Une tâche de fond affiche la progression.</li>
-<li><b>Vidéos…</b> — crée une vidéo par titre de l'album (voir ci-dessous).</li>
+<li><b>Exporter</b> : les fichiers sont écrits dans le sous-dossier <code>Audios</code> de l'album, sous la forme <code>NN - Titre.ext</code>, avec les étiquettes (titre, artiste, album, piste n/total) et la pochette intégrée aux FLAC et MP3, plus <code>cover.jpg</code>.</li>
+<li><b>Compléter…</b> : ouvre « Composer avec l'IA » pour ajouter des morceaux à cet album, avec le même groupe, le même son et les pistes à la suite.</li>
+<li><b>Menu …</b> : <b>Renommer…</b> (groupe ou titre de l'album ; étiquettes, dossiers et images suivent), <b>Ouvrir le dossier de l'album</b>, <b>Rédiger les descriptions (IA locale)</b> (un fichier <code>description.txt</code> pour le groupe, l'album et chaque morceau, dans la langue de l'interface, sans jamais écraser un fichier existant) et <b>Supprimer l'album…</b> (envoi à la corbeille, avec confirmation).</li>
+<li><b>Vidéos…</b> : crée une vidéo fixe ou un clip par titre de l'album (voir ci-dessous).</li>
 </ul>
 </section>
 
 <section id="videos">
-<h2>12. Vidéos YouTube et TikTok</h2>
+<h2>12. Vidéos et clips</h2>
 <p>Le bouton « Vidéo » d'un morceau, ou « Vidéos… » d'un album, ouvre la fenêtre « Créer des vidéos ».</p>
-<figure><img src="img/videos.jpg" alt="Fenêtre Créer des vidéos"><figcaption>Création de vidéos : une image par réseau, un dossier de destination.</figcaption></figure>
+<figure><img src="img/videos.jpg" alt="Fenêtre Créer des vidéos"><figcaption>La fenêtre « Créer des vidéos » : une image par réseau, et les options du vrai clip.</figcaption></figure>
 <ul>
-<li>Chaque vidéo est une <b>image fixe</b> avec le son du morceau (AAC 320 kbit/s), créée <b>individuellement par titre</b>, une par réseau coché.</li>
+<li><b>Vidéo fixe</b> (case « Vrai clip » décochée) : une image avec le son du morceau (AAC 320 kbit/s), créée <b>individuellement par titre</b>, une par réseau coché.</li>
+<li><b>Vrai clip</b> : l'IA locale écrit un scénario d'après les paroles et les fiches du morceau, le modèle d'images local crée une image par scène, puis le montage ajoute des mouvements de caméra lents, des fondus et les paroles synchronisées en sous-titres (refrains plus grands et orangés). Un instrumental n'a pas de sous-titres. Fichiers <code>&lt;titre&gt;_&lt;Réseau&gt;_Clip.mp4</code> dans les mêmes dossiers.</li>
+<li><b>Type de rendu</b> (réaliste, BD, comics, manga, anime, aquarelle…) et <b>moteur d'images</b> : FLUX.2 klein, Z-Image Turbo, MOSS-Image ou SDXL-Lightning, à installer dans Réglages › IA › Pochettes.</li>
+<li><b>Nombre d'images</b> : Recommandé (selon les paroles et la durée), Plus, Moins ou Nombre fixe (jusqu'à 60). La fenêtre affiche le détail par morceau et une estimation du temps.</li>
+<li><b>Refaire le scénario et les images</b> : sinon ceux déjà créés sont réutilisés (dossier <code>clip_scenes</code> du morceau) : seul le montage est refait, c'est bien plus rapide. Les paroles se corrigent dans la fiche <code>paroles.txt</code> du morceau.</li>
+<li><b>Texte de début et de fin</b> : affichés sur la carte d'ouverture et pendant les 8 dernières secondes.</li>
+<li>À lancer <b>au repos</b> : les IA de texte et d'images utilisent la carte graphique.</li>
 <li><b>YouTube</b> : 16:9, 1920 × 1080, dans <code>videos\YouTube</code> : <code>YouTube\&lt;titre&gt;_YouTube.mp4</code>. <b>TikTok</b> : 9:16, 1080 × 1920, dans <code>videos\TikTok</code> : <code>TikTok\&lt;titre&gt;_TikTok.mp4</code>. <b>Instagram</b> (1.0.41) : 1:1, 1080 × 1080, dans <code>IG</code> : <code>IG\&lt;titre&gt;_Instagram.mp4</code>, avec la pochette carrée de l'album. Une image d'un autre format est centrée sur fond noir.</li>
-<li>Le dossier de destination par défaut est <code>videos</code> (modifiable, mémorisé). Les images choisies sont mémorisées pour l'album.</li>
+<li>Les vidéos sont rangées dans le dossier <code>videos</code> de l'album. Les images choisies sont mémorisées pour l'album.</li>
 <li>Les titres sont traités l'un après l'autre. Chaque vidéo est écrite sous un nom temporaire (<code>.part</code>), <b>contrôlée</b> (lecture complète, vraie image non noire) puis renommée : une vidéo ratée est signalée au lieu de rester sur le disque.</li>
 <li>Le bouton « Annuler » de la tâche interrompt la création.</li>
 </ul>
@@ -450,8 +461,8 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 
 <section id="reglages">
 <h2>13. Les réglages</h2>
-<p>La fenêtre « Réglages… » regroupe les options de l'application. Elle s'ouvre large (1100 px, ou la largeur de l'écran moins une marge) et se <b>redimensionne</b> en tirant son coin inférieur droit (640 px minimum). Les réglages sont rangés en <b>six catégories</b>, de couleurs différentes : <b>Interface</b> (langue, thème, marques, notifications), <b>Génération</b> (modèle, fin des morceaux, solveur), <b>Analyse et paroles</b> (analyse audio, transcription Whisper), <b>LoRA</b>, <b>Système</b> (jeux, carte graphique) et <b>Bibliothèque</b>. La liste des catégories est une colonne à gauche ; quand la fenêtre est étroite, elle devient une rangée de boutons en haut. Chaque bloc est un cadre à la couleur de sa catégorie, avec une barre colorée à gauche comme dans le formulaire ; le contenu défile, « Fermer » reste en bas.</p>
-<figure><img src="img/reglages_1.jpg" alt="Réglages, partie haute"><figcaption>Réglages : thème, marques, notifications, jeux, modèle.</figcaption></figure>
+<p>La fenêtre « Réglages… » regroupe les options de l'application. Elle s'ouvre large (1100 px, ou la largeur de l'écran moins une marge) et se <b>redimensionne</b> en tirant son coin inférieur droit (640 px minimum). Les réglages sont rangés en <b>sept catégories</b>, de couleurs différentes : <b>Interface</b> (langue, thème, marques, notifications), <b>Génération</b> (modèle, fin des morceaux, solveur), <b>Analyse et paroles</b> (analyse audio, transcription Whisper), <b>LoRA</b>, <b>Système</b> (jeux, carte graphique) et <b>Bibliothèque</b>. La liste des catégories est une colonne à gauche ; quand la fenêtre est étroite, elle devient une rangée de boutons en haut. Chaque bloc est un cadre à la couleur de sa catégorie, avec une barre colorée à gauche comme dans le formulaire ; le contenu défile, « Fermer » reste en bas.</p>
+<figure><img src="img/reglages_interface.jpg" alt="Réglages, partie haute"><figcaption>Réglages : thème, marques, notifications, jeux, modèle.</figcaption></figure>
 <h3 id="langue-app">Langue de l'application</h3>
 <p>Studio Audio AI existe en <b>dix langues</b> : français, anglais, espagnol, italien, allemand, portugais, japonais, coréen, chinois (mandarin, simplifié) et cantonais (traditionnel). Au premier lancement, l'application prend la langue de Windows si elle existe, sinon l'anglais. Le choix se fait en tête des Réglages et s'applique <b>tout de suite</b> (les polices sont reconstruites : Segoe UI pour l'écriture latine, polices Windows pour le japonais, le coréen et le chinois). Les textes que vous écrivez (titres, styles, paroles) et les balises de style (en anglais) ne sont pas traduits. La page d'aide existe en français et en anglais : le bouton « Aide » ouvre celle de la langue choisie (l'anglais pour toutes les langues autres que le français).</p>
 <p><b>Chaque langue est un fichier</b> du dossier <code>langues\</code> (<code>en.json</code>, <code>ja.json</code>…) : un traducteur peut corriger un texte en éditant son fichier, ou ajouter une langue en copiant <code>_modele.json</code> (une langue ajoutée apparaît au prochain démarrage). Les textes manquants d'une langue s'affichent en anglais, puis en français. Le bouton « Ouvrir le dossier des langues » ouvre ce dossier ; le fichier <code>langues\LISEZMOI.md</code> détaille les règles (marques <code>%d</code> / <code>%s</code> à conserver, sauts de ligne, etc.).</p>
@@ -465,8 +476,8 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Menthe clair</b> — clair frais, turquoise.</li>
 </ul>
 <div class="grid">
-<figure><img src="img/theme_studio_gris.jpg" alt="Thème Studio gris"><figcaption>Studio gris</figcaption></figure>
-<figure><img src="img/theme_papier_encre.jpg" alt="Thème Papier encre"><figcaption>Papier encre</figcaption></figure>
+<figure><img src="img/theme_gris.jpg" alt="Thème Studio gris"><figcaption>Studio gris</figcaption></figure>
+<figure><img src="img/theme_papier.jpg" alt="Thème Papier encre"><figcaption>Papier encre</figcaption></figure>
 <figure><img src="img/theme_menthe.jpg" alt="Thème Menthe clair"><figcaption>Menthe clair</figcaption></figure>
 </div>
 <h3>Marques des morceaux</h3>
@@ -476,6 +487,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3>Jeux</h3>
 <p>« Suspendre la file de génération quand un jeu est lancé », et la liste des programmes à surveiller. L'état de la détection est affiché (« Aucun jeu détecté — la file peut tourner » ou « Jeu détecté : … »). Voir <a href="#jeux">Pause automatique</a>.</p>
 <h3>Modèle de génération</h3>
+<figure><img src="img/reglages_generation.jpg" alt="Réglages, catégorie Génération"><figcaption>Réglages › Génération : modèle, fin des morceaux, styles et packs.</figcaption></figure>
 <p>Liste du <b>modèle par défaut</b> au démarrage, et tableau des trois quantifications avec un bouton <b>Télécharger ↗</b> (ouvre le téléchargement dans le navigateur ; placez ensuite le fichier dans le dossier indiqué par l'infobulle) ou « ● installé ». « Ouvrir le dossier des modèles ». La liste se met à jour à chaque ouverture des Réglages.</p>
 <h3>Fin des morceaux</h3>
 <p>Longueur du fondu des morceaux coupés au plafond (1 à 30 s). Voir <a href="#fin">La fin des morceaux</a>.</p>
@@ -498,6 +510,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3>Supprimer des modèles et des LoRA</h3>
 <p>Les tableaux des modèles et des LoRA ont une colonne <b>Supprimer</b> : le bouton apparaît sur chaque ligne installée (y compris les modèles et LoRA déposés à la main). Après confirmation, le fichier est <b>supprimé définitivement</b> du disque (il ne passe pas par la corbeille, car ces fichiers pèsent plusieurs Go) ; modèles et LoRA du catalogue peuvent être téléchargés de nouveau. Les morceaux déjà générés ne sont pas touchés. Le bouton est grisé pendant une génération. Si vous supprimez le modèle utilisé, l'application en choisit un autre (Q6_K de préférence).</p>
 <h3 id="analyse-reglage">Analyse audio</h3>
+<figure><img src="img/reglages_analyse.jpg" alt="Réglages, catégorie Analyse et paroles"><figcaption>Réglages › Analyse et paroles.</figcaption></figure>
 <p>Le modèle d'analyse (environ 30 Mo) est un ensemble de réseaux d'étiquetage <b>Discogs-EffNet</b> et de ses classificateurs (genre, ambiance, instruments, voix, tonalité…) du Music Technology Group (Universitat Pompeu Fabra, projet Essentia), exécutés sur le processeur avec ONNX Runtime ; ils sont publiés sous licence <b>CC BY-NC-SA 4.0 (usage non commercial)</b>. Le tempo, la tonalité, la tessiture et la structure viennent de la partition transcrite par le moteur SheetSage2 déjà utilisé pour les reprises. La section propose :</p>
 <ul>
 <li><b>Télécharger le modèle d'analyse</b> — barre de progression, ✕ pour annuler, reprise possible ; les fichiers vont dans <code>modeles\analyse\</code>.</li>
@@ -511,6 +524,8 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3 id="traduction-reglage">Traduction des paroles</h3>
 <p>Moteurs du bouton « Traduire » du bloc Paroles. <b>Utiliser Internet (Google Traduction)</b> : activé par défaut ; le texte des paroles est alors envoyé à Google. L'état de la connexion est testé au démarrage (bouton <b>Tester</b>). <b>Moteur local</b> : llama.cpp, dans le dossier <code>traduction</code> à côté de l'application (fourni avec la version portable). <b>Modèle local</b> : Qwen2.5-3B-Instruct (environ 2 Go, licence Qwen Research, usage non commercial), à télécharger ici dans <code>modeles\traduction</code> ; il tourne sur le processeur pour laisser la carte graphique aux générations.</p>
 <h3 id="ia-reglage">IA (paroles)</h3>
+<figure><img src="img/reglages_ia.jpg" alt="Réglages, catégorie IA"><figcaption>Réglages › IA : moteur, mots à éviter, albums et pochettes.</figcaption></figure>
+<figure><img src="img/reglages_ia2.jpg" alt="Modèles d'images et IA locale"><figcaption>Plus bas : les modèles d'images et les modèles de l'IA locale.</figcaption></figure>
 <p>Moteur de l'onglet « Composer avec l'IA ». Trois possibilités :</p>
 <ul>
 <li><b>IA locale intégrée</b> (llama.cpp) : choisissez un modèle dans le tableau (Qwen, Llama, Gemma, Mistral… de 2 à 14 Go) ; chaque ligne indique sa taille, sa qualité d'écriture et s'il tient sur la carte graphique (rapide), seulement sur le processeur (lent) ou s'il est trop lourd pour ce PC. Le modèle se télécharge depuis Hugging Face dans <code>modeles\ia</code>. L'IA locale utilise toujours la carte graphique : il faut pour cela télécharger une fois llama.cpp pour la carte graphique (bouton <b>Télécharger llama.cpp pour la carte graphique</b>, environ 37 Mo, dans <code>ia\llama</code> ; proposé aussi dans l'onglet). Un modèle plus gros que la mémoire vidéo est partagé entre la carte et le processeur (colonne « Carte + processeur »).</li>
@@ -520,6 +535,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <h3 id="vider">Supprimer tous les morceaux</h3>
 <p>Tout en bas des Réglages, la section <b>Bibliothèque</b> propose « Supprimer tous les morceaux… ». Après confirmation, tous les dossiers de la bibliothèque sont envoyés à la corbeille de Windows (restaurables tant qu'elle n'est pas vidée). Les images d'albums (<code>pochettes\</code>) et les vidéos ne sont pas touchées. Indisponible pendant une génération ou tant que la file n'est pas vide.</p>
 <h3 id="sante">Carte graphique et test de santé</h3>
+<figure><img src="img/reglages_systeme.jpg" alt="Réglages, catégorie Système"><figcaption>Réglages › Système : jeux, recommandations, carte graphique.</figcaption></figure>
 <p>Affiche la version du pilote. <b>Lancer le test de santé (≈ 1 min)</b> rejoue deux fois un court extrait (48 s) et compare les résultats : un écart relatif inférieur à 15 % indique une carte et un pilote <b>stables</b> ; au-delà, la carte produit des résultats instables (morceaux saturés ou parasités). Le test est indisponible pendant une génération. L'application mémorise la version du pilote : si elle change, le bouton Réglages devient orange et un nouveau test est conseillé.</p>
 <p><b>Version et mises à jour.</b> En haut du bloc : la version installée et l'état de la recherche de mise à jour (au démarrage, en tâche de fond ; « Vérifier maintenant » la relance). Tant qu'aucun site de publication n'est choisi, la recherche est désactivée (« pas encore de site de publication »). Sans connexion, elle abandonne en quelques secondes sans rien bloquer.</p>
 <p><b>Recommandations pour ce PC.</b> L'application lit la carte graphique, la mémoire vive, le processeur et le type du disque qui contient les modèles (SSD ou disque dur), puis conseille : la quantification du modèle (Q8_0 à partir de 15 Go de mémoire vidéo, Q6_K à partir de 11 Go, sinon Q5_K_M), le solveur (ab2_32 si la carte a au moins 11 Go, sinon ab3_20, plus léger), et signale les points faibles (moins de 16 Go de RAM, modèles sur un disque dur : chargement lent). Le bouton <b>« Appliquer les réglages conseillés »</b> choisit ce modèle et ce solveur (le modèle doit être téléchargé).</p>
@@ -530,9 +546,9 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Moteur CUDA</b> (facultatif, cartes Nvidia) : dossier <code>outils\moteur\cuda</code> de l'application (l'ancien <code>moteur_cuda</code> reste reconnu), produit par <code>build_yue2cpp_cuda.cmd</code> (CUDA Toolkit nécessaire) et livré à part (<code>StudioAudioAI-moteur-CUDA.zip</code>, à décompresser dans le dossier de l'application). Non testé faute de carte Nvidia.</li>
 <li>Sur une carte Nvidia, un bouton <b>Pilotes Nvidia</b> ouvre la page de téléchargement des pilotes.</li>
 </ul>
-<p><b>Limite d'utilisation du GPU</b> (de 30 à 100 %, « aucune limite » par défaut) : le moteur est mis en pause par intervalles très courts (une fraction de chaque cycle de 200 ms) pour laisser souffler la carte : température, bruit, autres programmes. À 90, une génération dure environ 1,1 fois plus longtemps. Pendant la phase audio (pas x/32), c'est le moteur qui marque une pause après chaque pas, proportionnelle à sa durée. Le réglage s'applique immédiatement, même pendant une génération (au pas suivant). Sur la jauge « Utilisation GPU », une flèche orange marque la limite ; sur un long morceau, chaque pas dure plusieurs secondes à pleine puissance, suivi d'une pause : la limite s'applique <b>en moyenne</b>, c'est pourquoi la jauge affiche alors « valeur instantanée · moyenne » (moyenne sur 16 s, qui fait foi).</p>
+<p><b>Limite d'utilisation du GPU</b> (de 30 à 100 %, « aucune limite » par défaut) : le moteur est mis en pause par intervalles très courts (une fraction de chaque cycle de 200 ms) pour laisser souffler la carte : température, bruit, autres programmes. À 90, une génération dure environ 1,1 fois plus longtemps. Pendant la phase audio (pas x/32), c'est le moteur qui marque une pause après chaque pas, proportionnelle à sa durée. Le réglage s'applique immédiatement, même pendant une génération (au pas suivant). Sur le compteur « Utilisation GPU », un repère orange marque la limite ; sur un long morceau, chaque pas dure plusieurs secondes à pleine puissance, suivi d'une pause : la limite s'applique <b>en moyenne</b>, c'est pourquoi la jauge affiche alors « valeur instantanée · moyenne » (moyenne sur 16 s, qui fait foi).</p>
 <p><b>Mise à jour du pilote.</b> Pour une carte AMD, l'application lit la version d'AMD Software : Adrenalin Edition installée (registre Windows) et la compare, <b>au lancement</b>, à la dernière version stable publiée (notes de version AMD relayées sur GitHub, source non officielle ; année et mois comparés). Si une version plus récente existe, un bouton orange <b>« Mise à jour disponible »</b> apparaît à côté de la version du pilote (et une notification est affichée une fois) ; il ouvre la page de téléchargement des pilotes AMD. Hors ligne, rien ne s'affiche. Après une mise à jour, relancez le test de santé.</p>
-<figure><img src="img/reglages_4.jpg" alt="Réglages, partie basse"><figcaption>Réglages : catalogue de LoRA et test de santé.</figcaption></figure>
+<figure><img src="img/reglages_systeme2.jpg" alt="Réglages, partie basse"><figcaption>Réglages : catalogue de LoRA et test de santé.</figcaption></figure>
 </section>
 
 <section id="performances">
@@ -564,7 +580,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p>Essai à graines et paroles identiques sur un morceau de 3 minutes : Q8_0, Q6_K et Q5_K_M vont <b>aussi vite l'une que l'autre</b> (environ deux fois la durée du morceau en Midpoint). Les quantifications plus légères économisent seulement 0,3 à 0,4 Go de mémoire vidéo au pic, car seuls les poids de la phase NAR sont chargés à ce moment ; l'essentiel de la mémoire vient des tampons d'attention, qui grandissent avec la durée. La qualité a été jugée équivalente à l'écoute ; Q6_K est le défaut.</p>
 <h3>Mémoire vidéo : ce qui fait ralentir</h3>
 <ul>
-<li>Un morceau long mobilise 8,5 à 10 Go. Si d'autres programmes occupent la carte, Windows repousse une partie de la mémoire vers la RAM : les pas deviennent 2 à 8 fois plus lents (voir la jauge « Débordement »).</li>
+<li>Un morceau long mobilise 8,5 à 10 Go. Si d'autres programmes occupent la carte, Windows repousse une partie de la mémoire vers la RAM : les pas deviennent 2 à 8 fois plus lents (voir le compteur « Débordement »).</li>
 <li>Les gros consommateurs observés : un aperçu de fichiers resté ouvert (jusqu'à 6 Go), le gestionnaire de fenêtres de Windows (<code>dwm</code>) qui peut grossir au fil des heures (de 0,2 à plusieurs Go), les jeux, les navigateurs avec accélération matérielle.</li>
 <li>Remèdes : fermer ces programmes avant une longue file ; se déconnecter puis se reconnecter de Windows si <code>dwm</code> dépasse 2 Go ; raccourcir la durée maximale des morceaux.</li>
 </ul>
@@ -598,6 +614,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><code>outils\whisper\</code></td><td>Moteur de transcription des paroles (Whisper).</td></tr>
 <tr><td><code>outils\llama\</code></td><td>llama.cpp pour le processeur : traduction des paroles hors ligne.</td></tr>
 <tr><td><code>outils\llama-vulkan\</code></td><td>llama.cpp pour la carte graphique, téléchargé depuis l'onglet <b>Composer avec l'IA</b>.</td></tr>
+<tr><td><code>outils\sd-vulkan\</code></td><td>stable-diffusion.cpp : création des pochettes et des images de clips.</td></tr>
 <tr><td><code>ressources\aide\</code>, <code>ressources\langues\</code></td><td>Cette aide (<code>aide.html</code> en français, <code>aide.en.html</code> en anglais) et les fichiers de traduction de l'interface (un fichier JSON par langue).</td></tr>
 <tr><td><code>modeles\</code></td><td><code>musique\</code> (modèles de musique), <code>lora\</code> (LoRA), <code>analyse\</code>, <code>voix\</code>, <code>traduction\</code>, <code>ia\</code> : modèles téléchargés au premier lancement ou dans les Réglages.</td></tr>
 <tr><td><code>Audios\&lt;groupe&gt;\&lt;album&gt;\&lt;NN. titre&gt;\</code></td><td>(1.0.43) Un dossier par groupe (« Sans groupe » s'il n'est pas renseigné), puis par album (avec ses images <code>pochette</code>, <code>pochette_youtube</code>, <code>pochette_tiktok</code> et ses vidéos dans <code>videos\</code>), puis un dossier par morceau, nommé « 01. Titre » (sans album : directement dans le dossier du groupe). Changer le groupe, l'album ou le titre (« Modifier », « Albums… › Renommer… ») déplace le dossier. Chaque morceau : <code>meta.json</code> (fiche), <code>request.json</code> (requête), <code>audio.json</code> (codes pour re-rendu et prolongation), <code>audio.wav</code>, <code>audio.flac</code>, <code>audio.mp3</code>, <code>generation.log</code>. Le livrable contient deux morceaux de démonstration.</td></tr>
@@ -607,7 +624,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><td><code>Audios\…\videos\YouTube\</code>, <code>TikTok\</code>, <code>IG\</code></td><td>Vidéos YouTube, TikTok et Instagram, dans le dossier de l'album (ou du groupe pour un morceau sans album) ; plus de dossier au choix (1.0.43).</td></tr>
 <tr><td><code>LICENSES\</code></td><td>Licences des composants.</td></tr>
 </table>
-<p>Les versions précédentes rangeaient ces éléments à la racine (<code>yue-synth.exe</code>, <code>ffmpeg.exe</code>, <code>voix\</code>, <code>traduction\</code>, <code>aide\</code>, <code>langues\</code>, <code>moteur_cuda\</code>, réglages) : ils restent reconnus, et réglages, brouillon, pochettes et test de santé sont rangés automatiquement dans <code>donnees\</code> au premier lancement.</p>
+<p>Les versions précédentes rangeaient ces éléments ailleurs (<code>voix\</code>, <code>traduction\</code>, <code>models\</code>, <code>bibliotheque\</code>…) : au premier lancement d'une version récente, ils sont déplacés automatiquement au bon endroit, sans rien écraser (journal : <code>cache\migration.log</code>).</p>
 </section>
 
 <section id="depannage">
@@ -616,7 +633,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <tr><th>Symptôme</th><th>Cause probable et remède</th></tr>
 <tr><td>« Impossible de trouver le moteur de synthèse »</td><td><code>yue-synth.exe</code> doit être dans le dossier de l'application (ou dans <code>yue2.cpp\build\Release</code> pour une installation de développement).</td></tr>
 <tr><td>Le téléchargement des modèles s'est arrêté</td><td>Relancez l'application : il reprend où il s'était arrêté.</td></tr>
-<tr><td>Génération très lente</td><td>Regardez la jauge « Débordement ». Fermez les programmes qui utilisent la carte ; se déconnecter / reconnecter Windows si <code>dwm</code> est gonflé.</td></tr>
+<tr><td>Génération très lente</td><td>Regardez le compteur « Débordement ». Fermez les programmes qui utilisent la carte ; se déconnecter / reconnecter Windows si <code>dwm</code> est gonflé.</td></tr>
 <tr><td>Morceaux grésillants ou saturés</td><td>Recomposez le morceau ; lancez le test de santé ; vérifiez le pilote graphique (le bouton Réglages orange signale un changement).</td></tr>
 <tr><td>Le morceau finit brusquement</td><td>Plafond de durée atteint : augmentez la durée, ou allongez le fondu / cochez « Fin en fondu sur la structure ».</td></tr>
 <tr><td>Le bouton Générer est grisé</td><td>Renseignez le nom, le style et (pour une chanson) les paroles.</td></tr>
@@ -645,6 +662,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">Cette aide est mise à jour à chaque ajout ou modification de fonctionnalité.</p>
 <table>
 <tr><th>Date</th><th>Évolution</th></tr>
+<tr><td>31 oct. 2026 (1.0.69)</td><td>Aide relue et mise à jour (albums, clips, compteurs, dossiers), 26 nouvelles captures d'écran en français et en anglais.</td></tr>
 <tr><td>31 oct. 2026 (1.0.68)</td><td>En-tête : le texte « Génération locale · YuE2-3B · Vulkan » est retiré pour laisser plus de place aux compteurs.</td></tr>
 <tr><td>31 oct. 2026 (1.0.67)</td><td>Compteurs à aiguille dans l'en-tête à la place des quatre barres, en style Sport ou Compact au choix (Réglages › Système).</td></tr>
 <tr><td>31 oct. 2026 (1.0.66)</td><td>L'en-tête de la fenêtre affiche le nouveau nom, Studio Audio AI.</td></tr>

@@ -3,10 +3,10 @@
 // et dans le journal des évolutions de l'aide).
 #pragma once
 
-#define STUDIO_VERSION   "1.0.68"
+#define STUDIO_VERSION   "1.0.69"
 #define APP_NAME         "Studio Audio AI"
 #define APP_NAME_W       L"Studio Audio AI"
-#define STUDIO_VERSION_W L"1.0.68"
+#define STUDIO_VERSION_W L"1.0.69"
 
 // Adresse interrogée au démarrage pour savoir si une version plus récente existe (voir update_check.hpp).
 // Vide tant qu'aucun site de publication n'est choisi : la recherche est alors désactivée. On peut aussi la

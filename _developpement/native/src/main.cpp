@@ -10091,6 +10091,15 @@ struct App {
     // ---- 1.0.46 : aperçu agrandi d'une image, toutes les pochettes d'un album, suppression d'un album
     fs::path               preview_image;
     bool                   preview_open = false, all_covers_open = false, delete_album_open = false;
+    // Essai : les captures de l'aide ne montrent aucun nom de personne réelle (balises de plusieurs mots à majuscule)
+    static std::string test_clean_style(const std::string & style) {
+        std::vector<std::string> kept;
+        for (const std::string & tag : split_style(style))
+            if (!(isupper((unsigned char) tag[0]) && tag.find(' ') != std::string::npos)) kept.push_back(tag);
+        return join_style(kept);
+    }
+    float                  test_scroll = 0;         // essai : défilement des Réglages pour les captures de l'aide
+    int                    test_scroll_frames = 0;
     std::vector<CoverTask> all_covers_tasks;
     std::string            all_covers_key, all_covers_label, delete_album_key, delete_album_artist, delete_album_name;
 
@@ -11016,6 +11025,10 @@ struct App {
                 ImGui::SameLine();
             }
             ImGui::BeginChild("##set_content", ImVec2(0, -foot), 0);
+        if (test_scroll_frames > 0) {
+            ImGui::SetScrollY(test_scroll);
+            test_scroll_frames--;
+        }
         }
 
         if (cat == 0) {
@@ -11613,6 +11626,60 @@ struct App {
             return true;
         }();
         (void) test_albums;
+        // Essai (1.0.69, captures de l'aide) : STUDIO_TEST_SHOT="clé=valeur;…" : filter, cards, marks, style, gauge, theme,
+        // reglages (catégorie), scroll, ia, open (blocs dépliés), fold (blocs repliés), reuse (premier morceau filtré), edit.
+        static bool test_shot = [this] {
+            wchar_t v[512];
+            DWORD   n = GetEnvironmentVariableW(L"STUDIO_TEST_SHOT", v, 512);
+            if (n == 0 || n >= 512) return false;
+            std::istringstream in(narrow(v));
+            std::string        item;
+            auto first_song = [&]() {
+                for (const Song & sg : studio->snapshot())
+                    if (sg.status == "done" && (filter_text.empty() || sg.album == filter_text) && sg.title.find("partie") == std::string::npos) return sg;
+                return Song{};
+            };
+            while (std::getline(in, item, ';')) {
+                const size_t eq = item.find('=');
+                const std::string key = item.substr(0, eq), val = eq == std::string::npos ? std::string() : item.substr(eq + 1);
+                if (key == "filter") filter_text = val;
+                else if (key == "cards") settings.card_mode = atoi(val.c_str());
+                else if (key == "marks") settings.mark_style = atoi(val.c_str());
+                else if (key == "style") settings.style_mode = atoi(val.c_str());
+                else if (key == "gauge") settings.gauge_style = atoi(val.c_str());
+                else if (key == "theme") {
+                    settings.theme = g_theme = atoi(val.c_str());
+                    apply_theme(g_system_light, g_dpi);
+                }
+                else if (key == "reglages") {
+                    open_settings     = true;
+                    open_settings_cat = atoi(val.c_str());
+                }
+                else if (key == "scroll") test_scroll = (float) atof(val.c_str()) * g_dpi, test_scroll_frames = 20;
+                else if (key == "ia") form_tab_request = 1;
+                else if (key == "open") g_collapsed.clear();
+                else if (key == "fold") {
+                    std::istringstream ids(val);
+                    std::string        id;
+                    while (std::getline(ids, id, ',')) g_collapsed.insert(id);
+                }
+                else if (key == "reuse") {
+                    reuse(first_song());
+                    form.style = test_clean_style(form.style);
+                }
+                else if (key == "edit") {
+                    Song s      = first_song();
+                    edit_id     = s.id;
+                    edit_title  = s.title;
+                    edit_artist = s.artist;
+                    edit_album  = s.album;
+                    edit_track  = s.track;
+                    open_edit   = true;
+                }
+            }
+            return true;
+        }();
+        (void) test_shot;
         draw_albums_modal();
         if (!albums_drawn) draw_video_modal();  // sinon déjà dessinée à l'intérieur de « Albums »
         settings_shown = false;
@@ -11942,6 +12009,8 @@ struct App {
     void frame() {
         update_imports();  // packs .yue2pack à importer
         std::vector<Song> songs = studio->snapshot();
+        static const bool test_shot_on = GetEnvironmentVariableW(L"STUDIO_TEST_SHOT", nullptr, 0) > 0;
+        if (test_shot_on) for (Song & s : songs) s.style = test_clean_style(s.style);
         refresh_album_dirs(songs);  // 1.0.43 : dossiers des albums (pochettes)
         update_tray(songs);
         update_games();
@@ -12287,6 +12356,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             yyjson_doc_free(doc);
         }
         if (code.empty()) code = i18n::system_language();
+        if (const wchar_t * lang = _wgetenv(L"STUDIO_TEST_LANG")) code = narrow(lang);  // essai : captures de l'aide
         if (!i18n::set_language(code)) i18n::set_language("fr");
     }
     // Premier lancement : télécharger le modèle ou indiquer le dossier qui le contient déjà.
