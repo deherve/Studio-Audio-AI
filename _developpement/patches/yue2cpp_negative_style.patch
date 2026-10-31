@@ -1,0 +1,103 @@
+﻿diff --git a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/pipeline.h b/yue2.cpp/src/pipeline.h
+index 4424e8e..b041f85 100644
+--- a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/pipeline.h
++++ b/yue2.cpp/src/pipeline.h
+@@ -514,11 +514,19 @@ static bool pipeline_generate(Yue2Pipeline *          p,
+             (size_t) B * M);
+ 
+     float                         guidance = r.cfg_scale < 0.0f ? yue2_default_guidance(cot) : r.cfg_scale;
++    // Balises négatives Studio YuE2 : sans échelle demandée, guidage à 1.5 ;
++    // une échelle de 1 exactement n'aurait aucun effet, le négatif serait ignoré
++    if (!r.negative_style.empty()) {
++        if (r.cfg_scale < 0.0f) {
++            guidance = 1.5f;
++        }
++        fprintf(stderr, "[Prompt] Negative tags: %s (CFG=%.2f)\n", r.negative_style.c_str(), (double) guidance);
++    }
+     std::vector<std::vector<int>> negatives;
+     if (guidance != 1.0f) {
+         negatives.resize(B);
+         for (int i = 0; i < B; i++) {
+-            negatives[i] = yue2_build_negative_ids(encode, cot, has_score ? &abc_ids[i] : nullptr);
++            negatives[i] = yue2_build_negative_ids(encode, cot, has_score ? &abc_ids[i] : nullptr, r.negative_style);
+         }
+     }
+ 
+diff --git a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/prompt.h b/yue2.cpp/src/prompt.h
+index 6f11f42..c27b465 100644
+--- a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/prompt.h
++++ b/yue2.cpp/src/prompt.h
+@@ -109,11 +109,21 @@ static std::vector<int> yue2_build_prompt_ids(Tokenize                 bpe_encod
+ // Assembles the unconditional token stream: the instruction alone, then the
+ // same score. In off mode the score slot is absent entirely, unlike the
+ // conditional stream which carries an empty one.
++// Balises négatives Studio YuE2 : un negative_style non vide ajoute un bloc
++// [Tags] après l'instruction, écrit comme dans le flux positif ; vide, le flux
++// reste celui du protocole.
+ template <typename Tokenize>
+-static std::vector<int> yue2_build_negative_ids(Tokenize bpe_encode, Yue2Cot cot, const std::vector<int> * abc_ids) {
++static std::vector<int> yue2_build_negative_ids(Tokenize                 bpe_encode,
++                                                Yue2Cot                  cot,
++                                                const std::vector<int> * abc_ids,
++                                                const std::string &      negative_style = std::string()) {
+     std::vector<int> ids;
+     ids.push_back(YUE2_EOD);
+-    for (int id : bpe_encode(std::string(yue2_instruction(cot)))) {
++    std::string text = yue2_instruction(cot);
++    if (!negative_style.empty()) {
++        text += "\n[Tags]\n" + negative_style + "\n";
++    }
++    for (int id : bpe_encode(text)) {
+         ids.push_back(id);
+     }
+     if (cot == YUE2_COT_OFF) {
+diff --git a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/request.cpp b/yue2.cpp/src/request.cpp
+index a9b9a78..4e4586c 100644
+--- a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/request.cpp
++++ b/yue2.cpp/src/request.cpp
+@@ -30,6 +30,7 @@ void request_init(Yue2Request * r) {
+     r->synth_batch_size = 1;
+     r->peak_clip        = 10;
+     r->cfg_scale        = -1.0f;
++    r->negative_style   = "";  // balises négatives Studio YuE2
+     r->semantic_tokens  = "";
+ 
+     r->abc_sampling      = YUE2_ABC_SAMPLING;
+@@ -123,6 +124,10 @@ static void request_parse_obj(yyjson_val * obj, Yue2Request * r) {
+     if ((v = yyjson_obj_get(obj, "style")) && yyjson_is_str(v)) {
+         r->style = yy_str(v);
+     }
++    // balises négatives Studio YuE2
++    if ((v = yyjson_obj_get(obj, "negative_style")) && yyjson_is_str(v)) {
++        r->negative_style = yy_str(v);
++    }
+     if ((v = yyjson_obj_get(obj, "lyrics")) && yyjson_is_str(v)) {
+         r->lyrics = yy_str(v);
+     }
+@@ -279,6 +284,10 @@ std::string request_to_json(const Yue2Request * r, bool sparse) {
+     if (!sparse || r->cfg_scale != d.cfg_scale) {
+         yyjson_mut_obj_add_real(doc, root, "cfg_scale", r->cfg_scale);
+     }
++    // balises négatives Studio YuE2 : gardées pour le rejeu
++    if (!sparse || r->negative_style != d.negative_style) {
++        yyjson_mut_obj_add_strncpy(doc, root, "negative_style", r->negative_style.c_str(), r->negative_style.size());
++    }
+     if (!sparse || r->output_format != d.output_format) {
+         yyjson_mut_obj_add_strncpy(doc, root, "output_format", r->output_format.c_str(), r->output_format.size());
+     }
+diff --git a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/request.h b/yue2.cpp/src/request.h
+index d2acaa3..42ac6da 100644
+--- a/_sauvegardes/yue2cpp_src_2026-10-21_avant_negatif/request.h
++++ b/yue2.cpp/src/request.h
+@@ -71,6 +71,11 @@ struct Yue2Request {
+     // scale of exactly 1.0 keeps a single branch.
+     float cfg_scale;  // -1
+ 
++    // balises négatives Studio YuE2 : tags placés dans le flux non conditionnel
++    // pour que le guidage éloigne le morceau de ce style. Non vide active le
++    // guidage (1.5 si cfg_scale est laissé à -1).
++    std::string negative_style;  // ""
++
+     // output normalization percentile control, the peak being the
+     // 1 - peak_clip / 1e6 percentile of the absolute signal
+     int peak_clip;  // 10

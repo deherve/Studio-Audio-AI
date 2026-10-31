@@ -1,0 +1,2 @@
+Modeles d'IA pour Composer avec l'IA (2 a 14 Go, facultatifs) : telecharges depuis Studio Audio AI, Reglages > IA (paroles).
+AI models for Compose with AI (optional): downloaded from Studio Audio AI, Settings > AI (lyrics).

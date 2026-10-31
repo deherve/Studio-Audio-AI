@@ -1,0 +1,2 @@
+Modele Whisper (transcription des paroles, ~0,5 Go) : telecharge depuis Studio Audio AI, Reglages > Analyse et paroles.
+Whisper model (lyrics transcription): downloaded from Studio Audio AI, Settings > Analysis and lyrics.

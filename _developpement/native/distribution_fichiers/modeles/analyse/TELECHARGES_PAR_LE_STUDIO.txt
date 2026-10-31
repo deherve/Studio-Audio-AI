@@ -1,0 +1,2 @@
+Modeles d'analyse audio (Essentia, ~31 Mo) : telecharges depuis Studio Audio AI, Reglages > Analyse et paroles.
+Audio analysis models: downloaded from Studio Audio AI, Settings > Analysis and lyrics.

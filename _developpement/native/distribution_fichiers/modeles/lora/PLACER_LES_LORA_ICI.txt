@@ -1,0 +1,1 @@
+Placer ici la LoRA instrumentale (.safetensors) - voir ..\LISEZMOI.txt

@@ -1,0 +1,2 @@
+Modele de traduction des paroles (~2 Go, facultatif) : telecharge depuis Studio Audio AI, Reglages > Analyse et paroles.
+Lyrics translation model (optional): downloaded from Studio Audio AI, Settings > Analysis and lyrics.

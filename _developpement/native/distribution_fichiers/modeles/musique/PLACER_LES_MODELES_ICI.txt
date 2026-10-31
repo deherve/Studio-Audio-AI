@@ -1,0 +1,16 @@
+DOSSIER DES MODELES / MODELS FOLDER
+
+Placez ici les modeles deja telecharges :
+  modeles\musique\YuE2-3B-Q6_K.gguf          (modele principal par defaut, 2,9 Go)
+     ou YuE2-3B-Q8_0.gguf (3,8 Go, qualite maximale) ou YuE2-3B-Q5_K_M.gguf (2,6 Go) : un au moins est obligatoire,
+     vous pouvez en mettre plusieurs et choisir dans l'application
+  modeles\musique\YuE2-Vae-F32.gguf          (obligatoire, 0,5 Go)
+  modeles\musique\SheetSage2-Q8_0.gguf       (covers / reprises, 0,1 Go)
+  modeles\musique\MERT-v2-FullSong-Q8_0.gguf (covers / reprises, 0,9 Go)
+  modeles\lora\ar_lora_inst_v3abc.bf16.safetensors (mode instrumental, 0,14 Go)
+
+Source : https://huggingface.co/Serveurperso/YuE2-GGUF
+         https://huggingface.co/Mothersuperior/YuE2-instrumental-cot-full-loras
+
+Si ce dossier est vide, Studio Audio AI.exe propose de telecharger les modeles au premier lancement
+(ou d'indiquer un autre dossier qui les contient deja).

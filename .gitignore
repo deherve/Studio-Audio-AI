@@ -1,0 +1,28 @@
+# Liste blanche : seul ce qui est rouvert ici part sur GitHub (config\, Audios\, modeles\… restent sur le PC)
+/*
+!/.gitignore
+!/.gitmodules
+!/README.md
+!/CLAUDE.md
+!/ressources/
+!/_developpement/
+
+/_developpement/*
+!/_developpement/native/
+!/_developpement/patches/
+!/_developpement/*.cmd
+!/_developpement/*.md
+
+# Fabriqué ou trop lourd
+/_developpement/native/build/
+/_developpement/native/third_party/ffmpeg_essentials/
+/_developpement/native/distribution_fichiers/Audios/
+
+# Jamais, où que ce soit
+*.gguf
+*.safetensors
+*.lic
+*.log
+*.exe
+cles_api.json
+__pycache__/

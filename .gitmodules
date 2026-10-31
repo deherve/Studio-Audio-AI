@@ -1,0 +1,3 @@
+[submodule "_developpement/native/third_party/imgui"]
+	path = _developpement/native/third_party/imgui
+	url = https://github.com/ocornut/imgui.git

@@ -1,0 +1,72 @@
+﻿diff --git a/_sauvegardes/yue2cpp_src_2026-10-21_avant_limite_gpu/nar.h b/yue2.cpp/src/nar.h
+index b8b3e60..c44986b 100644
+--- a/_sauvegardes/yue2cpp_src_2026-10-21_avant_limite_gpu/nar.h
++++ b/yue2.cpp/src/nar.h
+@@ -31,6 +31,7 @@
+ #include <cstdlib>
+ #include <cstring>
+ #include <string>
++#include <thread>
+ #include <vector>
+ 
+ #define YUE2_NAR_GRAPH_NODES 8192
+@@ -528,6 +529,26 @@ static void nar_dump_named(const Yue2NAR * n, const DebugDumper * dbg) {
+     }
+ }
+ 
++// Limite d'utilisation du GPU, Studio YuE2 : après chaque pas, pause proportionnelle à sa durée pour que la
++// carte travaille L % du temps. L est relu à chaque pas dans le fichier YUE2_GPU_LIMIT_FILE (écrit par
++// l'application), un changement de réglage s'applique donc au pas suivant. Sans variable : aucune pause.
++static void nar_gpu_limit_pause(double step_ms) {
++    static const char * limit_file = std::getenv("YUE2_GPU_LIMIT_FILE");
++    if (!limit_file) {
++        return;
++    }
++    int L = 100;
++    if (FILE * f = std::fopen(limit_file, "r")) {
++        if (std::fscanf(f, "%d", &L) != 1) {
++            L = 100;
++        }
++        std::fclose(f);
++    }
++    if (L >= 10 && L < 100) {
++        std::this_thread::sleep_for(std::chrono::milliseconds((long long) (step_ms * (100 - L) / L)));
++    }
++}
++
+ // Flow matching solver (midpoint, or ab2 which spends one velocity evaluation a step), t walking from 1 down to 0.
+ // state [M, T_lat, latent_dim] holds the noise of every variation on entry
+ // and the latents on exit. The dumper, when enabled, records the first
+@@ -570,7 +591,9 @@ static bool nar_solve(Yue2NAR *            n,
+             for (size_t i = 0; i < count; i++) {
+                 state[i] -= dt * first[i];
+             }
+-            fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_timer.ms());
++            double step_ms = step_timer.ms();
++            fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_ms);
++            nar_gpu_limit_pause(step_ms);  // limite d'utilisation du GPU, Studio YuE2
+             continue;
+         }
+         if (multistep && step > 0) {
+@@ -587,7 +610,9 @@ static bool nar_solve(Yue2NAR *            n,
+             }
+             older.swap(previous);
+             previous.swap(first);
+-            fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_timer.ms());
++            double step_ms = step_timer.ms();
++            fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_ms);
++            nar_gpu_limit_pause(step_ms);  // limite d'utilisation du GPU, Studio YuE2
+             continue;
+         }
+         for (size_t i = 0; i < count; i++) {
+@@ -609,7 +634,9 @@ static bool nar_solve(Yue2NAR *            n,
+         debug_dump_2d(dbg, name, second.data(), T_lat, n->latent_dim);
+         snprintf(name, sizeof(name), "nar_step%d_xt", step);
+         debug_dump_2d(dbg, name, state, T_lat, n->latent_dim);
+-        fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_timer.ms());
++        double step_ms = step_timer.ms();
++        fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_ms);
++        nar_gpu_limit_pause(step_ms);  // limite d'utilisation du GPU, Studio YuE2
+     }
+     debug_dump_2d(dbg, "nar_x0", state, T_lat, n->latent_dim);
+ 

@@ -1,0 +1,27 @@
+// Icône et informations de version du programme (1.0.40 : nom affiché par Windows dans la barre des tâches et les propriétés).
+#include <winver.h>
+#include "version.hpp"
+
+1 ICON "app.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040C04B0"
+        BEGIN
+            VALUE "CompanyName", "Herve"
+            VALUE "FileDescription", APP_NAME
+            VALUE "ProductName", APP_NAME
+            VALUE "FileVersion", STUDIO_VERSION
+            VALUE "ProductVersion", STUDIO_VERSION
+            VALUE "OriginalFilename", "Studio Audio AI.exe"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x040C, 1200
+    END
+END

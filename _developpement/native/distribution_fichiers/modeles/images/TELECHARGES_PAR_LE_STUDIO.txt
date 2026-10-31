@@ -1,0 +1,7 @@
+Pochettes d'album (Studio Audio AI 1.0.50) : les modeles d'images sont telecharges ici depuis Reglages > IA > Pochettes, seulement si vous le demandez :
+  flux2-klein\  FLUX.2 klein 4B (par defaut, environ 5,2 Go)
+  (ce dossier)   Z-Image Turbo Q4_K (environ 6,7 Go)
+  moss-image\   MOSS-Image (environ 9,4 Go)
+  sdxl-lightning\  SDXL-Lightning (environ 6,5 Go, licence OpenRAIL++)
+Licence Apache 2.0 pour les trois premiers.
+Album covers: the image models are downloaded here from Settings > AI > Covers, only on request (FLUX.2 klein 4B in flux2-klein, Z-Image Turbo in this folder, MOSS-Image in moss-image). Apache 2.0 licence.

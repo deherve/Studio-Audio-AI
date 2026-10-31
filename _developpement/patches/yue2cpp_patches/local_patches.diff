@@ -1,0 +1,383 @@
+diff --git a/src/flow-solver.h b/src/flow-solver.h
+new file mode 100644
+index 0000000..c634e27
+--- /dev/null
++++ b/src/flow-solver.h
+@@ -0,0 +1,128 @@
++// flow-solver.h: the flow matching ODE stepper of the acoustic stage
++//
++// t walks from 1 down to 0 in uniform steps and the state follows
++// x -= v(x, t) dt. Two solvers:
++//   midpoint  two velocity evaluations a step, the reference's
++//   ab2       Adams-Bashforth of the second order: the first step is a
++//             midpoint step, every later one evaluates the velocity once and
++//             reuses the one before, x -= dt (1.5 v_n - 0.5 v_{n-1}); S + 1
++//             evaluations for S steps instead of 2S (after Riff)
++// The velocity is a callback, so the network and an analytic field share
++// one stepper.
++#pragma once
++
++#include <cstddef>
++#include <string>
++#include <vector>
++
++enum Yue2Solver {
++    YUE2_SOLVER_MIDPOINT = 0,
++    YUE2_SOLVER_AB2      = 1,
++    YUE2_SOLVER_AB3      = 2,  // Adams-Bashforth of the third order (midpoint, then ab2, then ab3 steps)
++    YUE2_SOLVER_EULER    = 3,  // one evaluation a step, first order
++};
++
++static const char * yue2_solver_name(Yue2Solver s) {
++    switch (s) {
++        case YUE2_SOLVER_AB2:
++            return "ab2";
++        case YUE2_SOLVER_AB3:
++            return "ab3";
++        case YUE2_SOLVER_EULER:
++            return "euler";
++        default:
++            return "midpoint";
++    }
++}
++
++static bool yue2_solver_parse(const std::string & name, Yue2Solver * out) {
++    if (name == "ab3") {
++        *out = YUE2_SOLVER_AB3;
++        return true;
++    }
++    if (name == "euler") {
++        *out = YUE2_SOLVER_EULER;
++        return true;
++    }
++    if (name == "midpoint") {
++        *out = YUE2_SOLVER_MIDPOINT;
++        return true;
++    }
++    if (name == "ab2") {
++        *out = YUE2_SOLVER_AB2;
++        return true;
++    }
++    return false;
++}
++
++// Velocity evaluations a solver spends on a number of steps
++static int yue2_solver_evaluations(Yue2Solver solver, int steps) {
++    if (solver == YUE2_SOLVER_EULER) {
++        return steps;
++    }
++    return solver == YUE2_SOLVER_AB2 || solver == YUE2_SOLVER_AB3 ? steps + 1 : 2 * steps;
++}
++
++// Integrates state[count] over steps. velocity(x, t, out) writes v at x and t;
++// stepped(step, v_used) runs after each step for logging. Returns false when a
++// callback does.
++template <typename Velocity, typename Stepped>
++static bool yue2_flow_solve(float *    state,
++                            size_t     count,
++                            int        steps,
++                            Yue2Solver solver,
++                            Velocity   velocity,
++                            Stepped    stepped) {
++    std::vector<float> first(count), mid(count), second(count), previous(count), older(count);
++    const float        dt        = 1.0f / (float) steps;
++    const bool         multistep = solver == YUE2_SOLVER_AB2 || solver == YUE2_SOLVER_AB3;
++    for (int step = 0; step < steps; step++) {
++        const float t = 1.0f - (float) step * dt;
++        if (!velocity(state, t, first.data())) {
++            return false;
++        }
++        if (solver == YUE2_SOLVER_EULER) {
++            for (size_t i = 0; i < count; i++) {
++                state[i] -= dt * first[i];
++            }
++            if (!stepped(step, first.data())) {
++                return false;
++            }
++            continue;
++        }
++        if (multistep && step > 0) {
++            if (solver == YUE2_SOLVER_AB3 && step > 1) {
++                for (size_t i = 0; i < count; i++) {
++                    state[i] -= dt * ((23.0f / 12.0f) * first[i] - (16.0f / 12.0f) * previous[i] +
++                                      (5.0f / 12.0f) * older[i]);
++                }
++            } else {
++                for (size_t i = 0; i < count; i++) {
++                    state[i] -= dt * (1.5f * first[i] - 0.5f * previous[i]);
++                }
++            }
++            older.swap(previous);
++            previous.swap(first);
++            if (!stepped(step, previous.data())) {
++                return false;
++            }
++            continue;
++        }
++        for (size_t i = 0; i < count; i++) {
++            mid[i] = state[i] - first[i] * (dt * 0.5f);
++        }
++        if (!velocity(mid.data(), t - dt * 0.5f, second.data())) {
++            return false;
++        }
++        for (size_t i = 0; i < count; i++) {
++            state[i] -= second[i] * dt;
++        }
++        if (multistep) {
++            previous = first;
++        }
++        if (!stepped(step, second.data())) {
++            return false;
++        }
++    }
++    return true;
++}
+diff --git a/src/nar.h b/src/nar.h
+index 2064af4..b8b3e60 100644
+--- a/src/nar.h
++++ b/src/nar.h
+@@ -22,6 +22,7 @@
+ #pragma once
+ 
+ #include "debug.h"
++#include "flow-solver.h"
+ #include "qwen3-lm.h"
+ #include "timer.h"
+ 
+@@ -299,10 +300,26 @@ static struct ggml_tensor * nar_build_attn(struct ggml_context * ctx,
+     struct ggml_tensor * v_full = ggml_concat(ctx, v_ar, v, 1);
+ 
+     float                scale = 1.0f / sqrtf((float) D);
+-    struct ggml_tensor * attn  = use_flash_attn ? ggml_flash_attn_ext(ctx, q, k_full, v_full, mask, scale, 0.0f, 0.0f) :
+-                                                  qwen3_attn_f32(ctx, q, k_full, v_full, mask, scale);
+-    if (use_flash_attn) {
++    struct ggml_tensor * attn  = nullptr;
++    // Without flash attention the F32 path materializes [ar_len + N, N, Nh, M]
++    // scores: ~5 GB per layer for a 6 minute song. Query blocks bound that
++    // buffer; every block still sees all keys, so the result is unchanged.
++    const int q_block = 1024;
++    if (!use_flash_attn && N > 2 * q_block) {
++        for (int start = 0; start < N; start += q_block) {
++            int                  rows = std::min(q_block, N - start);
++            struct ggml_tensor * qb   = ggml_view_4d(ctx, q, D, rows, Nh, M, q->nb[1], q->nb[2], q->nb[3],
++                                                     (size_t) start * q->nb[1]);
++            struct ggml_tensor * mb   = mask ? ggml_view_2d(ctx, mask, mask->ne[0], rows, mask->nb[1],
++                                                            (size_t) start * mask->nb[1]) : nullptr;
++            struct ggml_tensor * ab   = qwen3_attn_f32(ctx, ggml_cont(ctx, qb), k_full, v_full, mb, scale);
++            attn                      = attn ? ggml_concat(ctx, attn, ab, 2) : ab;  // [D, Nh, N, M]
++        }
++    } else if (use_flash_attn) {
++        attn = ggml_flash_attn_ext(ctx, q, k_full, v_full, mask, scale, 0.0f, 0.0f);
+         ggml_prec_set_acc(attn, GGML_PREC_F32);
++    } else {
++        attn = qwen3_attn_f32(ctx, q, k_full, v_full, mask, scale);
+     }
+ 
+     attn = ggml_reshape_3d(ctx, attn, Nh * D, N, M);
+@@ -511,7 +528,7 @@ static void nar_dump_named(const Yue2NAR * n, const DebugDumper * dbg) {
+     }
+ }
+ 
+-// Midpoint flow matching solver, t walking from 1 down to 0.
++// Flow matching solver (midpoint, or ab2 which spends one velocity evaluation a step), t walking from 1 down to 0.
+ // state [M, T_lat, latent_dim] holds the noise of every variation on entry
+ // and the latents on exit. The dumper, when enabled, records the first
+ // variation: the noise, the probes of the first evaluation, both velocities
+@@ -526,10 +543,12 @@ static bool nar_solve(Yue2NAR *            n,
+                       int                  steps,
+                       const DebugDumper *  dbg,
+                       bool (*cancelled)(void *) = nullptr,
+-                      void * cancel_data        = nullptr) {
++                      void * cancel_data        = nullptr,
++                      Yue2Solver solver         = YUE2_SOLVER_MIDPOINT) {
+     size_t             count = (size_t) n->latent_dim * T_lat * M;
+-    std::vector<float> first(count), mid(count), second(count);
+-    float              dt = 1.0f / (float) steps;
++    std::vector<float> first(count), mid(count), second(count), previous(count), older(count);
++    float              dt        = 1.0f / (float) steps;
++    const bool         multistep = solver == YUE2_SOLVER_AB2 || solver == YUE2_SOLVER_AB3;
+     char               name[64];
+ 
+     debug_dump_2d(dbg, "noise", state, T_lat, n->latent_dim);
+@@ -547,6 +566,30 @@ static bool nar_solve(Yue2NAR *            n,
+         if (dbg->enabled && step == 0) {
+             nar_dump_named(n, dbg);
+         }
++        if (solver == YUE2_SOLVER_EULER) {
++            for (size_t i = 0; i < count; i++) {
++                state[i] -= dt * first[i];
++            }
++            fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_timer.ms());
++            continue;
++        }
++        if (multistep && step > 0) {
++            // Adams-Bashforth 2 or 3: reuse the velocities of the steps before, no second evaluation
++            if (solver == YUE2_SOLVER_AB3 && step > 1) {
++                for (size_t i = 0; i < count; i++) {
++                    state[i] -= dt * ((23.0f / 12.0f) * first[i] - (16.0f / 12.0f) * previous[i] +
++                                      (5.0f / 12.0f) * older[i]);
++                }
++            } else {
++                for (size_t i = 0; i < count; i++) {
++                    state[i] -= dt * (1.5f * first[i] - 0.5f * previous[i]);
++                }
++            }
++            older.swap(previous);
++            previous.swap(first);
++            fprintf(stderr, "[NAR] Step %d/%d, %.0f ms\n", step + 1, steps, step_timer.ms());
++            continue;
++        }
+         for (size_t i = 0; i < count; i++) {
+             mid[i] = state[i] - first[i] * (dt * 0.5f);
+         }
+@@ -557,6 +600,9 @@ static bool nar_solve(Yue2NAR *            n,
+         for (size_t i = 0; i < count; i++) {
+             state[i] -= second[i] * dt;
+         }
++        if (multistep) {
++            previous = first;
++        }
+         snprintf(name, sizeof(name), "nar_step%d_first", step);
+         debug_dump_2d(dbg, name, first.data(), T_lat, n->latent_dim);
+         snprintf(name, sizeof(name), "nar_step%d_second", step);
+@@ -567,8 +613,9 @@ static bool nar_solve(Yue2NAR *            n,
+     }
+     debug_dump_2d(dbg, "nar_x0", state, T_lat, n->latent_dim);
+ 
+-    fprintf(stderr, "[NAR] Solved: T_lat=%d, %d variations, %d steps, %.0f ms (%.1f ms/step)\n", T_lat, M, steps,
+-            solve_timer.ms(), solve_timer.ms() / steps);
++    fprintf(stderr, "[NAR] Solved: T_lat=%d, %d variations, %d steps, %.0f ms (%.1f ms/step), solver %s, %d evaluations\n", T_lat, M,
++            steps, solve_timer.ms(), solve_timer.ms() / steps, yue2_solver_name(solver),
++            yue2_solver_evaluations(solver, steps));
+     return true;
+ }
+ 
+diff --git a/src/pipeline.h b/src/pipeline.h
+index f5a2159..4424e8e 100644
+--- a/src/pipeline.h
++++ b/src/pipeline.h
+@@ -427,6 +427,11 @@ static bool pipeline_generate(Yue2Pipeline *          p,
+         fprintf(stderr, "[Pipeline] FATAL: cot must be full, melody or off\n");
+         return false;
+     }
++    Yue2Solver solver;
++    if (!yue2_solver_parse(r.solver, &solver)) {
++        fprintf(stderr, "[Pipeline] FATAL: solver must be midpoint, ab2, ab3 or euler\n");
++        return false;
++    }
+     if (r.steps < 1 || r.lm_batch_size < 1 || r.synth_batch_size < 1) {
+         fprintf(stderr, "[Pipeline] FATAL: steps and batch sizes must be positive\n");
+         return false;
+@@ -671,7 +676,7 @@ static bool pipeline_generate(Yue2Pipeline *          p,
+                        (*songs)[(size_t) i * M + j].latents.data() + (size_t) start * YUE2_LATENT_DIM,
+                        span * sizeof(float));
+             }
+-            if (!nar_solve(nar, &p->kv, block.data(), frames, M, ar_len, i, r.steps, dbg, cancelled, cancel_data)) {
++            if (!nar_solve(nar, &p->kv, block.data(), frames, M, ar_len, i, r.steps, dbg, cancelled, cancel_data, solver)) {
+                 return false;
+             }
+             for (int j = 0; j < M; j++) {
+diff --git a/src/qwen3-lm.h b/src/qwen3-lm.h
+index fa28852..71aea51 100644
+--- a/src/qwen3-lm.h
++++ b/src/qwen3-lm.h
+@@ -466,10 +466,25 @@ static struct ggml_tensor * qw3lm_build_attn(struct ggml_context * ctx,
+ 
+     // Attention (flash or F32 manual fallback)
+     float                scale = 1.0f / sqrtf((float) D);
+-    struct ggml_tensor * attn  = use_flash_attn ? ggml_flash_attn_ext(ctx, q, k_full, v_full, mask, scale, 0.0f, 0.0f) :
+-                                                  qwen3_attn_f32(ctx, q, k_full, v_full, mask, scale);
+-    if (use_flash_attn) {
++    struct ggml_tensor * attn  = nullptr;
++    // Without flash attention a long prefill materializes [n_kv_pad, S, Nh]
++    // scores (several GB at song length). Query blocks bound that buffer, each
++    // block keeping its own causal mask rows, so the result is unchanged.
++    const int q_block = 1024;
++    if (!use_flash_attn && S > 2 * q_block) {
++        for (int start = 0; start < S; start += q_block) {
++            int                  rows = std::min(q_block, S - start);
++            struct ggml_tensor * qb   = ggml_view_3d(ctx, q, D, rows, Nh, q->nb[1], q->nb[2], (size_t) start * q->nb[1]);
++            struct ggml_tensor * mb   = mask ? ggml_view_2d(ctx, mask, mask->ne[0], rows, mask->nb[1],
++                                                            (size_t) start * mask->nb[1]) : nullptr;
++            struct ggml_tensor * ab   = qwen3_attn_f32(ctx, ggml_cont(ctx, qb), k_full, v_full, mb, scale);
++            attn                      = attn ? ggml_concat(ctx, attn, ab, 2) : ab;  // [D, Nh, S]
++        }
++    } else if (use_flash_attn) {
++        attn = ggml_flash_attn_ext(ctx, q, k_full, v_full, mask, scale, 0.0f, 0.0f);
+         ggml_prec_set_acc(attn, GGML_PREC_F32);
++    } else {
++        attn = qwen3_attn_f32(ctx, q, k_full, v_full, mask, scale);
+     }
+ 
+     // Reshape: [D, Nh, S] -> [Nh*D, S]
+diff --git a/src/request.cpp b/src/request.cpp
+index ad6c564..a9b9a78 100644
+--- a/src/request.cpp
++++ b/src/request.cpp
+@@ -25,6 +25,7 @@ void request_init(Yue2Request * r) {
+     r->lm_seed          = -1;
+     r->seed             = -1;
+     r->steps            = 32;
++    r->solver           = "midpoint";
+     r->lm_batch_size    = 1;
+     r->synth_batch_size = 1;
+     r->peak_clip        = 10;
+@@ -146,6 +147,9 @@ static void request_parse_obj(yyjson_val * obj, Yue2Request * r) {
+     if ((v = yyjson_obj_get(obj, "steps")) && yyjson_is_int(v)) {
+         r->steps = yyjson_get_int(v);
+     }
++    if ((v = yyjson_obj_get(obj, "solver")) && yyjson_is_str(v)) {
++        r->solver = yyjson_get_str(v);
++    }
+     if ((v = yyjson_obj_get(obj, "lm_batch_size")) && yyjson_is_int(v)) {
+         r->lm_batch_size = yyjson_get_int(v);
+     }
+@@ -258,6 +262,9 @@ std::string request_to_json(const Yue2Request * r, bool sparse) {
+     if (!sparse || r->steps != d.steps) {
+         yyjson_mut_obj_add_int(doc, root, "steps", r->steps);
+     }
++    if (!sparse || r->solver != d.solver) {
++        yyjson_mut_obj_add_strcpy(doc, root, "solver", r->solver.c_str());
++    }
+     if (!sparse || r->lm_batch_size != d.lm_batch_size) {
+         yyjson_mut_obj_add_int(doc, root, "lm_batch_size", r->lm_batch_size);
+     }
+diff --git a/src/request.h b/src/request.h
+index c508f5b..d2acaa3 100644
+--- a/src/request.h
++++ b/src/request.h
+@@ -40,7 +40,12 @@ struct Yue2Request {
+     // after rd().
+     int64_t lm_seed;  // -1 = random
+     int64_t seed;     // -1 = random
+-    int     steps;    // 32, midpoint steps of the flow matching ODE
++    int     steps;    // 32, steps of the flow matching ODE
++
++    // the ODE solver: "midpoint" (2 evaluations a step, the reference) or "ab2"
++    // (Adams-Bashforth of the second order: one evaluation a step after the
++    // first, see flow-solver.h)
++    std::string solver;  // "midpoint"
+ 
+     // batching: number of songs generated from this prompt. Song i draws
+     // its tokens with lm_seed + i, consecutive seeds.
+diff --git a/tools/yue-synth.cpp b/tools/yue-synth.cpp
+index 27ab67b..f2a1925 100644
+--- a/tools/yue-synth.cpp
++++ b/tools/yue-synth.cpp
+@@ -49,6 +49,7 @@ static void print_usage(const char * prog) {
+             "  --lm-seed <N>          Token sampling seed\n"
+             "  --seed <N>             Acoustic noise seed\n"
+             "  --steps <N>            Flow matching steps\n"
++            "  --solver <name>        midpoint (default, 2 evaluations a step), ab2, ab3 (1 a step) or euler\n"
+             "  --adapters <dir>       Directory of LoRA adapters the request names\n"
+             "\n"
+             "Debug:\n"
+@@ -107,6 +108,8 @@ int main(int argc, char ** argv) {
+             r.seed = atoll(argv[++i]);
+         } else if (!strcmp(argv[i], "--steps") && !last) {
+             r.steps = atoi(argv[++i]);
++        } else if (!strcmp(argv[i], "--solver") && !last) {
++            r.solver = argv[++i];
+         } else if (!strcmp(argv[i], "--score") && !last) {
+             score_path = argv[++i];
+         } else if (!strcmp(argv[i], "--tokens") && !last) {

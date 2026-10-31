@@ -1,0 +1,16 @@
+LICENCES DES COMPOSANTS / THIRD-PARTY LICENSES
+
+Studio Audio AI utilise les composants suivants, chacun sous sa propre licence (fichiers de ce dossier) :
+  yue2.cpp (moteur de synthese)                      MIT          yue2.cpp-MIT.txt
+  Dear ImGui (interface)                             MIT          DearImGui-MIT.txt
+  ONNX Runtime (analyse audio)                       MIT          ONNXRuntime-MIT.txt
+  whisper.cpp (transcription des paroles)            MIT          whisper.cpp-MIT.txt
+  llama.cpp (traduction et IA locale)                MIT          llama.cpp-MIT.txt
+  FFmpeg, build "essentials" de gyan.dev             GPL v3       FFmpeg-GPLv3.txt
+        https://www.gyan.dev/ffmpeg/builds/ - code source : https://ffmpeg.org
+  yyjson (lecture JSON)                              MIT          https://github.com/ibireme/yyjson
+
+Modeles (non inclus, telecharges depuis Hugging Face au premier lancement ou dans les Reglages) :
+  YuE2 (musique) : CC-BY-NC 4.0, usage non commercial.
+  Modeles d'analyse Essentia (MTG, Universitat Pompeu Fabra) : CC BY-NC-SA 4.0, usage non commercial.
+  LoRA du catalogue : licence propre a chaque LoRA (le plus souvent usage non commercial).
