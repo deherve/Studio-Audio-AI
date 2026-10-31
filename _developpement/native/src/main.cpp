@@ -833,6 +833,7 @@ struct Settings {
     bool                translate_web    = true;   // traduction des paroles : essayer Internet d'abord
     std::string         translate_target = "en";   // dernière langue choisie pour « Traduire »
     bool                tray_gauges      = true;   // application réduite : jauges et compteurs près de l'horloge
+    int                 gauge_style      = 1;      // compteurs de l'en-tête : 0 Sport, 1 Compact
     int                 gpu_limit        = 100;    // limite d'utilisation de la carte en % (100 = aucune)
     std::map<std::string, std::string> covers;  // clé d'album -> chemin de la pochette
     std::vector<Preset> presets;
@@ -1015,6 +1016,8 @@ static void parse_settings(Settings & s, yyjson_val * r) {
     if (yyjson_is_str(v)) s.translate_target = yyjson_get_str(v);
     v = yyjson_obj_get(r, "tray_gauges");
     if (yyjson_is_bool(v)) s.tray_gauges = yyjson_get_bool(v);
+    v = yyjson_obj_get(r, "gauge_style");
+    if (yyjson_is_int(v)) s.gauge_style = std::clamp((int) yyjson_get_int(v), 0, 1);
     v = yyjson_obj_get(r, "gpu_limit");
     if (yyjson_is_int(v)) s.gpu_limit = std::clamp((int) yyjson_get_int(v), 30, 100);
     v = yyjson_obj_get(r, "negative_tags");
@@ -1184,6 +1187,7 @@ static void save_settings(const Settings & s, const fs::path & path) {
     yyjson_mut_obj_add_bool(doc, o, "translate_web", s.translate_web);
     yyjson_mut_obj_add_strcpy(doc, o, "translate_target", s.translate_target.c_str());
     yyjson_mut_obj_add_bool(doc, o, "tray_gauges", s.tray_gauges);
+    yyjson_mut_obj_add_int(doc, o, "gauge_style", s.gauge_style);
     yyjson_mut_obj_add_int(doc, o, "gpu_limit", s.gpu_limit);
     {
         yyjson_mut_val * na = yyjson_mut_obj_add_arr(doc, o, "negative_tags");
@@ -3838,36 +3842,68 @@ struct App {
         return buf;
     }
 
-    // Jauge horizontale segmentée : libellé et valeur au-dessus, blocs remplis selon la fraction.
-    // Chaque bloc a sa couleur selon sa place : vert au début, jaune, orange, puis rouge vif au bout.
-    void draw_segment_bar(const char * label, const std::string & value, float fraction, float width) {
-        const int   segments = 30;
-        ImDrawList * dl      = ImGui::GetWindowDrawList();
-        ImGui::BeginGroup();
-        ImVec2 p0 = ImGui::GetCursorScreenPos();
-        float  th = ImGui::GetTextLineHeight();
-        dl->AddText(p0, ImGui::GetColorU32(P.muted), label);
-        ImVec2 vs = ImGui::CalcTextSize(value.c_str());
-        dl->AddText(ImVec2(p0.x + width - vs.x, p0.y), ImGui::GetColorU32(P.text), value.c_str());
-        float  bar_h = 14 * g_dpi, gap = 2 * g_dpi, by = p0.y + th + 5 * g_dpi;
-        float  seg_w = (width - gap * (segments - 1)) / segments;
-        int    on    = (int) std::lround(std::clamp(fraction, 0.f, 1.f) * segments);
-        if (fraction > 0.f && on == 0) on = 1;
-        for (int i = 0; i < segments; i++) {
-            float x = p0.x + i * (seg_w + gap);
-            ImVec2 a(x, by), b(x + seg_w, by + bar_h);
-            if (i < on) {
-                dl->AddRectFilled(a, b, ImGui::GetColorU32(gauge_color(i / (float) (segments - 1))), 2 * g_dpi);
-            } else {
-                dl->AddRectFilled(a, b, ImGui::GetColorU32(P.chip), 2 * g_dpi);
-                dl->AddRect(a, b, ImGui::GetColorU32(P.line), 2 * g_dpi, 0, 1.f);
+    // 1.0.67 : compteur de voiture : arc en dégradé vert → rouge, aiguille, valeur et nom. Valeurs relues toutes les
+    // 2 secondes : l'aiguille rejoint la nouvelle valeur en douceur. limit : repère orange (GPU seulement, 100 = aucun).
+    float gauge_anim[4] = { 0, 0, 0, 0 };
+    float gauge_height() const { return (settings.gauge_style == 0 ? 58 * g_dpi + 2 * ImGui::GetTextLineHeight() : 48 * g_dpi); }
+    void draw_dial(int index, ImVec2 p, float w, float h, const char * label, const std::string & value, float fraction, int limit, const std::string & tip) {
+        const bool sport = settings.gauge_style == 0;
+        ImGui::SetCursorScreenPos(p);
+        ImGui::PushID(index);
+        ImGui::InvisibleButton("##compteur", ImVec2(w, h));
+        ImGui::PopID();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s : %s\n%s", label, value.c_str(), tip.c_str());
+        float & f = gauge_anim[index];
+        f += (std::clamp(fraction, 0.f, 1.f) - f) * std::min(1.f, ImGui::GetIO().DeltaTime * 6.f);
+
+        ImDrawList * dl  = ImGui::GetWindowDrawList();
+        const float  th  = ImGui::GetTextLineHeight();
+        const float  r   = sport ? std::min(46 * g_dpi, w * .46f) : std::min(28 * g_dpi, w * .46f);
+        const float  cx  = sport ? p.x + w * .5f : p.x + r + 4 * g_dpi;
+        const float  cy  = sport ? p.y + 4 * g_dpi + r + 4 * g_dpi : p.y + h - 8 * g_dpi;
+        const float  pi  = 3.14159265f;
+        auto at = [&](float t, float radius) { const float a = pi + pi * t; return ImVec2(cx + radius * std::cos(a), cy + radius * std::sin(a)); };
+        const int    steps = 48;
+        const float  thick = (sport ? 7 : 5) * g_dpi;
+        for (int i = 0; i < steps; i++) {
+            const float t0 = i / (float) steps, t1 = (i + 1) / (float) steps;
+            dl->AddLine(at(t0, r), at(t1 + .004f, r), ImGui::GetColorU32(t0 <= f && f > 0 ? gauge_color(t0) : P.chip), thick);
+        }
+        if (sport) {
+            for (int i = 0; i <= 20; i++) {
+                const bool major = i % 5 == 0;
+                dl->AddLine(at(i / 20.f, r - thick), at(i / 20.f, r - thick - (major ? 7 : 4) * g_dpi), ImGui::GetColorU32(major ? P.text : P.muted), major ? 1.5f * g_dpi : 1.f);
             }
         }
-        ImGui::Dummy(ImVec2(width, th + 5 * g_dpi + bar_h));
-        ImGui::EndGroup();
+        if (limit < 100) dl->AddLine(at(limit / 100.f, r - thick * .9f), at(limit / 100.f, r + thick), ImGui::GetColorU32(P.amber), 3 * g_dpi);
+        const ImVec2 tip_pt = at(f, r - thick - (sport ? 3 : 1) * g_dpi);
+        const float  a = pi + pi * f, nx = -std::sin(a) * 2.6f * g_dpi, ny = std::cos(a) * 2.6f * g_dpi;
+        dl->AddTriangleFilled(tip_pt, ImVec2(cx + nx, cy + ny), ImVec2(cx - nx, cy - ny), IM_COL32(255, 72, 60, 255));
+        dl->AddCircleFilled(ImVec2(cx, cy), 5 * g_dpi, ImGui::GetColorU32(P.chip));
+        dl->AddCircle(ImVec2(cx, cy), 5 * g_dpi, ImGui::GetColorU32(P.muted));
+
+        ImGui::PushFont(g_bold);
+        const ImVec2 vs = ImGui::CalcTextSize(value.c_str());
+        ImGui::PopFont();
+        const ImVec2 ls = ImGui::CalcTextSize(label);
+        ImVec2       vp, lp;
+        if (sport) {
+            vp = ImVec2(cx - vs.x * .5f, cy + 7 * g_dpi);
+            lp = ImVec2(cx - ls.x * .5f, vp.y + th);
+        } else {
+            vp = ImVec2(cx + r + 10 * g_dpi, p.y + h * .5f - th);
+            lp = ImVec2(vp.x, vp.y + th);
+        }
+        // fenêtre étroite : le texte qui ne tient pas reste dans la bulle
+        if (sport ? vs.x <= w : vp.x + vs.x <= p.x + w) {
+            ImGui::PushFont(g_bold);
+            dl->AddText(vp, ImGui::GetColorU32(P.text), value.c_str());
+            ImGui::PopFont();
+        }
+        if (sport ? ls.x <= w : lp.x + ls.x <= p.x + w) dl->AddText(lp, ImGui::GetColorU32(P.muted), label);
     }
 
-    // Barre sous l'en-tête, en quatre jauges : mémoire vidéo utilisée, débordement vers la mémoire système,
+    // Quatre compteurs dans l'en-tête : mémoire vidéo utilisée, débordement vers la mémoire système,
     // utilisation du processeur (CPU) et de la carte graphique (GPU). Valeurs relues toutes les 2 secondes.
     // Moyenne glissante de l'utilisation GPU (16 dernières secondes) : avec une limite, un long morceau alterne des pas
     // de plusieurs secondes à 100 % et des pauses ; seule la moyenne montre l'effet de la limite.
@@ -3881,65 +3917,41 @@ struct App {
         return sum / gpu_history.size();
     }
 
-    void draw_gpu_bars() {
-        GpuMem g     = gpu_monitor.get();
-        float  gap   = 20 * g_dpi;
-        float  width = std::floor((ImGui::GetContentRegionAvail().x - gap * 3) / 4);
-        std::string used_text = tr("indisponible"), spill_text = tr("indisponible");
+    void draw_gauges(ImVec2 p, float width, float height) {
+        GpuMem g    = gpu_monitor.get();
+        float  cell = std::floor(width / 4);
+        if (cell < 44 * g_dpi) return;  // fenêtre trop étroite : pas de place sans recouvrir les boutons
+        std::string used_text = tr("indisponible"), spill_text = tr("indisponible"), used_tip = tr("Mémoire vidéo dédiée occupée sur la carte, tous programmes confondus.");
         float       used_f = 0, spill_f = 0;
         if (g.ok) {
-            double pct = g.total ? 100.0 * g.used / g.total : 0;
-            char   buf[64];
-            snprintf(buf, sizeof(buf), " · %.0f %%", pct);
-            used_text = fmt_gb(g.used) + (g.total ? " / " + fmt_gb(g.total) + buf : std::string());
+            used_text = fmt_gb(g.used);
             used_f    = g.total ? (float) ((double) g.used / (double) g.total) : 0.f;
-            const double scale = 2.0 * 1073741824.0;  // barre pleine à 2 Go de débordement
+            if (g.total) used_tip = trf("%.0f %%", 100.0 * g.used / g.total) + " · " + fmt_gb(g.total) + "\n" + used_tip;
+            const double scale = 2.0 * 1073741824.0;  // compteur plein à 2 Go de débordement
             spill_text = fmt_gb(g.shared);
             spill_f    = (float) std::min(1.0, (double) g.shared / scale);
         }
-        draw_segment_bar(tr("Mémoire GPU"), used_text, used_f, width);
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Mémoire vidéo dédiée occupée sur la carte, tous programmes confondus."));
-        ImGui::SameLine(0, gap);
-        draw_segment_bar(tr("Débordement"), spill_text, spill_f, width);
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(tr("Mémoire système utilisée par la carte quand sa mémoire est pleine : bien plus lente,\nelle ralentit fortement la génération. Barre pleine = 2 Go."));
-        }
-        // Taux d'utilisation (couleurs en dégradé vert → rouge vif selon le remplissage).
-        // limit : limite réglée (GPU seulement, 100 = aucune) ; une flèche orange marque la limite sous la barre.
+        draw_dial(0, p, cell, height, tr("Mémoire GPU"), used_text, used_f, 100, used_tip);
+        draw_dial(1, ImVec2(p.x + cell, p.y), cell, height, tr("Débordement"), spill_text, spill_f, 100,
+                  tr("Mémoire système utilisée par la carte quand sa mémoire est pleine : bien plus lente,\nelle ralentit fortement la génération. Compteur plein = 2 Go."));
+        // limit : limite réglée (GPU seulement, 100 = aucune), repère orange sur le compteur.
         double gpu_avg = gpu_average(ImGui::GetTime(), g.gpu);
-        auto load_bar = [&](const char * label, double pct, const char * tip, int limit) {
+        auto load = [&](int index, const char * label, double pct, const char * tip, int limit) {
             std::string text = pct < 0 ? std::string(tr("indisponible")) : trf("%.0f %%", pct);
+            std::string info = tip;
             float       f    = pct < 0 ? 0.f : (float) (pct / 100.0);
             if (limit < 100 && pct >= 0 && gpu_avg >= 0) {
-                // Avec une limite : la barre montre la moyenne sur 16 s, comparée à la limite (3 points de tolérance).
-                char inst[16], avg[16];
-                snprintf(inst, sizeof(inst), "%.0f", pct);
-                snprintf(avg, sizeof(avg), "%.0f", gpu_avg);
-                text = trf("%s · moyenne %s", inst, avg) + " %";
+                // Avec une limite : le compteur montre la moyenne sur 16 s, comparée à la limite.
+                text = trf("%.0f %%", gpu_avg);
                 f    = (float) (gpu_avg / 100.0);
+                info += "\n" + trf("Instantané : %.0f %%", pct) + "\n" + trf("Limite réglée : %d (repère orange).", limit) + "\n" +
+                        tr("Avec une limite, le compteur montre la moyenne des 16 dernières secondes : sur un long morceau, la carte alterne des pas de plusieurs secondes à pleine puissance et des pauses, la limite s'applique en moyenne.");
             }
-            draw_segment_bar(label, text, f, width);
-            bool hovered = ImGui::IsItemHovered();
-            if (limit < 100) {
-                // Petite flèche sous la barre, à la position de la limite.
-                ImVec2       mn = ImGui::GetItemRectMin(), mx = ImGui::GetItemRectMax();
-                float        x  = mn.x + (mx.x - mn.x) * limit / 100.f, y = mx.y + 1 * g_dpi, h = 6 * g_dpi;
-                ImDrawList * dl = ImGui::GetWindowDrawList();
-                dl->AddTriangleFilled(ImVec2(x, y), ImVec2(x - h * 0.8f, y + h), ImVec2(x + h * 0.8f, y + h), ImGui::GetColorU32(P.amber));
-            }
-            if (hovered) {
-                if (limit < 100) {
-                    ImGui::SetTooltip("%s\n%s\n%s", tip, trf("Limite réglée : %d (flèche orange).", limit).c_str(),
-                                      tr("Avec une limite, la barre montre la moyenne des 16 dernières secondes : sur un long morceau, la carte alterne des pas de plusieurs secondes à pleine puissance et des pauses, la limite s'applique en moyenne."));
-                }
-                else ImGui::SetTooltip("%s", tip);
-            }
+            draw_dial(index, ImVec2(p.x + cell * index, p.y), cell, height, label, text, f, limit, info);
         };
-        ImGui::SameLine(0, gap);
-        load_bar(tr("Utilisation CPU"), g.cpu, tr("Utilisation du processeur, tous programmes confondus (comme le Gestionnaire des tâches)."), 100);
-        ImGui::SameLine(0, gap);
-        load_bar(tr("Utilisation GPU"), g.gpu,
-                 tr("Utilisation de la carte graphique : moteur le plus chargé (3D, calcul, vidéo…), tous programmes confondus.\nPendant une génération, elle doit rester proche du maximum."), settings.gpu_limit);
+        load(2, tr("Utilisation CPU"), g.cpu, tr("Utilisation du processeur, tous programmes confondus (comme le Gestionnaire des tâches)."), 100);
+        load(3, tr("Utilisation GPU"), g.gpu,
+             tr("Utilisation de la carte graphique : moteur le plus chargé (3D, calcul, vidéo…), tous programmes confondus.\nPendant une génération, elle doit rester proche du maximum."), settings.gpu_limit);
     }
 
     // Modèles YuE2-3B disponibles (Q8_0, Q6_K, Q5_K_M…) : le choix rapide de la barre du haut s'applique aux
@@ -11094,6 +11106,12 @@ struct App {
         ImGui::TextColored(P.accent, tr("Notifications"));
         ImGui::PopFont();
         if (ImGui::Checkbox(tr("Pastilles à côté de l'horloge"), &settings.notifications)) save_settings(settings, settings_path);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(P.muted, "%s", tr("Compteurs de l'en-tête"));
+        ImGui::SameLine();
+        if (ImGui::RadioButton(tr("Sport (grands cadrans)"), settings.gauge_style == 0)) { settings.gauge_style = 0; save_settings(settings, settings_path); }
+        ImGui::SameLine();
+        if (ImGui::RadioButton(tr("Compact (plus de place pour la bibliothèque)"), settings.gauge_style == 1)) { settings.gauge_style = 1; save_settings(settings, settings_path); }
         if (ImGui::Checkbox(tr("Application réduite : jauges et compteurs à côté de l'horloge"), &settings.tray_gauges)) save_settings(settings, settings_path);
         muted_wrapped(tr("Quand la fenêtre est réduite, deux icônes s'ajoutent près de l'horloge : trois barres (CPU, GPU, mémoire GPU) et deux nombres (morceaux en attente en violet, terminés en vert). Le survol donne les valeurs exactes. Sous Windows 11, épinglez-les via Paramètres › Personnalisation › Barre des tâches › Autres icônes de la barre d'état système si elles restent cachées dans le menu ^."));
         end_card();
@@ -11943,6 +11961,8 @@ struct App {
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                          ImGuiWindowFlags_NoBringToFrontOnFocus);
         // En-tête de l'application
+        const float head_y = ImGui::GetCursorPosY(), head_h = gauge_height();
+        ImGui::SetCursorPosY(head_y + std::max(0.f, (head_h - ImGui::GetFrameHeight()) * .5f));
         ImGui::PushFont(g_header);
         ImGui::TextColored(P.accent, "Studio");
         ImGui::SameLine(0, 5 * g_dpi);
@@ -11963,6 +11983,7 @@ struct App {
         ImGui::TextColored(P.muted, tr("Solveur"));
         ImGui::SameLine(0, 6 * g_dpi);
         draw_solver_combo("##solveur_rapide", 150 * g_dpi, false);
+        const float gauges_x = ImGui::GetItemRectMax().x + 16 * g_dpi;
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(tr("Solveur de la phase audio (NAR) pour les prochains morceaux :\nAB3 16, AB3 20, AB3 24, Euler 32, AB2 32, AB3 32, MP 32 (méthode + nombre de pas).\nMoins d'évaluations du réseau = génération plus rapide ; comparez à l'écoute.\nLe solveur par défaut au démarrage se règle dans Réglages."));
         }
@@ -11973,7 +11994,8 @@ struct App {
             const char * hb = tr("Aide");
             float        bw = ImGui::CalcTextSize(rb).x + ImGui::GetStyle().FramePadding.x * 2;
             float        hw = ImGui::CalcTextSize(hb).x + ImGui::GetStyle().FramePadding.x * 2;
-            ImGui::SameLine(ImGui::GetWindowWidth() - w - bw - hw - ImGui::GetStyle().ItemSpacing.x * 2 - ImGui::GetStyle().WindowPadding.x);
+            const float right_x = ImGui::GetWindowWidth() - w - bw - hw - ImGui::GetStyle().ItemSpacing.x * 2 - ImGui::GetStyle().WindowPadding.x;
+            ImGui::SameLine(right_x);
             if (soft_button(hb, P.teal, false)) open_help();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Ouvre l'aide détaillée de l'application (touche F1)."));
             ImGui::SameLine();
@@ -11984,11 +12006,12 @@ struct App {
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(tr("Icône à côté de l'horloge : pastille rouge = morceaux prêts,\npastille violette = générations en cours ou en attente."));
             }
+            const float win_x = ImGui::GetWindowPos().x, win_y = ImGui::GetWindowPos().y;
+            draw_gauges(ImVec2(gauges_x, win_y + head_y), win_x + right_x - 12 * g_dpi - gauges_x, head_h);
         }
 
-        ImGui::Dummy(ImVec2(0, 2 * g_dpi));
-        draw_gpu_bars();
-        ImGui::Dummy(ImVec2(0, 2 * g_dpi));
+        ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, head_y + head_h));
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
 
         float avail_w = ImGui::GetContentRegionAvail().x;
         float avail_h = ImGui::GetContentRegionAvail().y - (ImGui::GetTime() < toast_until ? ImGui::GetFrameHeightWithSpacing() : 0);
@@ -12355,6 +12378,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     app.init_solver();
     app.refresh_album_dirs(studio.snapshot());
     app.migrate_covers();            // 1.0.43 : pochettes rangées dans le dossier de leur album
+    if (const wchar_t * g = _wgetenv(L"STUDIO_TEST_GAUGE")) app.settings.gauge_style = _wtoi(g);  // essai : style des compteurs, non enregistré
     set_gpu_limit(app.settings.gpu_limit);
     // Essai (1.0.36) : « --cover-test "Groupe" "Album" "description" sortie.txt » crée la pochette 1:1 de l'album avec le
     // moteur local (models\images de ce programme) et la range comme le ferait la fenêtre Albums, sans interface.

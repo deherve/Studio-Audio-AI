@@ -1,8 +1,8 @@
-﻿# Traductions de la 1.0.63. DonnÃ©es : fill_163_data.py.
+﻿# Traductions de la 1.0.63. DonnÃ©es : fill_167_data.py.
 import json, re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
-from fill_163_data import KEYS, T
+from fill_167_data import KEYS, T
 
 langues = Path(sys.argv[1])
 

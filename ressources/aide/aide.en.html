@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Help and overview · version 1.0.66 · updated 31 October 2026</p>
+  <p class="sub">Help and overview · version 1.0.67 · updated 31 October 2026</p>
   <input id="q" type="search" placeholder="Search the help…" aria-label="Search the help">
   <ol id="toc"></ol>
 </nav>
@@ -127,11 +127,11 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Settings…</b> — opens the settings window. The button turns orange if the graphics driver has changed since the last health test.</li>
 <li><b>Notification badges</b> — turns on the notification-area icon (see <a href="#notifications">Notifications</a>).</li>
 </ul>
-<h3 id="jauges">The four gauges: video memory, overflow, CPU and GPU</h3>
-<p>Under the top bar, four segmented gauges, refreshed every 2 seconds. Next to the “Studio Audio AI” name, the header shows the <b>version number</b> and, when a newer version is published, an orange <b>“Update x.y.z”</b> chip that opens the download page (see <a href="#sante">Settings › System</a>).</p>
+<h3 id="jauges">The four dials: video memory, overflow, CPU and GPU</h3>
+<p>In the header, between the solver and the Help button, four needle dials, refreshed every 2 seconds. Settings › System offers two styles: <b>Sport</b> (large dials) or <b>Compact</b> (more room for the library). Hovering shows the details. Next to the “Studio Audio AI” name, the header shows the <b>version number</b> and, when a newer version is published, an orange <b>“Update x.y.z”</b> chip that opens the download page (see <a href="#sante">Settings › System</a>).</p>
 <ul>
-<li><b>GPU memory</b> — dedicated memory occupied on the card, all programs combined (“9.7 GB / 12.0 GB · 81 %”).</li>
-<li><b>Overflow</b> — system memory the card uses when its own memory is full. The bar is full at 2 GB; a few tens of MB are normal, overflow shows from 200 MB.</li>
+<li><b>GPU memory</b> — dedicated memory occupied on the card, all programs combined (“9.7 GB”).</li>
+<li><b>Overflow</b> — system memory the card uses when its own memory is full. The dial is full at 2 GB; a few tens of MB are normal, overflow shows from 200 MB.</li>
 <li><b>CPU usage</b> — processor load, all programs combined (as in Task Manager).</li>
 <li><b>GPU usage</b> — graphics card load: busiest engine (3D, compute, video…), all programs combined. During a generation it should stay close to the maximum; a low value with a large overflow means the card is saturated by other programs.</li>
 <li>All gauges, like every progress bar in the application, fill with a <b>green to bright red gradient</b> (yellow then orange in between): the fuller the bar, the redder its end.</li>
@@ -647,6 +647,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">This help is updated with every added or modified feature. The French version (aide.html) is the reference; this English version follows it.</p>
 <table>
 <tr><th>Date</th><th>Change</th></tr>
+<tr><td>31 Oct 2026 (1.0.67)</td><td>Needle dials in the header instead of the four bars, in Sport or Compact style (Settings › System).</td></tr>
 <tr><td>31 Oct 2026 (1.0.66)</td><td>The window header now shows the new name, Studio Audio AI.</td></tr>
 <tr><td>31 Oct 2026 (1.0.65)</td><td>License system removed: no more 3-day trial, code to enter or limited version. All features are open to everyone, and the license generator is no longer shipped.</td></tr>
 <tr><td>31 Oct 2026 (1.0.64)</td><td>Clips: an incomplete answer from the local AI no longer leaves the clip with the cover alone; an unreadable part of the scenario is skipped and the other scenes share its images.</td></tr>

@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Aide et présentation · version 1.0.66 · mise à jour le 31 octobre 2026</p>
+  <p class="sub">Aide et présentation · version 1.0.67 · mise à jour le 31 octobre 2026</p>
   <input id="q" type="search" placeholder="Rechercher dans l'aide…" aria-label="Rechercher dans l'aide">
   <ol id="toc"></ol>
 </nav>
@@ -126,11 +126,11 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <li><b>Réglages…</b> — ouvre la fenêtre des réglages. Le bouton devient orange si le pilote graphique a changé depuis le dernier test de santé.</li>
 <li><b>Pastilles de notification</b> — active l'icône de la zone de notification (voir <a href="#notifications">Notifications</a>).</li>
 </ul>
-<h3 id="jauges">Les quatre jauges : mémoire vidéo, débordement, CPU et GPU</h3>
-<p>Sous la barre du haut, quatre jauges segmentées, relues toutes les 2 secondes. À côté du nom « Studio Audio AI », l'en-tête affiche le <b>numéro de version</b> et, quand une version plus récente est publiée, une pastille orange <b>« Mise à jour x.y.z »</b> qui ouvre la page de téléchargement (voir <a href="#sante">Réglages › Système</a>).</p>
+<h3 id="jauges">Les quatre compteurs : mémoire vidéo, débordement, CPU et GPU</h3>
+<p>Dans l'en-tête, entre le solveur et le bouton Aide, quatre compteurs à aiguille, relus toutes les 2 secondes. Réglages › Système propose deux styles : <b>Sport</b> (grands cadrans) ou <b>Compact</b> (plus de place pour la bibliothèque). Au survol, une bulle donne le détail. À côté du nom « Studio Audio AI », l'en-tête affiche le <b>numéro de version</b> et, quand une version plus récente est publiée, une pastille orange <b>« Mise à jour x.y.z »</b> qui ouvre la page de téléchargement (voir <a href="#sante">Réglages › Système</a>).</p>
 <ul>
-<li><b>Mémoire GPU</b> — mémoire dédiée occupée sur la carte, tous programmes confondus (« 9,7 Go / 12,0 Go · 81 % »).</li>
-<li><b>Débordement</b> — mémoire système que la carte utilise quand sa mémoire est pleine. La barre est pleine à 2 Go ; quelques dizaines de Mo sont normaux, un débordement se voit dès 200 Mo.</li>
+<li><b>Mémoire GPU</b> — mémoire dédiée occupée sur la carte, tous programmes confondus (« 9,7 Go »).</li>
+<li><b>Débordement</b> — mémoire système que la carte utilise quand sa mémoire est pleine. Le compteur est plein à 2 Go ; quelques dizaines de Mo sont normaux, un débordement se voit dès 200 Mo.</li>
 <li><b>Utilisation CPU</b> — charge du processeur, tous programmes confondus (comme le Gestionnaire des tâches).</li>
 <li><b>Utilisation GPU</b> — charge de la carte graphique : moteur le plus chargé (3D, calcul, vidéo…), tous programmes confondus. Pendant une génération, elle doit rester proche du maximum ; une valeur basse avec un débordement important signale une carte saturée par d'autres programmes.</li>
 <li>Toutes les jauges, comme toutes les barres de progression de l'application, se remplissent en <b>dégradé du vert au rouge vif</b> (jaune puis orange entre les deux) : plus la barre est remplie, plus son extrémité est rouge.</li>
@@ -645,6 +645,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">Cette aide est mise à jour à chaque ajout ou modification de fonctionnalité.</p>
 <table>
 <tr><th>Date</th><th>Évolution</th></tr>
+<tr><td>31 oct. 2026 (1.0.67)</td><td>Compteurs à aiguille dans l'en-tête à la place des quatre barres, en style Sport ou Compact au choix (Réglages › Système).</td></tr>
 <tr><td>31 oct. 2026 (1.0.66)</td><td>L'en-tête de la fenêtre affiche le nouveau nom, Studio Audio AI.</td></tr>
 <tr><td>31 oct. 2026 (1.0.65)</td><td>Système de licence retiré : plus d'essai de 3 jours, plus de code à saisir, plus de version limitée. Toutes les fonctions sont ouvertes pour tous, et le générateur de licences n'est plus livré.</td></tr>
 <tr><td>31 oct. 2026 (1.0.64)</td><td>Clips : une réponse incomplète de l'IA locale ne fait plus retomber le clip sur la pochette seule ; une partie du scénario illisible est sautée, les autres scènes se partagent ses images.</td></tr>
