@@ -1429,10 +1429,10 @@ const std::vector<LocalImageModel> & local_image_models() {
             { "unsloth/MOSS-Image-SFT-FP8", "vae/diffusion_pytorch_model.safetensors", "flux2_vae.safetensors", 249521372ull } },
           4, 1.0f, 14, 5.9f },
         { "zimage", "Z-Image Turbo", "",
-          { { "leejet/Z-Image-Turbo-GGUF", "z_image_turbo-Q4_K.gguf", "z_image_turbo-Q4_K.gguf", 3864250304ull },
+          { { "leejet/Z-Image-Turbo-GGUF", "z_image_turbo-Q4_0.gguf", "z_image_turbo-Q4_0.gguf", 3683370944ull },
             { "unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 2497281120ull },
             { "Comfy-Org/z_image_turbo", "split_files/vae/ae.safetensors", "ae.safetensors", 335304388ull } },
-          8, 1.0f, 40, 9.1f },
+          5, 1.0f, 22, 8.5f },  // 1.0.72 : banc du 2/11/2026 : Q4_0 + 5 étapes = 39 s en 1344 × 768, Q4_K + 8 étapes = 60 s, rendu presque identique
         { "moss", "MOSS-Image", "moss-image",
           { { "unsloth/MOSS-Image-SFT-GGUF", "MOSS-Image-SFT-UD-Q4_K_XL.gguf", "MOSS-Image-SFT-UD-Q4_K_XL.gguf", 3419844768ull },
             { "unsloth/Qwen3.5-9B-GGUF", "Qwen3.5-9B-Q4_K_M.gguf", "Qwen3.5-9B-Q4_K_M.gguf", 5680522464ull },
@@ -1497,10 +1497,11 @@ const ImageService * find_image_service(const std::string & id) {
 }
 
 // Fichiers du modèle pour sd-cli et sd-server. Un seul fichier = SDXL-Lightning : décodage par tuiles, sinon 48 s au lieu de 5,5 s.
+// 1.0.72 : Z-Image aussi : sans tuiles, 159 s de décodage en 1344 × 768 au lieu de 5 s.
 static std::wstring image_weights(const fs::path & dir, const std::vector<ImageModelFile> & f) {
     if (f.size() == 1) return L" -m \"" + (dir / widen(f[0].file)).wstring() + L"\" --vae-tiling";
     return L" --diffusion-model \"" + (dir / widen(f[0].file)).wstring() + L"\" --llm \"" + (dir / widen(f[1].file)).wstring() + L"\" --vae \"" +
-           (dir / widen(f[2].file)).wstring() + L"\"" + (f.size() > 3 ? L" --tokenizer \"" + (dir / widen(f[3].file)).wstring() + L"\"" : std::wstring());
+           (dir / widen(f[2].file)).wstring() + L"\"" + (f[0].file == std::string("z_image_turbo-Q4_0.gguf") ? L" --vae-tiling" : L"") + (f.size() > 3 ? L" --tokenizer \"" + (dir / widen(f[3].file)).wstring() + L"\"" : std::wstring());
 }
 
 AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & m, const std::string & prompt,

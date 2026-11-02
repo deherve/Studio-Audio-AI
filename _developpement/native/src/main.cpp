@@ -6506,8 +6506,9 @@ struct App {
     }
     // 1.0.50 : MOSS-Image garde ses poids en mémoire vive sur les cartes de 12 Go ou moins (sinon la mémoire vidéo manque).
     // 1.0.58 : FLUX.2 klein aussi : en 1344 × 768 sur 12 Go, la mémoire vidéo déborde sans cela (mesuré : 81 s par image contre 27 s).
+    // 1.0.72 : Z-Image aussi : 60 s par image avec, 176 s sans.
     static bool image_offload(const LocalImageModel & m) {
-        return (std::string(m.id) == "moss" || std::string(m.id) == "klein") && gpu_profile().gpu.vram <= 12.5 * 1024.0 * 1024 * 1024;
+        return (std::string(m.id) == "moss" || std::string(m.id) == "klein" || std::string(m.id) == "zimage") && gpu_profile().gpu.vram <= 12.5 * 1024.0 * 1024 * 1024;
     }
     // 1.0.51 : menu « ▾ » de « Générer », « Régénérer » et « Toutes les pochettes » (à appeler dans un BeginPopup).
     // Renvoie vrai quand un choix est fait : model = "" (service des Réglages) ou l'identifiant d'un modèle local installé.
