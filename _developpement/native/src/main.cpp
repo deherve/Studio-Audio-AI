@@ -852,7 +852,7 @@ struct Settings {
     std::map<std::string, std::string> ai_models;            // service → modèle choisi
     int                                ai_language = -1;     // indice dans LANGUAGES (-1 : français au premier affichage)
     std::string                        ai_influence, ai_theme, ai_mood, ai_title, ai_extra;
-    int                                ai_length       = 1;  // 0 courte, 1 normale, 2 longue, 3 très longue (1.0.49, 2 parties)
+    int                                ai_length       = 1;  // 0 courte, 1 normale, 2 longue, 3 très longue (1.0.70 : 3 parties)
     bool                               ai_instrumental = false;
     bool                               ai_profile      = true;  // compléter le style avec le profil d'influence connu
     // Anti-répétition et album (1.0.33)
@@ -863,7 +863,7 @@ struct Settings {
     int                                ai_count        = 10;     // album : nombre de morceaux (1 à 50)
     std::string                        ai_album_title, ai_band;  // album : imposés (vides : l'IA choisit)
     bool                               ai_mixed        = false;  // album : chansons et instrumentaux mélangés
-    int                                ai_instrumentals = 0;     // album mélangé : nombre d'instrumentaux (0 = l'IA répartit)
+    int                                ai_instrumentals = 0;     // album mélangé : nombre d'instrumentaux (0 = aucun)
     std::string                        ai_negative;              // 1.0.34 : styles à éviter de l'onglet (balises à virgules)
     int                                ai_max_instrumentals = 2; // 1.0.35 : album mélangé, instrumentaux au plus (Réglages › IA, 0 à 50)
     // Pochettes générées (1.0.36) : service d'images, modèle par service, cases de l'onglet, description par album
@@ -1750,9 +1750,9 @@ static bool InputTextMultiline(const char * label, std::string * s, const ImVec2
 }
 }  // namespace tx
 
-// 1.0.48 : paroles d'un morceau long coupées en deux, au début de la section la plus proche de la moitié des lignes
+// 1.0.48 : paroles d'un morceau long coupées au début de la section la plus proche de 1/parts des lignes
 // (jamais avant la 2e section). Seconde partie vide si les paroles ont moins de deux sections.
-static std::pair<std::string, std::string> split_long_lyrics(const std::string & lyrics) {
+static std::pair<std::string, std::string> split_long_lyrics(const std::string & lyrics, size_t parts = 2) {
     std::vector<std::string> lines;
     {
         std::istringstream in(lyrics);
@@ -1769,7 +1769,7 @@ static std::pair<std::string, std::string> split_long_lyrics(const std::string &
     size_t best = starts[1], seen = 0, best_gap = SIZE_MAX;
     for (size_t i = 0, k = 0; i < lines.size(); i++) {
         if (k < starts.size() && starts[k] == i) {
-            size_t gap = seen * 2 > total ? seen * 2 - total : total - seen * 2;
+            size_t gap = seen * parts > total ? seen * parts - total : total - seen * parts;
             // 1.0.49 : coupure au début d'un couplet, d'un interlude ou d'un pont plutôt qu'avant un refrain
             std::string head = lower(trim(lines[i]));
             bool        good = head.find("chorus") == std::string::npos && head.find("refrain") == std::string::npos;
@@ -4522,13 +4522,19 @@ struct App {
         // sera lancée seule à la fin de la partie 1 (Studio::worker) et les deux seront assemblées.
         std::string long_rest;
         if (f.long_track && f.cover.empty()) {
-            auto parts = split_long_lyrics(words);
+            // 1.0.70 : 3 parties pour un texte de plus de 6 minutes (estimate_seconds plafonne à 360 s) : chacune reste sous la limite de mémoire vidéo d'une carte de 12 Go
+            const bool three = ai_sung_lines(words) >= 60 || (int) std::count(words.begin(), words.end(), '[') >= 18;
+            auto parts = split_long_lyrics(words, three ? 3 : 2);
             if (parts.second.empty()) {
                 notify(tr("Morceau long : il faut au moins deux sections ([Verse], [Chorus]…) pour le couper en deux parties."));
                 return;
             }
             words     = parts.first;
             long_rest = parts.second;
+            if (three) {
+                auto rest = split_long_lyrics(long_rest);
+                if (!rest.second.empty()) long_rest = rest.first + LONG_PART_MARK + rest.second;
+            }
         }
         double estimate = estimate_seconds(words, f.instrumental);
         for (int v = 1; v <= f.versions; v++) {
@@ -5780,7 +5786,7 @@ struct App {
             }
             // 1.0.48 : prototype « morceau long » (au-delà des 6 minutes du modèle)
             ImGui::BeginDisabled(!f.cover.empty());
-            ImGui::Checkbox(tr("Morceau long : 2 parties enchaînées"), &f.long_track);
+            ImGui::Checkbox(tr("Morceau long : 2 ou 3 parties enchaînées"), &f.long_track);
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                 ImGui::SetTooltip("%s", tr("Le modèle compose au plus 6 minutes d'un coup. Les paroles sont coupées en deux vers le milieu : la partie 1 est "
@@ -6146,7 +6152,8 @@ struct App {
         // Carte graphique forcée (1.0.28) : tout le modèle sur la carte s'il y tient, sinon le plus possible.
         int             layers = llm.vulkan ? ai_gpu_layers(ec ? 0 : (unsigned long long) size, gpu_profile().gpu.vram) : 0;
         std::vector<std::string> avoid = req.avoid;
-        std::thread([job, system, user, ep, llm, model, layers, avoid] {
+        const bool very_long = req.length == 3 && !req.instrumental;
+        std::thread([job, system, user, ep, llm, model, layers, avoid, very_long] {
             auto ask = [&](const std::string & u) {
                 return job->local ? ai_local_chat(llm, model, layers, system, u, &job->stage, &job->cancel) : ai_chat(ep, system, u, 180000);
             };
@@ -6186,6 +6193,10 @@ struct App {
                     std::string  nt = b.ok ? ai_parse_title(b.text) : std::string();
                     if (!nt.empty() && ai_forbidden_found(nt, avoid).empty()) job->song.title = nt;
                 }
+                if (very_long)
+                    ai_lengthen_song(job->song, AI_LONG_LINES, avoid, [&](const std::string & sy, const std::string & u) {
+                        return job->local ? ai_local_chat(llm, model, layers, sy, u, &job->stage, &job->cancel) : ai_chat(ep, sy, u, 180000);
+                    }, &job->cancel);
             }
             job->state = 1;
         }).detach();
@@ -7023,6 +7034,7 @@ struct App {
                         std::string  nt = b.ok ? ai_parse_title(b.text) : std::string();
                         if (!nt.empty() && ai_forbidden_found(nt, r.avoid).empty()) s.title = nt;
                     }
+                    if (r.length == 3 && !r.instrumental) ai_lengthen_song(s, AI_LONG_LINES, r.avoid, ask, &job->cancel);
                     if (job->cancel) break;
                     std::lock_guard<std::mutex> lock(job->mutex);
                     if (!s.ok) {
@@ -7376,7 +7388,7 @@ struct App {
                 int cap = std::max(0, std::min(settings.ai_max_instrumentals, settings.ai_count - 1));
                 settings.ai_instrumentals = std::clamp(settings.ai_instrumentals, 0, cap);
                 ImGui::SameLine();
-                ImGui::TextColored(P.muted, "%s", trf("0 = l'IA répartit (%d au plus)", std::min(settings.ai_max_instrumentals, settings.ai_count)).c_str());
+                ImGui::TextColored(P.muted, "%s", trf("0 = aucun, %d au plus", cap).c_str());
             }
             row(tr("Titre de l'album"));
             changed |= tx::InputTextWithHint("##ai_album", tr("facultatif : sinon l'IA le choisit"), &settings.ai_album_title);
@@ -7479,7 +7491,7 @@ struct App {
         ImGui::TextColored(P.muted, "%s", tr("Longueur"));
         ImGui::SameLine(label_w);
         // 1.0.49 : durées revues (les consignes imposent aussi le nombre de lignes) et « Très longue » = morceau en 2 parties
-        const char * lengths[] = { tr("Courte (≈ 2-3 min)"), tr("Normale (≈ 3-4 min)"), tr("Longue (≈ 5-6 min)"), tr("Très longue (≈ 9-11 min, 2 parties)") };
+        const char * lengths[] = { tr("Courte (≈ 2-3 min)"), tr("Normale (≈ 3-4 min)"), tr("Longue (≈ 5-6 min)"), tr("Très longue (≈ 9-11 min, 3 parties)") };
         for (int i = 0; i < 4; i++) {
             if (i == 3) ImGui::NewLine(), ImGui::SameLine(label_w);
             else if (i) ImGui::SameLine();
@@ -7488,7 +7500,7 @@ struct App {
                 changed            = true;
             }
             if (i == 3 && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                ImGui::SetTooltip("%s", tr("L'IA écrit une structure assez longue pour 9 à 11 minutes ; à l'envoi, la case « Morceau long : 2 parties enchaînées » est cochée toute seule et le morceau est généré en deux parties assemblées."));
+                ImGui::SetTooltip("%s", tr("L'IA écrit une structure assez longue pour 9 à 11 minutes ; à l'envoi, la case « Morceau long : 2 ou 3 parties enchaînées » est cochée toute seule et le morceau est généré en deux parties assemblées."));
         }
         row(tr("Autres souhaits"));
         changed |= tx::InputTextMultiline("##ai_extra", &settings.ai_extra, ImVec2(-FLT_MIN, ImGui::GetTextLineHeight() * 2.6f));
@@ -12559,29 +12571,85 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             }
             return bad;
         }
-        // Essai (1.0.48) : « --long-test sortie.txt » : instrumental court en 2 parties (40 s puis la suite), assemblées.
+        // Essai (1.0.70) : « --lengthen-test sortie.txt » : suite des paroles, d'abord avec une fausse IA, puis avec l'IA locale.
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--lengthen-test") {
+            AiSong song;
+            song.ok = true, song.title = "Essai", song.style = "rock";
+            song.lyrics = "[Verse]\n";
+            for (int i = 0; i < 30; i++) song.lyrics += "ligne " + std::to_string(i) + "\n";
+            song.lyrics += "\n[Outro]";
+            std::atomic<bool> stop{ false };
+            ai_lengthen_song(song, 80, {}, [](const std::string &, const std::string &) {
+                AiCallResult r;
+                r.ok   = true;
+                r.text = "{\"title\": \"Essai\", \"style\": \"rock\", \"lyrics\": \"[Verse]\\n";
+                for (int i = 0; i < 30; i++) r.text += "suite " + std::to_string(i) + "\\n";
+                r.text += "[Outro]\"}";
+                return r;
+            }, &stop);
+            size_t outros = 0;
+            for (size_t p = song.lyrics.find("[Outro]"); p != std::string::npos; p = song.lyrics.find("[Outro]", p + 1)) outros++;
+            const bool ok = ai_sung_lines(song.lyrics) >= 80 && outros == 1 && song.lyrics.rfind("[Outro]") + 7 == song.lyrics.size();
+            FILE * f = _wfopen(argv[2], L"wb");
+            if (f) fprintf(f, "fausse IA : %d lignes, %d [Outro] : %s\n", ai_sung_lines(song.lyrics), (int) outros, ok ? "OK" : "ECHEC");
+            app.local_llm = find_local_llm(app.app_dir());
+            AiRequest req = app.ai_request();
+            req.length       = 3;
+            req.instrumental = false;
+            fs::path        model = app.ai_models_dir() / widen(app.settings.ai_local_model);
+            std::error_code ec;
+            auto            size   = fs::file_size(model, ec);
+            int             layers = app.local_llm.vulkan ? ai_gpu_layers(ec ? 0 : (unsigned long long) size, gpu_profile().gpu.vram) : 0;
+            std::atomic<int> stage{ 0 };
+            ai_local_session(app.local_llm, model, layers, &stage, &stop, [&](const AiAsk & ask) {
+                AiCallResult a = ask(ai_system_prompt(false), ai_user_prompt(req));
+                AiSong       s = a.ok ? ai_parse_song(a.text, false) : AiSong{};
+                const int    first = ai_sung_lines(s.lyrics);
+                ai_lengthen_song(s, AI_LONG_LINES, req.avoid, [&](const std::string & sy, const std::string & u) {
+                    AiCallResult r = ask(sy, u);
+                    if (f) fprintf(f, "--- suite demandee : ok=%d, %d lignes lues\n%s\n", (int) r.ok, ai_sung_lines(ai_parse_song(r.text, false).lyrics), r.text.substr(0, 900).c_str());
+                    return r;
+                }, &stop);
+                if (f) fprintf(f, "IA locale : %d lignes au depart, %d a la fin, estimation %.0f s\n%s\n", first, ai_sung_lines(s.lyrics), estimate_seconds(s.lyrics, false), s.lyrics.c_str());
+            });
+            if (f) fclose(f);
+            return ok ? 0 : 1;
+        }
+        // Essai (1.0.48) : « --long-test sortie.txt » : instrumental court en 3 parties (40 s puis les suites), assemblées.
         if (argv && argc >= 3 && std::wstring(argv[1]) == L"--long-test") {
             Song s;
             s.title             = std::string("Essai long") + tr(" (partie 1)");
             s.artist            = "Groupe Essai";
             s.style             = "instrumental, synthwave, analog synth, driving bass, 100 BPM";
             s.lyrics            = "[intro]\n[verse]";
-            s.long_rest         = "[chorus]\n[outro]";
+            s.long_rest         = std::string("[chorus]") + LONG_PART_MARK + "[verse]\n[outro]";
             s.instrumental      = true;
             s.instrumental_lora = false;
             s.cot               = "off";
             s.duration          = 40;
             s.kind              = "new";
+            if (argc >= 4) {  // 1.0.70 : vraie chanson en 3 parties : « --long-test sortie.txt paroles.txt »
+                auto a = split_long_lyrics(read_text(argv[3]), 3);
+                auto b = split_long_lyrics(a.second);
+                s.lyrics           = a.first;
+                s.long_rest        = b.first + LONG_PART_MARK + b.second;
+                s.style            = "English, alternative rock, male vocals, driving drums, electric guitar, 125 BPM";
+                s.instrumental     = false;
+                s.cot              = "off";
+                s.auto_duration    = true;
+                s.duration         = 360;
+                s.expected_seconds = estimate_seconds(s.lyrics, false);
+            }
             std::string id1 = studio.submit(s, false), id2;
             auto        t0  = std::chrono::steady_clock::now();
             Song        last;
             for (;;) {
                 Sleep(1000);
                 for (const Song & x : studio.snapshot()) {
-                    if (x.kind == "extend" && x.parent == id1) id2 = x.id;
+                    if (x.kind == "extend" && x.artist == s.artist && x.long_rest.empty() && x.created >= s.created) id2 = x.id;
                     if (!id2.empty() && x.id == id2) last = x;
                 }
-                if (last.status == "done" || last.status == "error" || std::chrono::steady_clock::now() - t0 > std::chrono::seconds(900)) break;
+                if (last.status == "done" || last.status == "error" || std::chrono::steady_clock::now() - t0 > std::chrono::seconds(2400)) break;
             }
             Sleep(500);
             if (FILE * f = _wfopen(argv[2], L"wb")) {

@@ -523,13 +523,13 @@ std::string ai_user_prompt(const AiRequest & r) {
         "Length: short (about 2 to 3 minutes): intro, verse, chorus, verse, chorus, outro. Verses of 4 lines, choruses of 4 lines (about 20 lines of lyrics in total).",
         "Length: normal (about 3 to 4 minutes): intro, verse, pre-chorus, chorus, verse, pre-chorus, chorus, bridge, chorus, outro. Verses of 8 lines, pre-choruses of 2 lines, choruses of 4 to 6 lines, bridge of 4 lines (about 40 lines of lyrics in total).",
         "Length: long (about 5 to 6 minutes): intro, verse, pre-chorus, chorus, verse, pre-chorus, chorus, interlude, verse, pre-chorus, chorus, bridge, chorus, chorus, outro. Verses of 8 lines, pre-choruses of 2 to 4 lines, choruses of 6 lines, bridge of 4 to 6 lines (about 65 lines of lyrics in total).",
-        "Length: very long (about 9 to 11 minutes, it will be generated in two chained parts): intro, then FIVE verse / pre-chorus / chorus groups, two bridges, interludes between the groups, a final double chorus and an outro. Verses of 8 lines, pre-choruses of 4 lines, choruses of 6 lines, bridges of 6 lines (about 110 to 130 lines of lyrics in total, the same amount in the first and second half).",
+        "Length: very long (about 9 to 11 minutes, it will be generated in three chained parts): intro, then FIVE verse / pre-chorus / chorus groups, two bridges, interludes between the groups, a final double chorus and an outro. Verses of 8 lines, pre-choruses of 4 lines, choruses of 6 lines, bridges of 6 lines (about 110 to 130 lines of lyrics in total, the same amount in the first and second half).",
     };
     static const char * inst_lengths[] = {
         "Length: short (about 2 to 3 minutes): about 6 sections.",
         "Length: normal (about 3 to 4 minutes): about 9 sections.",
         "Length: long (about 5 to 6 minutes): about 14 sections.",
-        "Length: very long (about 9 to 11 minutes, it will be generated in two chained parts): about 24 sections, with a clear development in the second half.",
+        "Length: very long (about 9 to 11 minutes, it will be generated in three chained parts): about 24 sections, with a clear development in the second half.",
     };
     p += "\n" + std::string((r.instrumental ? inst_lengths : lengths)[std::clamp(r.length, 0, 3)]);
     if (!r.influence.empty()) p += "\nThe style tags describe the sound of " + r.influence + " with generic words only, without the name.";
@@ -1047,6 +1047,54 @@ std::vector<std::string> ai_frequent_words(const std::vector<std::string> & text
     return out;
 }
 
+// 1.0.70 : nombre de lignes chantées (hors balises de section)
+int ai_sung_lines(const std::string & lyrics) {
+    std::istringstream in(lyrics);
+    int                n = 0;
+    for (std::string l; std::getline(in, l);) {
+        size_t a = l.find_first_not_of(" \t\r");
+        if (a != std::string::npos && l[a] != '[') n++;
+    }
+    return n;
+}
+
+// 1.0.70 : l'IA locale s'arrête vers 50 lignes quand on lui en demande 120 : une ligne chantée dure ≈ 6,5 s, soit 5 à 6 min
+// au lieu de 9. On lui demande la suite (6 fois au plus), insérée avant la balise de fin.
+void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> & avoid, const AiAsk & ask, const std::atomic<bool> * cancel) {
+    auto without_outro = [](std::string text) {
+        size_t last = text.find_last_not_of(" \t\r\n");
+        text.resize(last == std::string::npos ? 0 : last + 1);
+        size_t start = text.rfind('\n');
+        start        = start == std::string::npos ? 0 : start + 1;
+        std::string tail = text.substr(start);
+        for (char & c : tail) c = (char) tolower((unsigned char) c);
+        if (tail.rfind("[outro", 0) == 0) text.resize(start);
+        last = text.find_last_not_of(" \t\r\n");
+        text.resize(last == std::string::npos ? 0 : last + 1);
+        return text;
+    };
+    for (int attempt = 0; attempt < 6 && song.ok && !(cancel && *cancel); attempt++) {
+        const int have = ai_sung_lines(song.lyrics);
+        if (have >= target) return;
+        std::string u = "Here is a song in progress, titled \"" + song.title + "\":\n\n" + without_outro(song.lyrics) +
+                        "\n\nThe song is not finished: write its continuation, in the same language and the same story, with about " +
+                        std::to_string(std::max(30, target - have)) +
+                        " more sung lines: new verses with new words, a bridge, then the chorus again. Use the same section tags. Do not write an outro. "
+                        "Do not repeat the verses above.";
+        if (!avoid.empty()) {
+            u += " Never use these words: ";
+            for (size_t i = 0; i < avoid.size(); i++) u += (i ? ", " : "") + avoid[i];
+            u += ".";
+        }
+        u += "\n\nReply with this JSON and nothing else: {\"title\": \"" + song.title + "\", \"style\": \"same\", \"lyrics\": \"the new sections only\"}";
+        AiCallResult r = ask("You are a songwriter. You only answer with a JSON object.", u);
+        if (!r.ok) return;
+        AiSong more = ai_parse_song(r.text, false);
+        if (ai_sung_lines(more.lyrics) < 4) continue;  // style absent : sans importance ici
+        song.lyrics = without_outro(song.lyrics) + "\n\n" + without_outro(more.lyrics) + "\n\n[Outro]";
+    }
+}
+
 std::string ai_avoid_retry_prompt(const std::vector<std::string> & found) {
     std::string p = "Your song uses forbidden words: ";
     for (size_t i = 0; i < found.size(); i++) p += (i ? ", " : "") + found[i];
@@ -1090,8 +1138,7 @@ std::string ai_album_user_prompt(const AiAlbumRequest & r) {
     else if (r.kind == 1) p += "\nAll tracks are instrumental (\"instrumental\": true).";
     else if (std::min(r.instrumentals, r.max_instrumentals) > 0)
         p += "\nExactly " + std::to_string(std::min({ r.instrumentals, r.max_instrumentals, n })) + " of the tracks are instrumental, the others are sung.";
-    else if (r.max_instrumentals <= 0) p += "\nAll tracks are sung (\"instrumental\": false).";
-    else p += "\nMost tracks are sung; choose yourself which ones are instrumental, never more than " + std::to_string(std::min(r.max_instrumentals, n)) + ".";
+    else p += "\nAll tracks are sung (\"instrumental\": false).";
     if (!r.influence.empty()) p += "\nThe \"sound\" tags describe the sound of " + r.influence + " with generic words only, without the name.";
     if (!r.avoid.empty()) {  // 1.0.34 : aussi dans le nom du groupe et le titre de l'album (et pour les instrumentaux)
         p += "\nNever use these words, nor their plural, in the band name, the album title or the track titles: ";
@@ -1174,11 +1221,11 @@ AiAlbumPlan ai_parse_album_plan(const std::string & raw, const AiAlbumRequest & 
     if (r.kind == 0 || r.kind == 1) {
         for (AiTrackPlan & tp : plan.tracks) tp.instrumental = r.kind == 1;
     } else {
-        // Mélangé : max_instrumentals au plus (1.0.35, Réglages › IA). Nombre demandé, sinon celui de l'IA ramené au maximum.
+        // Mélangé : le nombre demandé, max_instrumentals au plus (1.0.35, Réglages › IA) ; 1.0.70 : 0 = aucun.
         int have = 0;
         for (AiTrackPlan & tp : plan.tracks) have += tp.instrumental ? 1 : 0;
         int cap  = std::clamp(r.max_instrumentals, 0, n);
-        int want = r.instrumentals > 0 ? std::min(r.instrumentals, cap) : std::min(have, cap);
+        int want = std::min(r.instrumentals, cap);
         have     = 0;
         for (AiTrackPlan & tp : plan.tracks) have += tp.instrumental ? 1 : 0;
         // Trop : on garde les premiers ; pas assez : on en ajoute, répartis sur l'album (jamais la première piste).

@@ -107,13 +107,16 @@ void write_fiches(const Song & s, const fs::path & dir) {
 
 Song with_full_lyrics(const Song & s, const std::vector<Song> & all) {
     if (s.kind != "extend" || s.long_join <= 0 || s.parent.empty() || s.instrumental) return s;
-    for (const Song & p : all)
-        if (p.id == s.parent && !p.lyrics.empty()) {
-            Song full   = s;
-            full.lyrics = p.lyrics + "\n\n" + s.lyrics;
-            return full;
-        }
-    return s;
+    Song         full = s;
+    const Song * cur  = &s;
+    while (cur && cur->kind == "extend" && cur->long_join > 0) {  // 1.0.70 : jusqu'à 3 parties
+        const Song * up = nullptr;
+        for (const Song & p : all)
+            if (p.id == cur->parent && !p.lyrics.empty()) up = &p;
+        if (up) full.lyrics = up->lyrics + "\n\n" + full.lyrics;
+        cur = up;
+    }
+    return full;
 }
 
 void drop_stale_lyrics_file(const Song & original, const Song & full, const fs::path & dir) {

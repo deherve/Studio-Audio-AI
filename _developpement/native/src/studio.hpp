@@ -66,6 +66,7 @@ struct Song {
     // long_join = secondes de la fin de la partie 1 reprises au début de la partie 2 (> 0 : assemblage après génération).
     std::string long_rest;
     double      long_join = 0;
+    int         long_retry = 0;  // 1.0.70 : partie refaite car le modèle a conclu trop tôt (non enregistré)
 
     // Mesures de la génération, pour apprendre l'estimation du temps restant.
     int    score_tokens = 0, sem_tokens = 0, frames = 0;
@@ -217,6 +218,8 @@ bool         other_synth_running();
 double       media_duration(const fs::path & file);  // secondes, 0 si illisible (ffprobe)
 // Durée probable d'un morceau d'après ses sections et ses paroles (secondes).
 double       estimate_seconds(const std::string & lyrics, bool instrumental);
+// 1.0.70 : dans long_rest, sépare les paroles de la partie suivante de celles de la dernière (morceau en 3 parties)
+inline const char LONG_PART_MARK[] = "\n[[partie suivante]]\n";
 
 // Dossiers de l'application (1.0.30) : tout reste dans le dossier du programme, où qu'il soit copié.
 // Livrable : <app>\moteur, <app>\outils\{ffmpeg, whisper, llama, llama-vulkan}, <app>\ressources\{aide, langues},

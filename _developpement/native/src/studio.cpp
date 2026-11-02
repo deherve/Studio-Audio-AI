@@ -1809,11 +1809,19 @@ void Studio::launch_long_part(const std::string & id) {
     n.kind              = "extend";
     n.parent            = p.id;
     n.parent_title      = p.title;
-    std::string title   = p.title, suffix = tr(" (partie 1)");
-    if (title.size() > suffix.size() && title.compare(title.size() - suffix.size(), suffix.size(), suffix) == 0) title.resize(title.size() - suffix.size());
+    std::string title = p.title;
+    for (const std::string suffix : { std::string(tr(" (partie 1)")), std::string(tr(" (partie 2)")) })
+        if (title.size() > suffix.size() && title.compare(title.size() - suffix.size(), suffix.size(), suffix) == 0) title.resize(title.size() - suffix.size());
+    // 1.0.70 : morceau en 3 parties : la partie 2 garde la suite des paroles, et la partie 3 reprend tout le morceau assemblé
+    const size_t mark = p.long_rest.find(LONG_PART_MARK);
+    std::string  part = p.long_rest.substr(0, mark);
+    if (mark != std::string::npos) {
+        n.long_rest = p.long_rest.substr(mark + strlen(LONG_PART_MARK));
+        title      += tr(" (partie 2)");
+    }
     n.title             = title;
     n.style             = p.style;
-    n.lyrics            = p.long_rest;
+    n.lyrics            = part;
     n.instrumental      = p.instrumental;
     n.instrumental_lora = p.instrumental_lora;
     n.adapters          = p.adapters;
@@ -1828,7 +1836,7 @@ void Studio::launch_long_part(const std::string & id) {
     n.long_join         = 25;
     n.auto_duration     = true;
     n.lm_seed = n.seed  = -1;
-    double rest         = estimate_seconds(p.long_rest, p.instrumental);
+    double rest         = estimate_seconds(part, p.instrumental);
     n.duration          = p.instrumental ? std::min(360.0, n.long_join + rest) : 360;
     n.expected_seconds  = std::min(360.0, n.long_join + rest);
     submit(n);
@@ -1929,7 +1937,13 @@ void Studio::generate(const std::string & id) {
             yyjson_mut_obj_remove_key(o, "abc");
             put_str(doc, o, "source_tokens", codes);
             // 1.0.48 : partie 2 d'un morceau long : seules les dernières secondes de la partie 1 ouvrent la suite
-            put_num(doc, o, "source_start", song.long_join > 0 ? std::max(0.0, parent.audio_seconds - song.long_join) : 0);
+            // 1.0.70 : les codes d'une partie 2 ne couvrent que cette partie, pas le morceau assemblé
+            double source_seconds = parent.audio_seconds;
+            if (parent.long_join > 0) {
+                double alone = media_duration(song_folder(parent.id) / "partie2_seule.wav");
+                if (alone > 0) source_seconds = alone;
+            }
+            put_num(doc, o, "source_start", song.long_join > 0 ? std::max(0.0, source_seconds - song.long_join) : 0);
             put_num(doc, o, "source_end", -1);
             put_str(doc, o, "style", song.style);
             yyjson_mut_obj_remove_key(o, "negative_style");  // le rejeu du parent peut en contenir un
@@ -2139,6 +2153,16 @@ void Studio::generate(const std::string & id) {
     // entière, puis la partie 2 à partir de (long_join − 3 s), avec un fondu enchaîné de 3 s au milieu de la reprise.
     // La partie 2 seule est gardée sous partie2_seule.wav.
     if (song.long_join > 0 && has_parent) {
+        // 1.0.70 : le modèle conclut parfois juste après la reprise (34 s au lieu de 4 min) : la partie est refaite, 2 fois au plus
+        const double added = media_duration(wav) - song.long_join;
+        if (!song.instrumental && song.long_retry < 2 && added < 0.4 * (song.expected_seconds - song.long_join)) {
+            update(id, [](Song & s) {
+                s.long_retry++;
+                s.lm_seed = s.seed = -1;
+            });
+            generate(id);
+            return;
+        }
         update(id, [](Song & s) { s.stage = tr("Assemblage des deux parties"); });
         fs::path first = song_folder(song.parent) / "audio.wav";
         if (!fs::exists(first)) first = song_folder(song.parent) / "audio.flac";

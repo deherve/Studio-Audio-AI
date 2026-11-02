@@ -146,7 +146,7 @@ struct AiRequest {
     std::string title;         // titre imposé (facultatif)
     std::string extra;         // souhaits libres (facultatif)
     bool        instrumental = false;
-    int         length       = 1;  // 0 court, 1 normal, 2 long, 3 très long (1.0.49 : 2 parties)
+    int         length       = 1;  // 0 court, 1 normal, 2 long, 3 très long (1.0.70 : 3 parties)
     // Anti-répétition (1.0.33) : mots à ne pas employer, titres déjà pris, et pour un album la place du morceau.
     std::vector<std::string> avoid;
     std::vector<std::string> used_titles;
@@ -184,6 +184,9 @@ std::vector<std::string> ai_forbidden_found(const std::string & text, const std:
 std::vector<std::string> ai_frequent_words(const std::vector<std::string> & texts, int min_songs, size_t max_words);
 // Demande de réécriture quand le morceau contient des mots interdits.
 std::string ai_avoid_retry_prompt(const std::vector<std::string> & found);
+int         ai_sung_lines(const std::string & lyrics);
+void        ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> & avoid, const AiAsk & ask, const std::atomic<bool> * cancel);
+constexpr int AI_LONG_LINES = 110;  // « Très longue » : mesuré 94 lignes = 8 min 01 en 3 parties, soit ≈ 5,1 s par ligne
 // 1.0.37 : titre encore fautif après la relance → demande d'un titre seul, et sa lecture (JSON {"title"} ou texte).
 std::string ai_title_retry_prompt(const std::string & old_title, const std::vector<std::string> & found, const std::vector<std::string> & avoid);
 std::string ai_parse_title(const std::string & text);
