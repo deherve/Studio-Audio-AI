@@ -1086,12 +1086,13 @@ void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> 
             for (size_t i = 0; i < avoid.size(); i++) u += (i ? ", " : "") + avoid[i];
             u += ".";
         }
-        u += "\n\nReply with this JSON and nothing else: {\"title\": \"" + song.title + "\", \"style\": \"same\", \"lyrics\": \"the new sections only\"}";
+        u += "\n\nReply with the new sections only, as plain text with their [Section] tags: no JSON, no comment.";
         AiCallResult r = ask("You are a songwriter. You only answer with a JSON object.", u);
         if (!r.ok) return;
-        AiSong more = ai_parse_song(r.text, false);
-        if (ai_sung_lines(more.lyrics) < 4) continue;  // style absent : sans importance ici
-        song.lyrics = without_outro(song.lyrics) + "\n\n" + without_outro(more.lyrics) + "\n\n[Outro]";
+        int         removed = 0;
+        std::string more    = ai_clean_lyrics(r.text, false, removed);
+        if (more.find('{') != std::string::npos || ai_sung_lines(more) < 4) continue;
+        song.lyrics = without_outro(song.lyrics) + "\n\n" + without_outro(more) + "\n\n[Outro]";
     }
 }
 

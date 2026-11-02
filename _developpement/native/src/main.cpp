@@ -12582,9 +12582,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             ai_lengthen_song(song, 80, {}, [](const std::string &, const std::string &) {
                 AiCallResult r;
                 r.ok   = true;
-                r.text = "{\"title\": \"Essai\", \"style\": \"rock\", \"lyrics\": \"[Verse]\\n";
-                for (int i = 0; i < 30; i++) r.text += "suite " + std::to_string(i) + "\\n";
-                r.text += "[Outro]\"}";
+                r.text = "[Verse]\n";
+                for (int i = 0; i < 30; i++) r.text += "suite " + std::to_string(i) + "\n";
+                r.text += "[Outro]";
                 return r;
             }, &stop);
             size_t outros = 0;

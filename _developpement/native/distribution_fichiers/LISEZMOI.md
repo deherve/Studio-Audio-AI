@@ -1,4 +1,4 @@
-# Studio Audio AI (1.0.70)
+# Studio Audio AI (1.0.71)
 
 Générateur de chansons local basé sur **YuE2-3B** (moteur `yue2.cpp`, Vulkan). Application Windows native : pas de navigateur, pas de serveur, tout reste sur votre PC.
 
