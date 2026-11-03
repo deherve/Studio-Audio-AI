@@ -2,6 +2,7 @@
 #include "update_check.hpp"
 
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 #include "net.hpp"
@@ -76,5 +77,7 @@ void check_for_update(std::shared_ptr<UpdateInfo> info, std::string manifest_url
     info->latest = latest;
     info->url    = url;
     info->notes  = notes;
-    info->state  = compare_versions(latest, STUDIO_VERSION) > 0 ? 3 : 2;  // écrit en dernier : les champs sont prêts
+    // essai (1.0.77) : STUDIO_TEST_VERSION=1.0.0 fait comme si la version installée était plus ancienne
+    const char * installed = getenv("STUDIO_TEST_VERSION") ? getenv("STUDIO_TEST_VERSION") : STUDIO_VERSION;
+    info->state  = compare_versions(latest, installed) > 0 ? 3 : 2;  // écrit en dernier : les champs sont prêts
 }

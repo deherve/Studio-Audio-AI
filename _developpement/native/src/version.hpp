@@ -3,15 +3,15 @@
 // et dans le journal des évolutions de l'aide).
 #pragma once
 
-#define STUDIO_VERSION   "1.0.76"
+#define STUDIO_VERSION   "1.0.77"
 #define APP_NAME         "Studio Audio AI"
 #define APP_NAME_W       L"Studio Audio AI"
-#define STUDIO_VERSION_W L"1.0.76"
+#define STUDIO_VERSION_W L"1.0.77"
 
 // Adresse interrogée au démarrage pour savoir si une version plus récente existe (voir update_check.hpp).
-// Vide tant qu'aucun site de publication n'est choisi : la recherche est alors désactivée. On peut aussi la
-// renseigner sans recompiler, avec la clé « update_url » de studio_reglages.json.
-#define UPDATE_MANIFEST_URL ""
+// 1.0.77 : dernière publication (release) du dépôt GitHub public du Studio ; « html_url » = sa page de téléchargement.
+// On peut la remplacer sans recompiler, avec la clé « update_url » de config\reglages.json.
+#define UPDATE_MANIFEST_URL "https://api.github.com/repos/deherve/Studio-Audio-AI/releases/latest"
 
 
 

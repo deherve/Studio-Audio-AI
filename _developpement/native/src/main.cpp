@@ -4329,11 +4329,11 @@ struct App {
         ImGui::TextColored(P.muted, "%s", STUDIO_VERSION);
         if (app_update->state == 3) {
             ImGui::SameLine(0, 8 * g_dpi);
-            if (soft_button(trf("Mise à jour %s", app_update->latest.c_str()).c_str(), P.amber) && !app_update->url.empty()) {
+            if (soft_button(trf("Mettre à jour (%s)", app_update->latest.c_str()).c_str(), P.amber) && !app_update->url.empty()) {
                 ShellExecuteW(nullptr, L"open", widen(app_update->url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
             }
             if (ImGui::IsItemHovered()) {
-                std::string tip = trf("Version installée : %s · nouvelle version : %s\nOuvre la page de téléchargement.", STUDIO_VERSION, app_update->latest.c_str());
+                std::string tip = trf("Version installée : %s · nouvelle version : %s\nOuvre la page de la dernière version sur GitHub (fichiers à télécharger).", STUDIO_VERSION, app_update->latest.c_str());
                 if (!app_update->notes.empty()) tip += "\n\n" + app_update->notes;
                 ImGui::SetTooltip("%s", tip.c_str());
             }
