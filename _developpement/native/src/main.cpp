@@ -12640,6 +12640,64 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             if (f) fclose(f);
             return ok ? 0 : 1;
         }
+        // Essai (1.0.73) : « --album-lines-test sortie.txt [n] » : plan et paroles d'un album de n chansons (4 par défaut) par
+        // l'IA locale, comme le fil de l'album, sans musique ; compte les lignes de couplet reprises d'un morceau précédent.
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--album-lines-test") {
+            app.local_llm      = find_local_llm(app.app_dir());
+            AiAlbumRequest req = app.ai_album_request();
+            req.count          = argc >= 4 ? std::clamp(_wtoi(argv[3]), 2, 10) : 4;
+            req.kind           = 0;
+            req.band.clear(), req.album.clear(), req.used_titles.clear(), req.used_albums.clear(), req.complete = false;
+            AiRequest base = app.ai_request();
+            base.title.clear(), base.instrumental = false, base.length = 1;
+            fs::path        model = app.ai_models_dir() / widen(app.settings.ai_local_model);
+            std::error_code ec;
+            auto            size   = fs::file_size(model, ec);
+            int             layers = app.local_llm.vulkan ? ai_gpu_layers(ec ? 0 : (unsigned long long) size, gpu_profile().gpu.vram) : 0;
+            std::atomic<int>  stage{ 0 };
+            std::atomic<bool> stop{ false };
+            FILE *            f        = _wfopen(argv[2], L"wb");
+            int               residual = 0;
+            ai_local_session(app.local_llm, model, layers, &stage, &stop, [&](const AiAsk & ask) {
+                AiCallResult res  = ask(ai_album_system_prompt(), ai_album_user_prompt(req));
+                AiAlbumPlan  plan = res.ok ? ai_parse_album_plan(res.text, req) : AiAlbumPlan{};
+                if (f) fprintf(f, "plan : %s, %s / %s, %d pistes\n", plan.ok ? "OK" : "illisible", plan.band.c_str(), plan.album.c_str(), (int) plan.tracks.size());
+                std::vector<std::string> titles, album_lines;
+                for (int i = 0; plan.ok && i < (int) plan.tracks.size(); i++) {
+                    AiRequest r     = base;
+                    r.title         = plan.tracks[i].title;
+                    if (!plan.tracks[i].theme.empty()) r.theme = plan.tracks[i].theme;
+                    r.used_titles   = titles;
+                    r.used_lines    = album_lines;
+                    r.album_context = ai_track_context(plan, i);
+                    AiCallResult a = ask(ai_system_prompt(false), ai_user_prompt(r));
+                    AiSong       s = a.ok ? ai_parse_song(a.text, false) : AiSong{};
+                    if (!s.ok) {
+                        if (f) fprintf(f, "piste %d illisible\n", i + 1);
+                        continue;
+                    }
+                    // même tri que le fil de l'album ; « avant » = lignes de couplet déjà chantées dans l'album
+                    std::set<std::string> before = ai_known_lines(album_lines), probe = before;
+                    std::string           copy   = s.lyrics;
+                    const int             all    = ai_drop_repeated_lines(copy, probe);
+                    std::set<std::string> self;
+                    std::string           alone = s.lyrics;
+                    const int             own   = ai_drop_repeated_lines(alone, self);  // recopiées dans le morceau lui-même
+                    std::set<std::string> known = ai_known_lines(album_lines);
+                    ai_drop_repeated_lines(s.lyrics, known);
+                    std::set<std::string> again = ai_known_lines(album_lines);
+                    std::string           check = s.lyrics;
+                    residual += ai_drop_repeated_lines(check, again);
+                    if (f) fprintf(f, "\n=== piste %d : %s : %d lignes, reprises de l'album %d, recopiees dans le morceau %d, apres tri %d lignes\n%s\n", i + 1,
+                                   r.title.c_str(), ai_sung_lines(copy) + all, all - own, own, ai_sung_lines(s.lyrics), s.lyrics.c_str());
+                    titles.push_back(r.title);
+                    for (const std::string & l : ai_song_lines(s.lyrics))
+                        if (std::find(album_lines.begin(), album_lines.end(), l) == album_lines.end()) album_lines.push_back(l);
+                }
+            });
+            if (f) fprintf(f, "\nreste apres tri : %d : %s\n", residual, residual == 0 ? "OK" : "ECHEC"), fclose(f);
+            return residual == 0 ? 0 : 1;
+        }
         // Essai (1.0.48) : « --long-test sortie.txt » : instrumental court en 3 parties (40 s puis les suites), assemblées.
         if (argv && argc >= 3 && std::wstring(argv[1]) == L"--long-test") {
             Song s;
