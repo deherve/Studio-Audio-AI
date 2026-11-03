@@ -845,6 +845,7 @@ struct Settings {
     std::string                        ai_local_model;       // fichier GGUF de modeles\ia utilisé par l'IA locale
     // Atelier clip (1.0.54) : textes affichés au début et à la fin des clips (« Rock Ballads Fr », « Abonnez-vous »…) et type de rendu
     std::string                        clip_text_start, clip_text_end, clip_style_id = "auto", clip_image_model = "klein", clip_image_count = "0", clip_image_mode = "rec";
+    std::string                        clip_short_seconds = "30";  // 1.0.75 : durée des Shorts (15, 30, 45, 60 ou 90 s)
     bool                               ai_gpu = true;        // IA locale sur la carte graphique (version Vulkan de llama.cpp)
     std::string                        ai_server_url, ai_server_name, ai_server_model;  // serveur local connecté
     std::string                        ai_custom_url;        // service « compatible OpenAI » personnalisé
@@ -1055,6 +1056,7 @@ static void parse_settings(Settings & s, yyjson_val * r) {
     const std::pair<const char *, std::string *> ai_texts[] = {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
+        { "clip_short_seconds", &s.clip_short_seconds },
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -1210,6 +1212,7 @@ static void save_settings(const Settings & s, const fs::path & path) {
     const std::pair<const char *, const std::string *> ai_texts[] = {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
+        { "clip_short_seconds", &s.clip_short_seconds },
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -9752,7 +9755,7 @@ struct App {
                 std::error_code ec7;
                 if (skip_existing_clips && fs::exists(t.output, ec7)) continue;
                 ClipTask c      = clip_task(t);
-                c.short_seconds = 30;
+                c.short_seconds = std::clamp(atoi(settings.clip_short_seconds.c_str()), 15, 90);
                 clips.push_back(std::move(c));
             }
         if (!clips.empty()) {
@@ -9879,7 +9882,22 @@ struct App {
                 }
             }
             ImGui::Checkbox(tr("Refaire le scénario et les images (sinon ceux déjà faits sont réutilisés : montage seul, plus rapide)"), &video_redo);
-            ImGui::Checkbox(tr("Short 30 s (YouTube Shorts / TikTok, 9:16) centré sur le refrain, avec les images du clip"), &video_short);
+            ImGui::Checkbox(tr("Short (YouTube Shorts / TikTok, 9:16) centré sur le refrain, avec les images du clip"), &video_short);
+            if (video_short) {  // 1.0.75 : durée au choix ; 30 s = durée conseillée pour faire découvrir un titre (TikTok : 21 à 34 s)
+                static const int lengths[] = { 15, 30, 45, 60, 90 };
+                const int        cur       = std::clamp(atoi(settings.clip_short_seconds.c_str()), 15, 90);
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(200 * g_dpi);
+                if (ImGui::BeginCombo("##short_len", (std::to_string(cur) + " s" + (cur == 30 ? tr(" (conseillé)") : "")).c_str())) {
+                    for (int n : lengths)
+                        if (ImGui::Selectable((std::to_string(n) + " s" + (n == 30 ? tr(" (conseillé)") : "")).c_str(), n == cur)) {
+                            settings.clip_short_seconds = std::to_string(n);
+                            save_settings(settings, settings_path);
+                        }
+                    ImGui::EndCombo();
+                }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("30 s : durée conseillée pour faire découvrir un titre (TikTok : 21 à 34 s ; YouTube Shorts accepte jusqu'à 3 min)."));
+            }
             // 1.0.55 : nombre d'images du clip (0 = automatique : 6 à 12 selon les paroles), mémorisé dans les réglages
             // 1.0.56 : recommandation par morceau (d'après le nombre de lignes de paroles et la durée), que l'on suit ou que l'on
             // ajuste : plus (×1,5), moins (×0,5) ou un nombre fixe pour tous les morceaux
@@ -11662,6 +11680,7 @@ struct App {
                     if (!sg.album.empty() && album_key(sg.artist, sg.album) == key) name = sg.album;
                 open_video_dialog(album_songs(all, key, false), name, key);
                 video_clip = true;
+                video_short = true;  // 1.0.75 : liste des durées visible sur la capture
                 return true;
             }
             album_menu_test = s.size() > 2 && s.compare(s.size() - 2, 2, "|m") == 0;
@@ -12817,7 +12836,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             t.output        = argv[5];
             t.width         = fmt == L"tiktok" ? 1080 : fmt == L"ig" ? 1080 : 1920;
             t.height        = fmt == L"tiktok" || fmt == L"short" ? 1920 : fmt == L"ig" ? 1080 : 1080;
-            if (fmt == L"short") t.width = 1080, t.short_seconds = 30;  // 1.0.74 : Short de 30 s sur le refrain
+            if (fmt == L"short") t.width = 1080, t.short_seconds = _wgetenv(L"STUDIO_TEST_SHORT_SECONDS") ? _wtoi(_wgetenv(L"STUDIO_TEST_SHORT_SECONDS")) : 30;  // 1.0.74 : Short de 30 s sur le refrain
             t.whisper_exe   = studio.paths().whisper;
             t.whisper_model = studio.paths().models_dir / "voix" / whisper_file().name;
             if (argc >= 7) {  // 6e paramètre : type de rendu (id de clip_styles) = scénario et images par scène
