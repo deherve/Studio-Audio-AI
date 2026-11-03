@@ -549,6 +549,10 @@ std::string ai_user_prompt(const AiRequest & r) {
         p += ".";
     }
     if (!trim_text(r.negative).empty()) p += "\nNever use these styles or sounds in the style tags, and do not write music that sounds like them: " + trim_text(r.negative) + ".";
+    if (!r.instrumental && !r.used_lines.empty()) {  // 1.0.73 : 40 dernières lignes de l'album, pour la longueur de la consigne
+        p += "\nEvery line must be new. These lines were already sung in earlier songs of the album: never reuse them, nor their images:";
+        for (size_t i = r.used_lines.size() > 40 ? r.used_lines.size() - 40 : 0; i < r.used_lines.size(); i++) p += "\n- " + r.used_lines[i];
+    }
     if (!r.used_titles.empty()) {
         p += "\nThe title must be different from these titles, and must not reuse their main words: ";
         for (size_t i = 0; i < r.used_titles.size(); i++) p += (i ? "; " : "") + ("\"" + r.used_titles[i] + "\"");
@@ -1058,9 +1062,73 @@ int ai_sung_lines(const std::string & lyrics) {
     return n;
 }
 
+// 1.0.73 : ligne comparée sans majuscules, accents ni ponctuation (texte non latin : la ligne telle quelle)
+static std::string fold_line(const std::string & l) {
+    std::string f = fold_word(l), out;
+    for (char c : f) {
+        if (isalnum((unsigned char) c)) out += c;
+        else if (c == ' ' && !out.empty() && out.back() != ' ') out += ' ';
+    }
+    while (!out.empty() && out.back() == ' ') out.pop_back();
+    return out.empty() ? trim(l) : out;
+}
+
+std::vector<std::string> ai_song_lines(const std::string & lyrics) {
+    std::vector<std::string> out;
+    for (const std::string & l : lines_of(lyrics)) {
+        std::string t = trim(l);
+        if (!t.empty() && t[0] != '[') out.push_back(t);
+    }
+    return out;
+}
+
+std::set<std::string> ai_known_lines(const std::vector<std::string> & lines) {
+    std::set<std::string> known;
+    for (const std::string & l : lines) known.insert(fold_line(l));
+    return known;
+}
+
+int ai_drop_repeated_lines(std::string & lyrics, std::set<std::string> & known, int chorus_keep) {
+    struct Block {
+        std::string              tag;
+        std::vector<std::string> lines;
+        bool                     had = false;  // avait des lignes chantées avant le tri
+    };
+    std::vector<Block> blocks(1);
+    for (const std::string & l : lines_of(lyrics)) {
+        std::string t = trim(l);
+        if (t.empty()) continue;
+        if (t[0] == '[') blocks.push_back({ t, {}, false });
+        else blocks.back().lines.push_back(t), blocks.back().had = true;
+    }
+    int         removed = 0;
+    std::string out;
+    for (Block & b : blocks) {
+        const std::string tag    = fold_word(b.tag);
+        const bool        repeat = tag.find("chorus") != std::string::npos || tag.find("refrain") != std::string::npos || tag.find("hook") != std::string::npos;
+        std::vector<std::string> kept;
+        for (size_t i = 0; i < b.lines.size(); i++) {
+            const std::string & l     = b.lines[i];
+            const bool          fresh = known.insert(fold_line(l)).second;
+            if (fresh || (repeat && (chorus_keep < 0 || (int) i < chorus_keep))) kept.push_back(l);
+            else removed++;
+        }
+        if (b.tag.empty() && kept.empty()) continue;
+        if (b.had && kept.empty()) continue;  // section vidée : retirée avec sa balise
+        if (!out.empty()) out += "\n\n";
+        out += b.tag;
+        for (const std::string & l : kept) out += (out.empty() ? "" : "\n") + l;
+    }
+    if (removed) lyrics = out;
+    return removed;
+}
+
 // 1.0.70 : l'IA locale s'arrête vers 50 lignes quand on lui en demande 120 : une ligne chantée dure ≈ 6,5 s, soit 5 à 6 min
 // au lieu de 9. On lui demande la suite (6 fois au plus), insérée avant la balise de fin.
-void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> & avoid, const AiAsk & ask, const std::atomic<bool> * cancel) {
+void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> & avoid, const AiAsk & ask, const std::atomic<bool> * cancel,
+                      const std::vector<std::string> & used_lines) {
+    std::set<std::string> known = ai_known_lines(used_lines);
+    for (const std::string & l : ai_song_lines(song.lyrics)) known.insert(fold_line(l));
     auto without_outro = [](std::string text) {
         size_t last = text.find_last_not_of(" \t\r\n");
         text.resize(last == std::string::npos ? 0 : last + 1);
@@ -1080,7 +1148,8 @@ void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> 
                         "\n\nThe song is not finished: write its continuation, in the same language and the same story, with about " +
                         std::to_string(std::max(30, target - have)) +
                         " more sung lines: new verses with new words, a bridge, then the chorus again. Use the same section tags. Do not write an outro. "
-                        "Do not repeat the verses above.";
+                        "Every verse line must be new: never reuse a line written above. When the chorus comes back, keep its first two lines and "
+                        "write new words for the others.";
         if (!avoid.empty()) {
             u += " Never use these words: ";
             for (size_t i = 0; i < avoid.size(); i++) u += (i ? ", " : "") + avoid[i];
@@ -1091,7 +1160,9 @@ void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> 
         if (!r.ok) return;
         int         removed = 0;
         std::string more    = ai_clean_lyrics(r.text, false, removed);
-        if (more.find('{') != std::string::npos || ai_sung_lines(more) < 4) continue;
+        if (more.find('{') != std::string::npos) continue;
+        ai_drop_repeated_lines(more, known, 2);  // 1.0.73 : lignes recopiées retirées ; la boucle redemande ce qui manque
+        if (ai_sung_lines(more) < 4) continue;
         song.lyrics = without_outro(song.lyrics) + "\n\n" + without_outro(more) + "\n\n[Outro]";
     }
 }

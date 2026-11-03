@@ -15,6 +15,7 @@
 #include <atomic>
 #include <filesystem>
 #include <functional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -152,6 +153,7 @@ struct AiRequest {
     std::vector<std::string> used_titles;
     std::string              album_context;  // phrase en anglais (album, groupe, son commun, tempo, ambiance)
     std::string              negative;       // 1.0.34 : styles à éviter (balises séparées par des virgules)
+    std::vector<std::string> used_lines;     // 1.0.73 : lignes des morceaux précédents de l'album (les dernières sont citées)
 };
 
 // Phrase résumée affichée dans l'onglet (« Créer un morceau en français inspiré par … sur le thème … »),
@@ -185,7 +187,15 @@ std::vector<std::string> ai_frequent_words(const std::vector<std::string> & text
 // Demande de réécriture quand le morceau contient des mots interdits.
 std::string ai_avoid_retry_prompt(const std::vector<std::string> & found);
 int         ai_sung_lines(const std::string & lyrics);
-void        ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> & avoid, const AiAsk & ask, const std::atomic<bool> * cancel);
+// used_lines (1.0.73) : lignes déjà écrites ailleurs (album) : jamais reprises dans la suite.
+void        ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> & avoid, const AiAsk & ask, const std::atomic<bool> * cancel,
+                             const std::vector<std::string> & used_lines = {});
+// 1.0.73 : retire des couplets, ponts… (pas des refrains) toute ligne déjà dans known ou déjà vue plus haut, puis ajoute
+// les lignes gardées à known. Une section vidée par le tri disparaît. Rend le nombre de lignes retirées.
+// chorus_keep ≥ 0 : seules les chorus_keep premières lignes d'un refrain peuvent se répéter (suite d'un morceau très long).
+int                      ai_drop_repeated_lines(std::string & lyrics, std::set<std::string> & known, int chorus_keep = -1);
+std::set<std::string>    ai_known_lines(const std::vector<std::string> & lines);
+std::vector<std::string> ai_song_lines(const std::string & lyrics);  // lignes chantées, sans balises
 constexpr int AI_LONG_LINES = 110;  // « Très longue » : mesuré 94 lignes = 8 min 01 en 3 parties, soit ≈ 5,1 s par ligne
 // 1.0.37 : titre encore fautif après la relance → demande d'un titre seul, et sa lecture (JSON {"title"} ou texte).
 std::string ai_title_retry_prompt(const std::string & old_title, const std::vector<std::string> & found, const std::vector<std::string> & avoid);

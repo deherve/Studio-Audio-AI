@@ -6193,6 +6193,10 @@ struct App {
                     std::string  nt = b.ok ? ai_parse_title(b.text) : std::string();
                     if (!nt.empty() && ai_forbidden_found(nt, avoid).empty()) job->song.title = nt;
                 }
+                if (job->song.ok && !job->instrumental) {  // 1.0.73 : couplets recopiés retirés
+                    std::set<std::string> known;
+                    ai_drop_repeated_lines(job->song.lyrics, known);
+                }
                 if (very_long)
                     ai_lengthen_song(job->song, AI_LONG_LINES, avoid, [&](const std::string & sy, const std::string & u) {
                         return job->local ? ai_local_chat(llm, model, layers, sy, u, &job->stage, &job->cancel) : ai_chat(ep, sy, u, 180000);
@@ -7001,7 +7005,7 @@ struct App {
                     job->cover_prompt = plan.cover_prompt;
                 }
                 // 2. Un morceau à la fois ; les titres déjà écrits sont transmis pour ne pas les répéter.
-                std::vector<std::string> titles;
+                std::vector<std::string> titles, album_lines;  // 1.0.73 : lignes déjà chantées dans l'album
                 for (int i = 0; i < (int) plan.tracks.size() && !job->cancel; i++) {
                     const AiTrackPlan & tp = plan.tracks[i];
                     job->current           = i + 1;
@@ -7014,6 +7018,7 @@ struct App {
                     r.title         = tp.title;
                     if (!tp.theme.empty()) r.theme = tp.theme;
                     r.used_titles   = titles;
+                    r.used_lines    = album_lines;
                     r.album_context = ai_track_context(plan, i);
                     const std::string sys = ai_system_prompt(r.instrumental), u = ai_user_prompt(r);
                     AiCallResult      a   = ask(sys, u);
@@ -7035,7 +7040,14 @@ struct App {
                         std::string  nt = b.ok ? ai_parse_title(b.text) : std::string();
                         if (!nt.empty() && ai_forbidden_found(nt, r.avoid).empty()) s.title = nt;
                     }
-                    if (r.length == 3 && !r.instrumental) ai_lengthen_song(s, AI_LONG_LINES, r.avoid, ask, &job->cancel);
+                    if (s.ok && !r.instrumental) {  // 1.0.73 : lignes déjà chantées dans l'album ou plus haut retirées
+                        std::set<std::string> known = ai_known_lines(album_lines);
+                        ai_drop_repeated_lines(s.lyrics, known);
+                    }
+                    if (r.length == 3 && !r.instrumental) ai_lengthen_song(s, AI_LONG_LINES, r.avoid, ask, &job->cancel, album_lines);
+                    if (s.ok && !r.instrumental)
+                        for (const std::string & l : ai_song_lines(s.lyrics))
+                            if (std::find(album_lines.begin(), album_lines.end(), l) == album_lines.end()) album_lines.push_back(l);
                     if (job->cancel) break;
                     std::lock_guard<std::mutex> lock(job->mutex);
                     if (!s.ok) {
@@ -12584,15 +12596,27 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 AiCallResult r;
                 r.ok   = true;
                 r.text = "[Verse]\n";
-                for (int i = 0; i < 30; i++) r.text += "suite " + std::to_string(i) + "\n";
-                r.text += "[Outro]";
+                static int call = 0;
+                for (int i = 0; i < 30; i++) r.text += "suite " + std::to_string(call * 20 + i) + "\n";  // 1.0.73 : 10 lignes recopiées par réponse
+                r.text += "[Chorus]\nrefrain un\nrefrain deux\n[Outro]";
+                call++;
                 return r;
             }, &stop);
             size_t outros = 0;
             for (size_t p = song.lyrics.find("[Outro]"); p != std::string::npos; p = song.lyrics.find("[Outro]", p + 1)) outros++;
-            const bool ok = ai_sung_lines(song.lyrics) >= 80 && outros == 1 && song.lyrics.rfind("[Outro]") + 7 == song.lyrics.size();
+            std::set<std::string> seen;
+            int                   copies = 0;
+            for (const std::string & l : ai_song_lines(song.lyrics)) copies += l.rfind("refrain", 0) != 0 && !seen.insert(l).second;
+            std::string           dup = "[Verse]\nUne Ligne.\nune ligne\nautre\n\n[Bridge]\nautre\n\n[Chorus]\nautre\nautre";
+            std::set<std::string> k0;
+            const int             dropped = ai_drop_repeated_lines(dup, k0);  // 2 retirées : ligne en double et pont vidé
+            std::string ch = "[Chorus]\nA\nB\nC\n\n[Chorus]\nA\nB\nC\nD";
+            std::set<std::string> k1;
+            const int ch_drop = ai_drop_repeated_lines(ch, k1, 2);  // 1 retirée : C repris
+            const bool ok = ch_drop == 1 && ai_sung_lines(ch) == 6 && ai_sung_lines(song.lyrics) >= 80 && outros == 1 && song.lyrics.rfind("[Outro]") + 7 == song.lyrics.size() && copies == 0 &&
+                            dropped == 2 && dup.find("[Bridge]") == std::string::npos && ai_sung_lines(dup) == 4;
             FILE * f = _wfopen(argv[2], L"wb");
-            if (f) fprintf(f, "fausse IA : %d lignes, %d [Outro] : %s\n", ai_sung_lines(song.lyrics), (int) outros, ok ? "OK" : "ECHEC");
+            if (f) fprintf(f, "fausse IA : %d lignes, %d [Outro], %d lignes recopiees, tri %d : %s\n", ai_sung_lines(song.lyrics), (int) outros, copies, dropped, ok ? "OK" : "ECHEC");
             app.local_llm = find_local_llm(app.app_dir());
             AiRequest req = app.ai_request();
             req.length       = 3;
