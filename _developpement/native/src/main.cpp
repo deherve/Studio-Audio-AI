@@ -9813,7 +9813,14 @@ struct App {
             ImGui::OpenPopup(tr("Créer des vidéos"));
             open_video = false;
         }
-        ImGui::SetNextWindowSize(ImVec2(760 * g_dpi, 0));
+        // 1.0.76 : aussi large que la fenêtre du Studio (marge de 24 px de chaque côté) ; deux colonnes à partir de 1100 px :
+        // formats et images à gauche, réglages du clip à droite
+        const ImGuiViewport * vp    = ImGui::GetMainViewport();
+        const float           win_w = std::max(760 * g_dpi, vp->WorkSize.x - 48 * g_dpi);
+        const bool            two   = win_w >= 1100 * g_dpi;
+        ImGui::SetNextWindowSize(ImVec2(win_w, 0));
+        ImGui::SetNextWindowPos(vp->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));  // suit la taille de la fenêtre du Studio
+        if (vp->WorkSize.y > 300 * g_dpi) ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, vp->WorkSize.y - 48 * g_dpi));
         if (!ImGui::BeginPopupModal(tr("Créer des vidéos"), nullptr, ImGuiWindowFlags_NoResize)) return;
         double total = 0;
         for (const Song & s : video_songs) total += s.audio_seconds;
@@ -9823,18 +9830,54 @@ struct App {
         muted_wrapped(trf("%d morceau(x) · %s", (int) video_songs.size(), fmt_time(total).c_str()) +
                       (video_songs.size() > 1 ? tr(" · une vidéo individuelle par titre et par réseau") : "") +
                       std::string(video_clip ? "." : tr(". Chaque vidéo est une image fixe avec le son en qualité maximale (AAC 320 kbit/s).")));
+        auto files_block = [&] {  // dossier de destination et noms des fichiers créés
+            ImGui::TextColored(P.muted, tr("Dossier de destination"));
+            ImGui::SameLine();
+            ImGui::TextWrapped("%s", narrow(video_dest.wstring()).c_str());  // 1.0.43 : dossier de l'album, fixe
+            ImGui::Dummy(ImVec2(0, 2 * g_dpi));
+            std::string base = safe_filename(display_title(video_songs.empty() ? video_title : video_songs[0].title));
+            for (const Song & sg : video_songs)  // exemple : un morceau qui a vraiment un clip (pas une « partie 1 »)
+                if (sg.long_rest.empty()) {
+                    base = safe_filename(display_title(sg.title));
+                    break;
+                }
+            ImGui::TextColored(P.muted, tr("Fichiers créés :"));
+            // 1.0.57 : avec le clip, les fichiers finissent par « _Clip » et aucune image n'est exigée
+            const bool  clip_names = video_clip;
+            const char * clip_end  = clip_names ? "_Clip" : "";
+            if (video_yt) ImGui::Text("  YouTube\\%s_YouTube%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_yt.empty() ? tr("   (image manquante)") : "");
+            if (video_tt) ImGui::Text("  TikTok\\%s_TikTok%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_tt.empty() ? tr("   (image manquante)") : "");
+            if (video_ig) ImGui::Text("  IG\\%s_Instagram%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_ig.empty() ? tr("   (image manquante)") : "");
+            if (video_clip && video_short) ImGui::Text("  Shorts\\%s_Short.mp4%s", base.c_str(), video_songs.size() > 1 ? " …" : "");
+        };
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
-        float col_w = 330 * g_dpi;
+        if (two) {
+            ImGui::BeginTable("##video_cols", 2, ImGuiTableFlags_BordersInnerV);
+            ImGui::TableSetupColumn("##formats", ImGuiTableColumnFlags_WidthStretch, 1.1f);
+            ImGui::TableSetupColumn("##clip", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableNextColumn();
+        }
+        // aperçus à l'échelle de la place disponible : YouTube 330 px et Instagram 186 px à l'origine ; TikTok garde la largeur de son titre (≈ 180 px) ; 2 espaces de 24 px
+        auto        head = [](const char * name, const char * fmt) {  // case + nom + format : largeur du titre d'un bloc
+            const ImGuiStyle & st = ImGui::GetStyle();
+            return ImGui::GetFrameHeight() + st.ItemInnerSpacing.x + ImGui::CalcTextSize(name).x + st.ItemSpacing.x + ImGui::CalcTextSize(fmt).x;
+        };
+        const float k = std::clamp((ImGui::GetContentRegionAvail().x - 48 * g_dpi - head("TikTok", "9:16 · 1080 × 1920") - head("Instagram", "1:1 · 1080 × 1080")) /
+                                       (330 * g_dpi), 0.6f, 1.3f);
         draw_video_network("YouTube", "16:9 · 1920 × 1080", video_yt, img_yt,
-                           video_key.empty() ? std::string() : slot_youtube(video_key), 330 * g_dpi, 186 * g_dpi);
+                           video_key.empty() ? std::string() : slot_youtube(video_key), 330 * g_dpi * k, 186 * g_dpi * k);
         ImGui::SameLine(0, 24 * g_dpi);
         draw_video_network("TikTok", "9:16 · 1080 × 1920", video_tt, img_tt,
-                           video_key.empty() ? std::string() : slot_tiktok(video_key), 105 * g_dpi, 186 * g_dpi);
+                           video_key.empty() ? std::string() : slot_tiktok(video_key), 105 * g_dpi * k, 186 * g_dpi * k);
         ImGui::SameLine(0, 24 * g_dpi);
-        draw_video_network("Instagram", "1:1 · 1080 × 1080", video_ig, img_ig, video_key, 186 * g_dpi, 186 * g_dpi);
-        (void) col_w;
+        draw_video_network("Instagram", "1:1 · 1080 × 1080", video_ig, img_ig, video_key, 186 * g_dpi * k, 186 * g_dpi * k);
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
         if (!video_key.empty()) muted_wrapped(tr("Les images choisies sont mémorisées pour cet album."));
+        if (two) {
+            ImGui::Dummy(ImVec2(0, 12 * g_dpi));
+            files_block();
+            ImGui::TableNextColumn();
+        }
 
         // 1.0.52 : clip animé
         ImGui::Checkbox(tr("Vrai clip : scénario d'après les paroles et les fiches, images par scène (IA locale), paroles en sous-titres"), &video_clip);
@@ -9847,7 +9890,7 @@ struct App {
                     if (settings.clip_style_id == styles[i].id) clip_style = i;
             }
             clip_style = std::min<int>(clip_style, (int) styles.size() - 1);
-            const float field_x = 130 * g_dpi;  // champs alignés, quelle que soit la longueur des libellés traduits
+            const float field_x = 130 * g_dpi;  // champs alignés (dans un tableau, SameLine compte déjà depuis le bord de la colonne)
             ImGui::TextColored(P.muted, "%s", tr("Type de rendu"));
             ImGui::SameLine(field_x);
             ImGui::SetNextItemWidth(330 * g_dpi);
@@ -9886,7 +9929,8 @@ struct App {
             if (video_short) {  // 1.0.75 : durée au choix ; 30 s = durée conseillée pour faire découvrir un titre (TikTok : 21 à 34 s)
                 static const int lengths[] = { 15, 30, 45, 60, 90 };
                 const int        cur       = std::clamp(atoi(settings.clip_short_seconds.c_str()), 15, 90);
-                ImGui::SameLine();
+                ImGui::TextColored(P.muted, "%s", tr("Durée du Short"));
+                ImGui::SameLine(field_x);
                 ImGui::SetNextItemWidth(200 * g_dpi);
                 if (ImGui::BeginCombo("##short_len", (std::to_string(cur) + " s" + (cur == 30 ? tr(" (conseillé)") : "")).c_str())) {
                     for (int n : lengths)
@@ -9946,31 +9990,21 @@ struct App {
             ImGui::TextColored(P.muted, "%s", tr("Texte de début"));
             ImGui::SameLine(field_x);
             ImGui::SetNextItemWidth(440 * g_dpi);
-            tx::InputTextMultiline("##clip_t1", &settings.clip_text_start, ImVec2(440 * g_dpi, 52 * g_dpi));
+            tx::InputTextMultiline("##clip_t1", &settings.clip_text_start, ImVec2(std::max(300 * g_dpi, ImGui::GetContentRegionAvail().x), 52 * g_dpi));
             if (ImGui::IsItemDeactivatedAfterEdit()) save_settings(settings, settings_path);
             ImGui::TextColored(P.muted, "%s", tr("Texte de fin"));
             ImGui::SameLine(field_x);
             ImGui::SetNextItemWidth(440 * g_dpi);
-            tx::InputTextMultiline("##clip_t2", &settings.clip_text_end, ImVec2(440 * g_dpi, 52 * g_dpi));
+            tx::InputTextMultiline("##clip_t2", &settings.clip_text_end, ImVec2(std::max(300 * g_dpi, ImGui::GetContentRegionAvail().x), 52 * g_dpi));
             if (ImGui::IsItemDeactivatedAfterEdit()) save_settings(settings, settings_path);
             muted_wrapped(tr("Exemples : « Rock Ballads Fr » au début ; « Abonnez-vous à la chaîne » à la fin (affiché pendant les 8 dernières secondes)."));
         }
         if (video_clip) muted_wrapped(tr("Fichiers « _Clip.mp4 » dans les mêmes dossiers YouTube / TikTok / IG. Paroles : fiche « paroles.txt » du morceau (modifiable) ; scénario et images dans le dossier « clip_scenes » du morceau. À lancer au repos."));
+        if (!video_clip && two) muted_wrapped(tr("Cochez « Vrai clip » pour un clip animé : scénario, images par scène, paroles en sous-titres et Shorts."));
+        if (two) ImGui::EndTable();
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
 
-        ImGui::TextColored(P.muted, tr("Dossier de destination"));
-        ImGui::SameLine();
-        ImGui::TextWrapped("%s", narrow(video_dest.wstring()).c_str());  // 1.0.43 : dossier de l'album, fixe
-        ImGui::Dummy(ImVec2(0, 2 * g_dpi));
-        std::string base = safe_filename(display_title(video_songs.empty() ? video_title : video_songs[0].title));
-        ImGui::TextColored(P.muted, tr("Fichiers créés :"));
-        // 1.0.57 : avec le clip, les fichiers finissent par « _Clip » et aucune image n'est exigée
-        const bool  clip_names = video_clip;
-        const char * clip_end  = clip_names ? "_Clip" : "";
-        if (video_yt) ImGui::Text("  YouTube\\%s_YouTube%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_yt.empty() ? tr("   (image manquante)") : "");
-        if (video_tt) ImGui::Text("  TikTok\\%s_TikTok%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_tt.empty() ? tr("   (image manquante)") : "");
-        if (video_ig) ImGui::Text("  IG\\%s_Instagram%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_ig.empty() ? tr("   (image manquante)") : "");
-        if (video_clip && video_short) ImGui::Text("  Shorts\\%s_Short.mp4%s", base.c_str(), video_songs.size() > 1 ? " …" : "");
+        if (!two) files_block();
 
         bool ok = (video_yt && !img_yt.empty()) || (video_tt && !img_tt.empty()) || (video_ig && !img_ig.empty()) ||
                   (video_clip && (video_yt || video_tt || video_ig || video_short));
