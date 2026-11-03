@@ -24,6 +24,35 @@ static std::string norm_word(const std::string & w) {
     return out;
 }
 
+double clip_short_start(const std::vector<ClipLine> & lines, double duration, double length) {
+    if (duration <= length) return 0;
+    auto chorus = [](const std::string & section) {
+        std::string s;
+        for (unsigned char c : section) s += (char) tolower(c);
+        return (s.find("chorus") != std::string::npos || s.find("refrain") != std::string::npos || s.find("hook") != std::string::npos) &&
+               s.find("pre") == std::string::npos;
+    };
+    double first = -1, pick = -1;
+    for (size_t i = 0; i < lines.size(); i++) {
+        if (!chorus(lines[i].section) || (i > 0 && lines[i - 1].section == lines[i].section)) continue;  // début d'un refrain
+        if (first < 0) first = lines[i].start;
+        if (pick < 0 && lines[i].start >= 20) pick = lines[i].start;
+    }
+    double at = pick >= 0 ? pick - 2 : first >= 0 ? first - 2 : duration * 0.35;
+    return std::clamp(at, 0.0, duration - length);
+}
+
+std::vector<ClipLine> clip_window_lines(const std::vector<ClipLine> & lines, double start, double length) {
+    std::vector<ClipLine> out;
+    for (ClipLine l : lines) {
+        if (l.end <= start || l.start >= start + length) continue;
+        l.start = std::max(0.0, l.start - start);
+        l.end   = std::min(length, l.end - start);
+        out.push_back(l);
+    }
+    return out;
+}
+
 static std::vector<std::string> split_words(const std::string & text) {
     std::vector<std::string> out;
     size_t                   i = 0;

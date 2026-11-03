@@ -88,6 +88,7 @@ bool make_clip_scenes(const SceneEngine & eng, Job & job, const Song & song, con
 struct ClipTask : VideoTask {
     fs::path    whisper_exe, whisper_model;
     std::string text_start, text_end;  // 1.0.54 : textes personnalisés de la carte de début et de la carte de fin (voir clip.hpp)
+    double      short_seconds = 0;      // 1.0.74 : > 0 = Short : extrait de cette durée centré sur le refrain (clip_short_start)
     // Scénario d'après les paroles : rempli par l'application (IA locale), appelé une fois par titre après le calage des
     // paroles. Faux ou aucune image : le clip utilise l'image du clip (la pochette) ; note = motif, affiché à la fin.
     std::function<bool(Job &, const Song &, const std::vector<ClipLine> &, double seconds, ClipScenes &, std::string & note)> make_scenes;

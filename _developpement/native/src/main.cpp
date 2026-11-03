@@ -4285,6 +4285,7 @@ struct App {
     bool              video_clip = false;  // 1.0.52 : clip animé avec paroles au lieu de l'image fixe
     int               clip_style = 0;      // 1.0.53 : type de rendu des images (index dans clip_styles())
     bool              clip_style_loaded = false;
+    bool              video_short = false;  // 1.0.74 : Short 9:16 de 30 s centré sur le refrain (dossier « Shorts »)
     bool              video_redo = false;  // 1.0.55 : refaire le scénario et les images du clip (sinon ceux déjà faits sont réutilisés)
     // 1.0.56 : par morceau de la fenêtre (id) : lignes de paroles et nombre d'images recommandé (clip_recommend_images)
     std::map<std::string, int> video_lines, video_rec;
@@ -9692,6 +9693,21 @@ struct App {
             }
         }
         video_redo = false;
+        auto clip_task = [&](const VideoTask & t) {
+            ClipTask c;
+            static_cast<VideoTask &>(c) = t;
+            c.text_start    = trim(settings.clip_text_start);
+            c.text_end      = trim(settings.clip_text_end);
+            c.whisper_exe   = studio->paths().whisper;
+            c.whisper_model = studio->paths().models_dir / "voix" / whisper_file().name;
+            if (with_scenes) {
+                c.make_scenes = [scene_engine](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out,
+                                               std::string & note) { return make_clip_scenes(scene_engine, j, sg, lines, seconds, out, note); };
+                c.make_scenario = [scene_engine](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out,
+                                                 std::string & note) { return make_clip_scenes(scene_engine, j, sg, lines, seconds, out, note, true); };
+            }
+            return c;
+        };
         for (const Net & n : { Net{ video_yt, "YouTube", L"YouTube", img_yt, 1920, 1080 },
                                Net{ video_tt, "TikTok", L"TikTok", img_tt, 1080, 1920 },
                                Net{ video_ig, "Instagram", L"Instagram", img_ig, 1080, 1080 } }) {
@@ -9717,24 +9733,28 @@ struct App {
                     if (fs::exists(t.output, ec5)) continue;
                 }
                 if (clip) {
-                    ClipTask c;
-                    static_cast<VideoTask &>(c) = t;
-                    c.text_start    = trim(settings.clip_text_start);
-                    c.text_end      = trim(settings.clip_text_end);
-                    c.whisper_exe   = studio->paths().whisper;
-                    c.whisper_model = studio->paths().models_dir / "voix" / whisper_file().name;
-                    if (with_scenes) {
-                        c.make_scenes = [scene_engine](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out,
-                                                       std::string & note) { return make_clip_scenes(scene_engine, j, sg, lines, seconds, out, note); };
-                        c.make_scenario = [scene_engine](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out,
-                                                         std::string & note) { return make_clip_scenes(scene_engine, j, sg, lines, seconds, out, note, true); };
-                    }
-                    clips.push_back(std::move(c));
+                    clips.push_back(clip_task(t));
                 } else {
                     tasks.push_back(std::move(t));
                 }
             }
         }
+        // 1.0.74 : Shorts après les clips : les images du clip sont alors déjà faites et sont reprises telles quelles
+        if (clip && video_short)
+            for (const Song & s : video_songs) {
+                if (!s.long_rest.empty()) continue;
+                VideoTask t;
+                t.song   = with_full_lyrics(s, studio->snapshot());
+                t.image  = img_tt.empty() ? img_yt : img_tt;
+                t.width  = 1080;
+                t.height = 1920;
+                t.output = video_dest / L"Shorts" / (widen(safe_filename(display_title(s.title))) + L"_Short.mp4");
+                std::error_code ec7;
+                if (skip_existing_clips && fs::exists(t.output, ec7)) continue;
+                ClipTask c      = clip_task(t);
+                c.short_seconds = 30;
+                clips.push_back(std::move(c));
+            }
         if (!clips.empty()) {
             auto job = new_job(tr("Clips — ") + video_title + " (" + std::to_string(clips.size()) + ")");
             start_clips(job, studio->paths(), std::move(clips));
@@ -9859,6 +9879,7 @@ struct App {
                 }
             }
             ImGui::Checkbox(tr("Refaire le scénario et les images (sinon ceux déjà faits sont réutilisés : montage seul, plus rapide)"), &video_redo);
+            ImGui::Checkbox(tr("Short 30 s (YouTube Shorts / TikTok, 9:16) centré sur le refrain, avec les images du clip"), &video_short);
             // 1.0.55 : nombre d'images du clip (0 = automatique : 6 à 12 selon les paroles), mémorisé dans les réglages
             // 1.0.56 : recommandation par morceau (d'après le nombre de lignes de paroles et la durée), que l'on suit ou que l'on
             // ajuste : plus (×1,5), moins (×0,5) ou un nombre fixe pour tous les morceaux
@@ -9931,9 +9952,10 @@ struct App {
         if (video_yt) ImGui::Text("  YouTube\\%s_YouTube%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_yt.empty() ? tr("   (image manquante)") : "");
         if (video_tt) ImGui::Text("  TikTok\\%s_TikTok%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_tt.empty() ? tr("   (image manquante)") : "");
         if (video_ig) ImGui::Text("  IG\\%s_Instagram%s.mp4%s%s", base.c_str(), clip_end, video_songs.size() > 1 ? " …" : "", !clip_names && img_ig.empty() ? tr("   (image manquante)") : "");
+        if (video_clip && video_short) ImGui::Text("  Shorts\\%s_Short.mp4%s", base.c_str(), video_songs.size() > 1 ? " …" : "");
 
         bool ok = (video_yt && !img_yt.empty()) || (video_tt && !img_tt.empty()) || (video_ig && !img_ig.empty()) ||
-                  (video_clip && (video_yt || video_tt || video_ig));
+                  (video_clip && (video_yt || video_tt || video_ig || video_short));
         if (modal_buttons(tr("Créer les vidéos"), ok, &P.teal)) {
             create_videos();
             ImGui::CloseCurrentPopup();
@@ -12794,7 +12816,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             t.image         = argv[3];
             t.output        = argv[5];
             t.width         = fmt == L"tiktok" ? 1080 : fmt == L"ig" ? 1080 : 1920;
-            t.height        = fmt == L"tiktok" ? 1920 : fmt == L"ig" ? 1080 : 1080;
+            t.height        = fmt == L"tiktok" || fmt == L"short" ? 1920 : fmt == L"ig" ? 1080 : 1080;
+            if (fmt == L"short") t.width = 1080, t.short_seconds = 30;  // 1.0.74 : Short de 30 s sur le refrain
             t.whisper_exe   = studio.paths().whisper;
             t.whisper_model = studio.paths().models_dir / "voix" / whisper_file().name;
             if (argc >= 7) {  // 6e paramètre : type de rendu (id de clip_styles) = scénario et images par scène

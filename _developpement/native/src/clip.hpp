@@ -84,5 +84,10 @@ bool        clip_chunk_parse(const std::string & answer, int a, int b, int m, st
 std::string clip_story_assemble(const std::string & story, const std::string & character, const std::string & style, const std::vector<SceneSpec> & raw);
 // Seconde de début de chaque scène : première ligne de la scène (0 pour la première) ; instrumental : parts égales.
 std::vector<double> clip_scene_starts(const Storyboard & sb, const std::vector<ClipLine> & lines, double duration);
+// 1.0.74 — Short : seconde de début d'un extrait de « length » secondes centré sur le refrain : premier refrain qui commence
+// après 20 s (sinon le premier), 2 s avant lui ; sans refrain (instrumental) : à 35 % du morceau. Toujours dans le morceau.
+double clip_short_start(const std::vector<ClipLine> & lines, double duration, double length);
+// Lignes de l'extrait [start, start + length], temps ramenés à 0 et coupés aux bords.
+std::vector<ClipLine> clip_window_lines(const std::vector<ClipLine> & lines, double start, double length);
 // Chemin utilisable dans « ass='…' » : barres obliques et deux-points échappés.
 std::string clip_filter_path(const std::string & path);

@@ -448,6 +448,13 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
     return true;
 }
 
+// « 1:23 » (Short : début et fin de l'extrait dans le compte rendu)
+static std::string fmt_seconds(double s) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d:%02d", (int) s / 60, (int) s % 60);
+    return buf;
+}
+
 // 1.0.52 — Atelier clip. Pour chaque titre : paroles calées sur l'audio (Whisper, mot par mot, rapprochées du texte connu),
 // sous-titres ASS, puis montage ffmpeg (plans de caméra lents sur l'image, fondus, vignette). Même contrôle final et même
 // écriture « .part » puis renommage que start_videos. Un titre instrumental n'a pas de paroles : seulement les plans.
@@ -543,6 +550,23 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
                 scenes.images = { t.image };
                 scenes.starts = { 0 };
             }
+            // 1.0.74 — Short : seulement l'extrait autour du refrain, avec les images (déjà faites) qui le couvrent
+            double from = 0;
+            if (t.short_seconds > 0 && seconds > t.short_seconds) {
+                from = clip_short_start(lines, seconds, t.short_seconds);
+                lines = clip_window_lines(lines, from, t.short_seconds);
+                ClipScenes cut;
+                for (size_t k = 0; k < scenes.images.size(); k++) {
+                    double a = k < scenes.starts.size() ? scenes.starts[k] : 0, z = k + 1 < scenes.starts.size() ? scenes.starts[k + 1] : seconds;
+                    if (z <= from || a >= from + t.short_seconds) continue;
+                    cut.images.push_back(scenes.images[k]);
+                    cut.starts.push_back(cut.starts.empty() ? 0 : a - from);
+                }
+                if (!cut.images.empty()) scenes = cut;
+                else scenes = ClipScenes{ { scenes.images[0] }, { 0 } };
+                notes += trf("Short « %s » : de %s à %s.", t.song.title.c_str(), fmt_seconds(from).c_str(), fmt_seconds(from + t.short_seconds).c_str()) + "\n";
+                seconds = t.short_seconds;
+            }
 
             // 2. sous-titres et script de filtres (chemin court 8.3 pour libass, qui n'ouvre pas les chemins accentués)
             fs::path ass = work / L"clip.ass", graph = work / L"clip.filter";
@@ -570,9 +594,12 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
             tmp += L".part";
             std::wstring inputs;
             for (const fs::path & img : scenes.images) inputs += L" -loop 1 -framerate 30 -i " + quote_arg(img.wstring());
-            std::wstring args = L"-progress pipe:1 -nostats" + inputs + L" -i " +
+            // Short : le son commence à « from », avec un fondu d'entrée et de sortie
+            std::wstring cut_in = from > 0 ? L" -ss " + std::to_wstring(from) + L" -t " + std::to_wstring(seconds) : L"";
+            std::wstring fades  = t.short_seconds > 0 ? L" -af afade=t=in:st=0:d=0.8,afade=t=out:st=" + std::to_wstring(std::max(0.0, seconds - 2)) + L":d=2" : L"";
+            std::wstring args = L"-progress pipe:1 -nostats" + inputs + cut_in + L" -i " +
                                 quote_arg(audio.wstring()) + L" -filter_complex_script " + quote_arg(graph.wstring()) +
-                                L" -map [v] -map " + std::to_wstring(scenes.images.size()) + L":a -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 320k -t " +
+                                L" -map [v] -map " + std::to_wstring(scenes.images.size()) + L":a -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -c:a aac -b:a 320k" + fades + L" -t " +
                                 std::to_wstring(seconds) + L" -movflags +faststart -f mp4 " + quote_arg(tmp.wstring());
             int code = ffmpeg(j, args, [&](const std::string & line) {
                 if (line.rfind("out_time_us=", 0) == 0) {
