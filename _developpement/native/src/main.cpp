@@ -6840,6 +6840,20 @@ struct App {
         ImGui::EndPopup();
     }
 
+    // 1.0.78 : description d'image de l'album ; sans description, une description simple (titre, groupe, son de l'album) est
+    // proposée et mémorisée, pour qu'un bouton « Générer » marche sans passer par l'onglet Pochettes.
+    std::string album_image_prompt(const std::string & key, const std::string & album, const std::string & artist) {
+        std::string & p = settings.cover_prompts[key];
+        if (trim(p).empty()) {
+            auto        snd   = settings.album_sounds.find(key);
+            std::string sound = snd != settings.album_sounds.end() ? trim(snd->second) : std::string();
+            p = "Album cover art for \"" + album + "\"" + (artist.empty() ? std::string() : " by the band " + artist) +
+                (sound.empty() ? std::string() : ", music style: " + sound) + ". Striking, atmospheric illustration, no text, no letters, no logo.";
+            save_settings(settings, settings_path);
+        }
+        return p;
+    }
+
     // Tâches d'un album : pochette 1:1 et, si demandé, images YouTube et TikTok. skip_existing : une image déjà là est gardée.
     std::vector<CoverTask> album_cover_tasks(const std::string & key, const std::string & album, const std::string & prompt, bool youtube,
                                              bool tiktok, bool skip_existing, int & skipped) {
@@ -7317,6 +7331,18 @@ struct App {
         ImGui::PushFont(g_header);
         ImGui::TextUnformatted(tr("Composer avec l'IA"));
         ImGui::PopFont();
+        // 1.0.78 : tous les champs texte de la demande remis à zéro (choix, cases et réglages gardés)
+        ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(tr("Vider les champs")).x - ImGui::GetStyle().FramePadding.x * 2);
+        ImGui::BeginDisabled(ai_local_busy() || ai_job != nullptr);
+        if (soft_button(tr("Vider les champs"), P.danger, false)) {
+            for (std::string * f : { &settings.ai_influence, &settings.ai_theme, &settings.ai_mood, &settings.ai_title, &settings.ai_extra,
+                                     &settings.ai_band, &settings.ai_album_title, &settings.ai_negative })
+                f->clear();
+            save_settings(settings, settings_path);
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", tr("Efface influence, thème, ambiance, titre, souhaits, groupe, titre de l'album et styles à éviter."));
         draw_ai_tab_inner();
     }
 
@@ -8867,7 +8893,7 @@ struct App {
     // 1.0.62 : logos des plateformes sur la ligne de titre : gris, en couleur quand le clip du morceau existe. Largeur 0 si le morceau
     // ne peut pas avoir de clip (pas terminé, ou partie 1 d'un morceau long). Fichiers cherchés comme les écrit la fenêtre « Créer des vidéos ».
     float clip_logos_width(const Song & s) const {
-        return s.status == "done" && s.long_rest.empty() ? (3 * 17 + 2 * 5) * g_dpi : 0;
+        return s.status == "done" && s.long_rest.empty() ? (4 * 17 + 3 * 5) * g_dpi : 0;  // 1.0.78 : 4e logo, les Shorts
     }
     void draw_clip_logos(const Song & s) {
         if (clip_logos_width(s) <= 0) return;
@@ -8910,6 +8936,15 @@ struct App {
             }
             if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(o, o + ImVec2(h, h)))
                 ImGui::SetTooltip("%s", (clip ? trf("%s : clip créé", NETS[i].name) : fixed ? trf("%s : vidéo fixe, pas de clip", NETS[i].name) : trf("%s : pas encore de clip", NETS[i].name)).c_str());
+        }
+        {  // 1.0.78 : Short (9:16) : rectangle vertical rouge et triangle blanc, fichier videos\Shorts\<titre>_Short.mp4
+            bool   done = cached_exists(videos / L"Shorts" / (base + L"_Short.mp4"));
+            ImVec2 o    = p0 + ImVec2(step * 3, 0);
+            auto   at   = [&](float x, float y) { return o + ImVec2(x * h, y * h); };
+            dl->AddRectFilled(at(.22f, 0), at(.78f, 1), done ? IM_COL32(255, 0, 51, 255) : grey, h * .16f);
+            dl->AddTriangleFilled(at(.40f, .34f), at(.40f, .66f), at(.66f, .50f), done ? white : hole);
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(o, o + ImVec2(h, h)))
+                ImGui::SetTooltip("%s", done ? tr("Short : créé") : tr("Short : pas encore créé"));
         }
         ImGui::Dummy(ImVec2(clip_logos_width(s), h));
     }
@@ -9306,10 +9341,13 @@ struct App {
         ImGui::PushFont(g_header);
         ImGui::TextUnformatted(tr("Bibliothèque"));
         ImGui::PopFont();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("%zu sur %zu morceaux"), shown.size(), songs.size());
         ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
-        if (shown.size() == songs.size()) ImGui::TextColored(P.muted, songs.size() > 1 ? tr("%zu morceaux") : tr("%zu morceau"), songs.size());
-        else ImGui::TextColored(P.muted, tr("%zu sur %zu morceaux"), shown.size(), songs.size());
+        const float count_x = ImGui::GetCursorPosX();
+        char        count[64];
+        if (shown.size() == songs.size()) snprintf(count, sizeof(count), songs.size() > 1 ? tr("%zu morceaux") : tr("%zu morceau"), songs.size());
+        else snprintf(count, sizeof(count), tr("%zu sur %zu morceaux"), shown.size(), songs.size());
         float folder_w = ImGui::CalcTextSize(tr("Ouvrir le dossier")).x + ImGui::GetStyle().FramePadding.x * 2;
         float albums_w = ImGui::CalcTextSize(tr("Albums…")).x + ImGui::GetStyle().FramePadding.x * 2;
         float vol_w    = 130 * g_dpi;
@@ -9320,7 +9358,15 @@ struct App {
         std::string new_label = new_mode ? std::string(tr("Arrêter les nouveaux")) : trf("Lire les nouveaux (%d)", unheard);
         float       new_w     = ImGui::CalcTextSize(new_label.c_str()).x + ImGui::GetStyle().FramePadding.x * 2 +
                           (new_mode ? ImGui::CalcTextSize(tr("Suivant")).x + ImGui::GetStyle().FramePadding.x * 2 + ImGui::GetStyle().ItemSpacing.x : 0);
-        ImGui::SameLine(ImGui::GetContentRegionMax().x - new_w - folder_w - albums_w - vol_w - label_w - ImGui::GetStyle().ItemSpacing.x * 5);
+        // 1.0.78 : le compteur n'est écrit que s'il tient avant les boutons (sinon il chevauchait « Lire les nouveaux ») ; il reste
+        // affiché au survol du titre « Bibliothèque »
+        const float buttons_x = ImGui::GetContentRegionMax().x - new_w - folder_w - albums_w - vol_w - label_w - ImGui::GetStyle().ItemSpacing.x * 5;
+        if (count_x + ImGui::CalcTextSize(count).x + ImGui::GetStyle().ItemSpacing.x <= buttons_x) {
+            ImGui::TextColored(P.muted, "%s", count);
+            ImGui::SameLine(buttons_x);
+        } else {
+            ImGui::SetCursorPosX(std::max(count_x, buttons_x));
+        }
         ImGui::BeginDisabled(!new_mode && unheard == 0);
         if (soft_button(new_label.c_str(), new_mode ? P.danger : P.green, false)) {
             if (new_mode) {
@@ -9776,6 +9822,10 @@ struct App {
     // Bloc d'un réseau dans la fenêtre vidéo : case, aperçu de l'image, choix de l'image.
     void draw_video_network(const char * label, const char * format, bool & enabled, fs::path & img, const std::string & slot,
                             float max_w, float max_h) {
+        if (img.empty() && !slot.empty()) {  // 1.0.78 : image créée entre-temps (bouton « Générer »)
+            std::string c = cover_for(slot);
+            if (!c.empty()) img = fs::path(widen(c));
+        }
         ImGui::BeginGroup();
         ImGui::Checkbox(label, &enabled);
         ImGui::SameLine();
@@ -9804,6 +9854,21 @@ struct App {
                 fs::path chosen = ask_image(wtr("Image de la vidéo").c_str());
                 if (!chosen.empty()) img = chosen;
             }
+        }
+        if (img.empty() && !slot.empty() && !video_key.empty()) {  // 1.0.78 : créer l'image manquante avec le modèle d'images
+            ImGui::SameLine();
+            ImGui::BeginDisabled(cover_job != nullptr);
+            if (soft_button(tr("Générer"), P.pink)) {
+                CoverTask t;
+                t.slot   = slot;
+                t.prompt = album_image_prompt(video_key, video_title, video_songs.empty() ? std::string() : video_songs[0].artist);
+                t.label  = video_title + " · " + label;
+                cover_size(t.slot, t.w, t.h);
+                start_covers({ t });
+            }
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", tr("Crée cette image avec le modèle d'images des Réglages, d'après la description de l'album."));
         }
         ImGui::EndGroup();
     }
@@ -10012,6 +10077,7 @@ struct App {
             create_videos();
             ImGui::CloseCurrentPopup();
         }
+        draw_cover_splash();  // 1.0.78 : images créées depuis cette fenêtre
         ImGui::EndPopup();
     }
 
@@ -10393,6 +10459,7 @@ struct App {
         }
         albums_drawn = false;
         ImGui::SetNextWindowSize(ImVec2(1080 * g_dpi, 0));  // 1.0.51 : plus large pour la ligne compacte (voyants + actions)
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));  // 1.0.78 : reste centrée (Studio agrandi, rétabli)
         if (!ImGui::BeginPopupModal(tr("Albums"), nullptr, ImGuiWindowFlags_NoResize)) return;
         albums_drawn = true;
         std::vector<Song> all    = studio->snapshot();
@@ -10471,6 +10538,7 @@ struct App {
             ImGui::EndGroup();
             float row_end = ImGui::GetCursorPosY();  // bas de la ligne (vignette ou textes)
             // Voyants : vert = fait, gris = pas encore (positions fixes : deux lignes alignées sous « Images » / « Vidéos »)
+            float pills_end = 0;  // 1.0.78 : bord droit des voyants (le bouton « Pochettes » se place après)
             {
                 float  lx = 370 * g_dpi, px = lx + 62 * g_dpi, lh = ImGui::GetTextLineHeight() + 8 * g_dpi;
                 ImVec2 tip0 = ImGui::GetCursorScreenPos();
@@ -10485,6 +10553,7 @@ struct App {
                         pill(tag, done ? P.ok : P.muted);
                         x += pill_width(tag) + 4 * g_dpi;
                     }
+                    pills_end = std::max(pills_end, x);
                 }
                 (void) tip0;
                 ImVec2 win = ImGui::GetWindowPos() - ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
@@ -10492,7 +10561,19 @@ struct App {
                     ImGui::SetTooltip("%s", trf("Pochettes %d/3 · Vidéos %d/3", imgs, vids).c_str());
             }
             // Actions courantes à droite ; Renommer, Supprimer et Ouvrir le dossier dans « … »
-            ImGui::SetCursorPos(ImVec2(ImGui::GetContentRegionMax().x - 330 * g_dpi, row_y + 14 * g_dpi));
+            const bool missing = imgs < 3;  // 1.0.78 : une pochette manque : bouton pour les créer
+            ImGui::SetCursorPos(ImVec2(missing ? std::max(pills_end + 8 * g_dpi, ImGui::GetContentRegionMax().x - 440 * g_dpi) : ImGui::GetContentRegionMax().x - 330 * g_dpi, row_y + 14 * g_dpi));
+            if (missing) {
+                ImGui::BeginDisabled(cover_job != nullptr);
+                if (soft_button(tr("Pochettes"), P.pink, false)) {
+                    int skipped = 0;
+                    start_covers(album_cover_tasks(a.key, a.album, album_image_prompt(a.key, a.album, a.artist), true, true, true, skipped));
+                }
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("%s", trf("Crée les images manquantes de l'album (%d sur 3) avec le modèle d'images des Réglages.", 3 - imgs).c_str());
+                ImGui::SameLine();
+            }
             int usable = exp_validated ? a.validated : a.done;
             ImGui::BeginDisabled(usable == 0);
             if (soft_button(tr("Exporter…"), P.green, false)) export_album(a.key, a.artist, a.album, all);
