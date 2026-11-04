@@ -10562,17 +10562,28 @@ struct App {
                     ImGui::SetTooltip("%s", trf("Pochettes %d/3 · Vidéos %d/4", imgs, vids).c_str());
             }
             // Actions courantes à droite ; Renommer, Supprimer et Ouvrir le dossier dans « … »
-            const bool missing = imgs < 3;  // 1.0.78 : une pochette manque : bouton pour les créer, au bout de la ligne « Images »
-            if (missing) {
+            // Au bout de la ligne « Images » : 1.0.78 : une pochette manque → « Pochettes » (seulement les manquantes) ;
+            // 1.0.80 : les 3 existent → « Refaire les pochettes » (les 3 formats, après confirmation « Tout remplacer »)
+            const bool missing = imgs < 3;
+            {
                 ImGui::SetCursorPos(ImVec2(img_end + 6 * g_dpi, row_y + 6 * g_dpi));
                 ImGui::BeginDisabled(cover_job != nullptr);
-                if (soft_button(tr("Pochettes"), P.pink, false)) {
-                    int skipped = 0;
-                    start_covers(album_cover_tasks(a.key, a.album, album_image_prompt(a.key, a.album, a.artist), true, true, true, skipped));
+                if (soft_button(missing ? tr("Pochettes") : tr("Refaire les pochettes"), P.pink, false)) {
+                    int               skipped = 0;
+                    const std::string prompt  = album_image_prompt(a.key, a.album, a.artist);
+                    if (missing) {
+                        start_covers(album_cover_tasks(a.key, a.album, prompt, true, true, true, skipped));
+                    } else {
+                        all_covers_tasks = album_cover_tasks(a.key, a.album, prompt, true, true, false, skipped);
+                        all_covers_key   = a.key;
+                        all_covers_label = a.album;
+                        all_covers_open  = true;  // fenêtre de confirmation : « Tout remplacer »
+                    }
                 }
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-                    ImGui::SetTooltip("%s", trf("Crée les images manquantes de l'album (%d sur 3) avec le modèle d'images des Réglages.", 3 - imgs).c_str());
+                    ImGui::SetTooltip("%s", missing ? trf("Crée les images manquantes de l'album (%d sur 3) avec le modèle d'images des Réglages.", 3 - imgs).c_str()
+                                                    : tr("Recrée la pochette 1:1 et les images YouTube 16:9 et TikTok 9:16 de l'album (après confirmation), avec le modèle d'images des Réglages et la description de l'album."));
             }
             ImGui::SetCursorPos(ImVec2(ImGui::GetContentRegionMax().x - 330 * g_dpi, row_y + 14 * g_dpi));
             int usable = exp_validated ? a.validated : a.done;
