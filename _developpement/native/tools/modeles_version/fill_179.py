@@ -14,5 +14,5 @@ for p in langues.glob("*.json"):
             i = v.rfind("/3")  # le dernier « /3 » est celui des vidéos
             s[new] = v[:i] + "/4" + v[i + 2:] if i >= 0 else v
     p.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-    print(p.name, s.get(PAIRS[0][1], "-"))
+
 print("OK")
