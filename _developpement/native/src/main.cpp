@@ -10498,11 +10498,12 @@ struct App {
             fs::path          vdir        = album_folder(a.artist, a.album) / L"videos";
             const std::string slots[3]    = { a.key, slot_youtube(a.key), slot_tiktok(a.key) };
             const char *      img_tags[3] = { "1:1", "16:9", "9:16" };
-            const wchar_t *   vid_dirs[3] = { L"YouTube", L"TikTok", L"IG" };  // sous-dossiers écrits par les vidéos (1.0.43)
-            const char *      vid_tags[3] = { "YouTube", "TikTok", "Instagram" };
-            int               imgs = 0, vids = 0, vcount[3];
-            for (int i = 0; i < 3; i++) {
-                imgs += !cover_for(slots[i]).empty();
+            // sous-dossiers écrits par les vidéos (1.0.43) ; 1.0.79 : 4e format, les Shorts (videos\Shorts)
+            const wchar_t *   vid_dirs[4] = { L"YouTube", L"TikTok", L"IG", L"Shorts" };
+            const char *      vid_tags[4] = { "YouTube", "TikTok", "Instagram", "Shorts" };
+            int               imgs = 0, vids = 0, vcount[4];
+            for (int i = 0; i < 4; i++) {
+                if (i < 3) imgs += !cover_for(slots[i]).empty();
                 vcount[i] = video_count(vdir / vid_dirs[i]);
                 vids += vcount[i] > 0;
             }
@@ -10538,7 +10539,7 @@ struct App {
             ImGui::EndGroup();
             float row_end = ImGui::GetCursorPosY();  // bas de la ligne (vignette ou textes)
             // Voyants : vert = fait, gris = pas encore (positions fixes : deux lignes alignées sous « Images » / « Vidéos »)
-            float pills_end = 0;  // 1.0.78 : bord droit des voyants (le bouton « Pochettes » se place après)
+            float img_end = 0;  // 1.0.79 : bord droit des voyants « Images » (le bouton « Pochettes » se place après)
             {
                 float  lx = 370 * g_dpi, px = lx + 62 * g_dpi, lh = ImGui::GetTextLineHeight() + 8 * g_dpi;
                 ImVec2 tip0 = ImGui::GetCursorScreenPos();
@@ -10546,24 +10547,24 @@ struct App {
                     float y = row_y + 8 * g_dpi + line * lh, x = px;
                     ImGui::SetCursorPos(ImVec2(lx, y + 1 * g_dpi));
                     ImGui::TextColored(P.muted, "%s", line == 0 ? tr("Images") : tr("Vidéos"));
-                    for (int i = 0; i < 3; i++) {
+                    for (int i = 0; i < (line == 0 ? 3 : 4); i++) {
                         const char * tag  = line == 0 ? img_tags[i] : vid_tags[i];
                         bool         done = line == 0 ? !cover_for(slots[i]).empty() : vcount[i] > 0;
                         ImGui::SetCursorPos(ImVec2(x, y));
                         pill(tag, done ? P.ok : P.muted);
                         x += pill_width(tag) + 4 * g_dpi;
                     }
-                    pills_end = std::max(pills_end, x);
+                    if (line == 0) img_end = x;
                 }
                 (void) tip0;
                 ImVec2 win = ImGui::GetWindowPos() - ImVec2(ImGui::GetScrollX(), ImGui::GetScrollY());
                 if (ImGui::IsMouseHoveringRect(win + ImVec2(lx, row_y), win + ImVec2(px + 250 * g_dpi, row_y + 8 * g_dpi + 2 * lh)))
-                    ImGui::SetTooltip("%s", trf("Pochettes %d/3 · Vidéos %d/3", imgs, vids).c_str());
+                    ImGui::SetTooltip("%s", trf("Pochettes %d/3 · Vidéos %d/4", imgs, vids).c_str());
             }
             // Actions courantes à droite ; Renommer, Supprimer et Ouvrir le dossier dans « … »
-            const bool missing = imgs < 3;  // 1.0.78 : une pochette manque : bouton pour les créer
-            ImGui::SetCursorPos(ImVec2(missing ? std::max(pills_end + 8 * g_dpi, ImGui::GetContentRegionMax().x - 440 * g_dpi) : ImGui::GetContentRegionMax().x - 330 * g_dpi, row_y + 14 * g_dpi));
+            const bool missing = imgs < 3;  // 1.0.78 : une pochette manque : bouton pour les créer, au bout de la ligne « Images »
             if (missing) {
+                ImGui::SetCursorPos(ImVec2(img_end + 6 * g_dpi, row_y + 6 * g_dpi));
                 ImGui::BeginDisabled(cover_job != nullptr);
                 if (soft_button(tr("Pochettes"), P.pink, false)) {
                     int skipped = 0;
@@ -10572,8 +10573,8 @@ struct App {
                 ImGui::EndDisabled();
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                     ImGui::SetTooltip("%s", trf("Crée les images manquantes de l'album (%d sur 3) avec le modèle d'images des Réglages.", 3 - imgs).c_str());
-                ImGui::SameLine();
             }
+            ImGui::SetCursorPos(ImVec2(ImGui::GetContentRegionMax().x - 330 * g_dpi, row_y + 14 * g_dpi));
             int usable = exp_validated ? a.validated : a.done;
             ImGui::BeginDisabled(usable == 0);
             if (soft_button(tr("Exporter…"), P.green, false)) export_album(a.key, a.artist, a.album, all);
@@ -10650,7 +10651,7 @@ struct App {
             }
             if (open) {
                 // Onglets : tous déclarés à chaque image, barre fermée, puis le contenu (règle de la 1.0.27)
-                std::string t1 = trf("Pochettes %d/3", imgs) + "###pochettes", t2 = trf("Vidéos %d/3", vids) + "###videos";
+                std::string t1 = trf("Pochettes %d/3", imgs) + "###pochettes", t2 = trf("Vidéos %d/4", vids) + "###videos";
                 if (ImGui::BeginTabBar("##onglets")) {
                     if (ImGui::BeginTabItem(t1.c_str(), nullptr, album_tab_request == 0 ? ImGuiTabItemFlags_SetSelected : 0)) {
                         album_tab = 0;
@@ -10719,7 +10720,7 @@ struct App {
                     }
                     ImGui::EndGroup();
                 } else {
-                    for (int i = 0; i < 3; i++) {
+                    for (int i = 0; i < 4; i++) {
                         ImGui::TextColored(vcount[i] > 0 ? P.ok : P.muted, "●");
                         ImGui::SameLine();
                         ImGui::TextUnformatted(vid_tags[i]);
