@@ -102,6 +102,16 @@ std::string display_title(const std::string & title);
 
 fs::path pick_folder(void * owner, const wchar_t * title);
 
+// 1.0.83 : contrôle qualité sans réécoute. Pour chaque morceau : durée loin de la cible, paroles peu entendues par Whisper,
+// silence anormal au milieu, dernière partie d'un morceau long trop courte. Rapport écrit dans report ; found = identifiant
+// et problèmes de chaque morceau à refaire (lu par l'application quand la tâche est finie).
+struct QualityFinding {
+    std::string              id, label;
+    std::vector<std::string> problems;
+};
+void start_quality(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path whisper_exe, fs::path whisper_model, fs::path report,
+                   std::shared_ptr<std::vector<QualityFinding>> found);
+
 // 1.0.57 : écrit « description.txt » pour le groupe, l'album et chaque morceau de songs (même album) avec l'IA locale (ask), en
 // langue lang. Un fichier déjà présent n'est jamais remplacé. say : appelé à chaque élément. Interrompu par cancel.
 void write_descriptions(const std::vector<Song> & songs, const std::string & lang, const AiAsk & ask,

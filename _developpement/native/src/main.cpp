@@ -9652,7 +9652,46 @@ struct App {
         was_playing = playing;
     }
 
+    // 1.0.83 : contrôle qualité (un album, ou toute la bibliothèque si key est vide)
+    std::shared_ptr<Job>                          quality_job;
+    std::shared_ptr<std::vector<QualityFinding>> quality_found;
+    void start_quality_check(const std::vector<Song> & all, const std::string & key, const std::string & label) {
+        if (quality_job && quality_job->state == 0) {
+            notify(tr("Un contrôle qualité est déjà en cours."));
+            return;
+        }
+        std::vector<Song> songs;
+        for (const Song & s : all) {
+            if (s.status != "done") continue;
+            if (!key.empty() && (s.album.empty() || album_key(s.artist, s.album) != key)) continue;
+            songs.push_back(s.long_join > 0 ? with_full_lyrics(s, all) : s);  // morceau long : paroles de toutes ses parties
+        }
+        if (songs.empty()) {
+            notify(tr("Aucun morceau terminé à contrôler."));
+            return;
+        }
+        const fs::path report = (key.empty() ? studio->paths().library : album_folder(songs[0].artist, songs[0].album)) / L"controle_qualite.txt";
+        quality_found = std::make_shared<std::vector<QualityFinding>>();
+        quality_job   = new_job(tr("Contrôle qualité — ") + label);
+        start_quality(quality_job, songs, studio->paths().whisper, studio->paths().models_dir / "voix" / whisper_file().name, report, quality_found);
+        notify(trf("Contrôle qualité lancé (%d morceau(x)) : les morceaux à refaire recevront un pouce rouge.", (int) songs.size()));
+    }
+    void update_quality() {
+        if (!quality_job || quality_job->state == 0 || !quality_found) return;
+        std::vector<QualityFinding> found;
+        {
+            std::lock_guard<std::mutex> lock(quality_job->mutex);
+            found = *quality_found;
+        }
+        quality_found.reset();
+        const std::vector<Song> all = studio->snapshot();
+        for (const QualityFinding & f : found)
+            for (const Song & s : all)
+                if (s.id == f.id && !s.validated && !s.flagged && !quality_no_flag) studio->set_flagged(s.id, true);
+    }
+
     void update_jobs() {
+        update_quality();
         for (auto & j : jobs) {
             if (j->state != 0 && !j->announced) {
                 j->announced = true;
@@ -9865,7 +9904,9 @@ struct App {
     std::vector<Song> shorts_pending;  // série en attente de confirmation
     std::string       shorts_label;
     bool              shorts_open = false;
-    bool              shorts_test = false;  // essai STUDIO_TEST_ALBUMS=shorts
+    bool              shorts_test = false;
+    std::string       quality_test;  // essai STUDIO_TEST_ALBUMS=qc:<clé>
+    bool              quality_no_flag = false;  // essai STUDIO_TEST_ALBUMS=shorts
     void draw_shorts_confirm() {
         if (shorts_open) {
             ImGui::OpenPopup(tr("Shorts en série"));
@@ -10682,16 +10723,30 @@ struct App {
         ImGui::Checkbox("MP3", &exp_mp3);
         ImGui::SameLine();
         ImGui::Checkbox("WAV", &exp_wav);
-        {  // 1.0.82 : Shorts manquants de toute la bibliothèque, en une seule file
+        {  // 1.0.82 : Shorts manquants de toute la bibliothèque, en une seule file ; 1.0.83 : contrôle qualité
             const char * lib_label = tr("Shorts manquants (bibliothèque)…");
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(lib_label).x - ImGui::GetStyle().FramePadding.x * 2);
-            const bool busy = studio->local_active() || ai_local_busy();
+            const char * qc_label  = tr("Contrôle qualité (bibliothèque)");
+            const float  pad       = ImGui::GetStyle().FramePadding.x * 2;
+            const bool   busy      = studio->local_active() || ai_local_busy();
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(lib_label).x - ImGui::CalcTextSize(qc_label).x - pad * 2 -
+                            ImGui::GetStyle().ItemSpacing.x);
+            ImGui::BeginDisabled(busy);
+            if (soft_button(qc_label, P.amber, false)) start_quality_check(all, std::string(), tr("Toute la bibliothèque"));
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", busy ? tr("Le contrôle se fait au repos : attendez la fin de la génération en cours.")
+                                             : tr("Sans réécoute : durée, paroles chantées (Whisper), silences anormaux, partie trop courte. Les morceaux à refaire reçoivent un pouce rouge ; rapport « controle_qualite.txt »."));
+            ImGui::SameLine();
             ImGui::BeginDisabled(busy);
             if (soft_button(lib_label, P.teal, false)) ask_missing_shorts(all, std::string(), tr("Toute la bibliothèque"));
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                 ImGui::SetTooltip("%s", busy ? tr("Les images des clips se font au repos : attendez la fin de la génération en cours.")
                                              : tr("Crée un Short pour chaque morceau terminé qui n'en a pas encore, dans tous les albums."));
+        }
+        if (!quality_test.empty() && !all.empty()) {
+            start_quality_check(all, quality_test, quality_test);
+            quality_test.clear();
         }
         if (shorts_test && !all.empty()) {  // essai : bibliothèque lue
             shorts_test = false;
@@ -10861,6 +10916,8 @@ struct App {
                     ImGui::SetTooltip("%s", tr("Un morceau de cet album est en cours de génération."));
                 if (ImGui::MenuItem(tr("Ouvrir le dossier de l'album")))
                     ShellExecuteW(nullptr, L"open", album_folder(a.artist, a.album).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                if (ImGui::MenuItem(tr("Contrôle qualité de l'album"), nullptr, false, !ai_local_busy() && !studio->local_active()))
+                    start_quality_check(all, a.key, a.album);  // 1.0.83
                 if (ImGui::MenuItem(tr("Shorts manquants de l'album…"), nullptr, false, !ai_local_busy() && !studio->local_active()))
                     ask_missing_shorts(all, a.key, a.album);  // 1.0.82
                 if (ImGui::MenuItem(tr("Rédiger les descriptions (IA locale)"), nullptr, false, !ai_local_busy() && !studio->local_active()))
@@ -12035,6 +12092,12 @@ struct App {
                 open_video_dialog(album_songs(all, key, false), name, key);
                 video_clip = true;
                 video_short = true;  // 1.0.75 : liste des durées visible sur la capture
+                return true;
+            }
+            if (s.rfind("qc:", 0) == 0) {  // 1.0.83 : contrôle qualité d'un album
+                quality_test    = s.substr(3);
+                quality_no_flag = true;  // essai : les pouces de l'utilisateur ne sont pas touchés
+                open_albums  = true;
                 return true;
             }
             if (s == "shorts") {  // 1.0.82 : fenêtre de confirmation des Shorts manquants de toute la bibliothèque

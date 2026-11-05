@@ -765,3 +765,122 @@ void write_descriptions(const std::vector<Song> & songs, const std::string & lan
         one(song_folder(s.id) / L"description.txt", title, user);
     }
 }
+
+
+// ---- 1.0.83 : contrôle qualité
+void start_quality(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path whisper_exe, fs::path whisper_model, fs::path report,
+                   std::shared_ptr<std::vector<QualityFinding>> found) {
+    job->thread = std::thread([=]() mutable {
+        Job &              j = *job;
+        std::error_code    ec;
+        const bool         with_whisper = !whisper_exe.empty() && fs::exists(whisper_exe, ec) && fs::exists(whisper_model, ec);
+        const fs::path     work         = fs::temp_directory_path() / L"studio_controle_qualite";
+        fs::create_directories(work, ec);
+        std::ostringstream out;
+        int                checked = 0;
+        for (size_t i = 0; i < songs.size() && !j.cancel; i++) {
+            const Song & s = songs[i];
+            j.total        = (int) songs.size();
+            j.item         = (int) i + 1;
+            j.progress     = (float) i / songs.size();
+            const std::string label = (s.artist.empty() ? std::string() : s.artist + " — ") + display_title(s.title);
+            {
+                std::lock_guard<std::mutex> lock(j.mutex);
+                j.message = label;
+            }
+            QualityFinding f{ s.id, label, {} };
+            const fs::path dir   = song_folder(s.id);
+            fs::path       audio = dir / "audio.flac";
+            if (!fs::exists(audio, ec)) audio = dir / "audio.wav";
+            const double seconds = fs::exists(audio, ec) ? media_duration(audio) : 0;
+            if (seconds <= 0) {
+                f.problems.push_back(tr("audio introuvable ou illisible"));
+            } else {
+                // 1. dernière partie d'un morceau long : le moteur a conclu juste après la reprise
+                if (s.long_join > 0) {
+                    const double part  = fs::exists(dir / "partie2_seule.wav", ec) ? media_duration(dir / "partie2_seule.wav") : 0;
+                    const double added = part - s.long_join;
+                    if (part > 0 && added < 40)
+                        f.problems.push_back(trf("dernière partie trop courte : %d s ajoutées après le raccord", (int) std::max(0.0, added)));
+                }
+                // 2. durée loin de la cible (morceau seul ; un morceau long est jugé sur sa dernière partie)
+                if (s.long_join <= 0 && s.long_rest.empty()) {
+                    const double target = s.auto_duration ? s.expected_seconds : s.duration;
+                    const double ratio  = s.auto_duration ? 0.6 : 0.75;
+                    if (target > 0 && seconds < target * ratio)
+                        f.problems.push_back(trf("durée %s pour %s attendues", fmt_seconds(seconds).c_str(), fmt_seconds(target).c_str()));
+                }
+                // 3. silence de 5 s ou plus au milieu (ni les 2 premières secondes, ni les 10 dernières)
+                if (s.long_rest.empty()) {
+                    double                   start = -1;
+                    std::vector<std::string> gaps;
+                    ffmpeg(j, L"-v info -i " + quote_arg(audio.wstring()) + L" -af silencedetect=noise=-45dB:d=5 -f null -", [&](const std::string & line) {
+                        size_t a = line.find("silence_start: "), b = line.find("silence_end: ");
+                        if (a != std::string::npos) start = atof(line.c_str() + a + 15);
+                        if (b != std::string::npos && start >= 0) {
+                            const double end = atof(line.c_str() + b + 13);
+                            if (end > 2 && start < seconds - 10 && gaps.size() < 3)
+                                gaps.push_back(trf("silence de %d s à %s", (int) (end - start + 0.5), fmt_seconds(start).c_str()));
+                            start = -1;
+                        }
+                    });
+                    if (start >= 0 && start < seconds - 10)  // silence qui dure jusqu'à la fin
+                        gaps.push_back(trf("silence de %d s à %s", (int) (seconds - start + 0.5), fmt_seconds(start).c_str()));
+                    for (auto & g : gaps) f.problems.push_back(g);
+                }
+                // 4. paroles chantées : part des mots du texte retrouvés par Whisper, puis fin du texte entendue
+                if (s.long_rest.empty() && !s.instrumental && with_whisper && !j.cancel) {
+                    std::string   text = s.lyrics;
+                    std::ifstream pf(dir / L"paroles.txt", std::ios::binary);
+                    if (pf) text.assign((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+                    std::vector<ClipLine> lines = clip_lyrics_lines(text);
+                    if (lines.size() >= 4) {
+                        fs::path wav = work / L"voix.wav", base = work / L"mots";
+                        fs::remove(base.wstring() + L".json", ec);
+                        if (ffmpeg(j, L"-i " + quote_arg(audio.wstring()) + L" -vn -ac 1 -ar 16000 " + quote_arg(wav.wstring())) == 0 && !j.cancel) {
+                            std::wstring lang = s.lyrics_lang.empty() ? L"auto" : widen(s.lyrics_lang);
+                            run_command(quote_arg(whisper_exe.wstring()) + L" -m " + quote_arg(whisper_model.wstring()) + L" -f " + quote_arg(wav.wstring()) +
+                                            L" -l " + lang + L" -ml 1 -sow -mc 0 -oj -np -of " + quote_arg(base.wstring()),
+                                        nullptr, [&j](void * h) { j.proc = h; });
+                            std::ifstream wf(base.wstring() + L".json", std::ios::binary);
+                            std::string   json((std::istreambuf_iterator<char>(wf)), std::istreambuf_iterator<char>());
+                            const std::vector<ClipWord> heard = clip_parse_words(json);
+                            if (!j.cancel && !json.empty()) {
+                                // texte entier, puis son dernier quart seul : un morceau qui conclut avant la fin du texte
+                                const double          all = clip_align(lines, heard, seconds);
+                                std::vector<ClipLine> tail(lines.end() - lines.size() / 4, lines.end());
+                                const double          end = clip_align(tail, heard, seconds);
+                                if (all < 0.5) f.problems.push_back(trf("paroles peu reconnues : %d %% des mots entendus", (int) (all * 100 + 0.5)));
+                                else if (end < 0.3)
+                                    f.problems.push_back(trf("fin des paroles non chantée : %d %% des mots du dernier quart entendus", (int) (end * 100 + 0.5)));
+                            }
+                        }
+                    }
+                }
+            }
+            checked++;
+            if (!f.problems.empty()) {
+                out << label << "\n";
+                for (const std::string & p : f.problems) out << "  - " << p << "\n";
+                std::lock_guard<std::mutex> lock(j.mutex);
+                found->push_back(f);
+            }
+        }
+        fs::remove_all(work, ec);
+        size_t bad = 0;
+        {
+            std::lock_guard<std::mutex> lock(j.mutex);
+            bad = found->size();
+        }
+        std::string head = trf("%d morceau(x) contrôlé(s), %d à refaire.", checked, (int) bad);
+        if (!with_whisper) head += " " + std::string(tr("Paroles non vérifiées : modèle Whisper absent."));
+        fs::create_directories(report.parent_path(), ec);
+        {
+            std::ofstream r(report, std::ios::binary);
+            r << head << "\n\n" << out.str();
+        }
+        j.progress = 1;
+        if (j.cancel) finish_job(j, false, trf("Contrôle qualité arrêté (%d morceau(x) contrôlé(s)).", checked), report);
+        else finish_job(j, true, head, report);
+    });
+}
