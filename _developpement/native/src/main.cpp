@@ -2,6 +2,7 @@
 #define IMGUI_DEFINE_MATH_OPERATORS
 #include <windows.h>
 #include <commdlg.h>
+#include <wincrypt.h>  // 1.0.92 : décodage base 64 des fichiers envoyés par l'Atelier partition
 #include <d3d11.h>
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -9404,7 +9405,7 @@ struct App {
     // proposé pour les exports (dossier du morceau, sinon vide).
     fs::path atelier_dir;
     double   atelier_ready_at = 0;  // page de l'atelier prête (essai PDF)
-    bool     atelier_pdf_done = false;
+    bool     atelier_pdf_done = false, atelier_export_done = false;
     void open_atelier(const std::string & abc, const std::string & title, const std::string & subtitle, const std::string & name, const fs::path & dir) {
         if (atelier_runtime_version().empty()) {
             notify(tr("L'Atelier partition a besoin du moteur Microsoft Edge WebView2 (fourni avec Windows 10 et 11). Installez « WebView2 Runtime » depuis le site de Microsoft."));
@@ -9424,7 +9425,12 @@ struct App {
         yyjson_mut_obj_add_strcpy(doc, o, "subtitle", subtitle.c_str());
         yyjson_mut_obj_add_strcpy(doc, o, "info", info.c_str());
         yyjson_mut_obj_add_strcpy(doc, o, "name", name.c_str());
+        yyjson_mut_obj_add_strcpy(doc, o, "composer", subtitle.substr(0, subtitle.find(" — ")).c_str());  // 1.0.92 : auteur du MusicXML
         yyjson_mut_val * t = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, t, "export_error", tr("Export impossible :"));
+        yyjson_mut_obj_add_strcpy(doc, t, "midi_tip", tr("Fichier MIDI : les notes et le tempo, pour un logiciel de musique ou un clavier."));
+        yyjson_mut_obj_add_strcpy(doc, t, "xml_tip", tr("Fichier MusicXML : la partition complète (notes, mesures, accords) pour MuseScore, Finale, Sibelius, Dorico…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "abc_tip", tr("Fichier ABC : la partition au format texte du moteur YuE2."));
         yyjson_mut_obj_add_strcpy(doc, t, "print", tr("Imprimer…"));
         yyjson_mut_obj_add_strcpy(doc, t, "pdf", tr("Exporter en PDF…"));
         yyjson_mut_obj_add_strcpy(doc, t, "zoom_in", tr("Agrandir"));
@@ -9437,16 +9443,7 @@ struct App {
         free(json);
         yyjson_mut_doc_free(doc);
         AtelierCallbacks cb;
-        cb.on_message = [this](const std::string & m) {
-            if (m.find("\"type\":\"pdf\"") != std::string::npos) {  // export PDF demandé par la page
-                std::string name = "partition";
-                const size_t p = m.find("\"name\":\"");
-                if (p != std::string::npos) name = m.substr(p + 8, m.find('"', p + 8) - p - 8);
-                const fs::path path = ask_pdf_path(name);
-                if (path.empty()) atelier_post("{\"type\":\"pdf_done\"}");  // annulé : la page reprend l'affichage normal
-                else if (!atelier_print_pdf(path.wstring())) notify(tr("Export PDF impossible."));
-            }
-        };
+        cb.on_message = [this](const std::string & m) { atelier_message(m); };
         cb.on_pdf = [this](bool ok, const std::wstring & path) {
             notify(ok ? trf("Partition enregistrée en PDF : %s", narrow(path).c_str()) : std::string(tr("Export PDF impossible.")));
             atelier_post("{\"type\":\"pdf_done\"}");  // la page reprend l'affichage normal
@@ -9456,19 +9453,56 @@ struct App {
                           (studio->paths().cache / L"webview2").wstring(), msg, cb))
             notify(tr("Impossible d'ouvrir l'Atelier partition."));
     }
-    fs::path ask_pdf_path(const std::string & name) {
-        std::wstring  def            = widen(safe_filename(name) + ".pdf");
+    // Messages de la page de l'atelier (JSON) : « pdf » (export PDF fait par WebView2), « save » (fichier fourni par la page :
+    // MIDI en base 64, MusicXML ou ABC en texte), enregistré où l'utilisateur le choisit.
+    void atelier_message(const std::string & m) {
+        yyjson_doc * doc = yyjson_read(m.data(), m.size(), 0);
+        if (!doc) return;
+        yyjson_val * root = yyjson_doc_get_root(doc);
+        auto         str  = [&](const char * k) { const char * v = yyjson_get_str(yyjson_obj_get(root, k)); return std::string(v ? v : ""); };
+        const std::string type = str("type"), name = str("name").empty() ? std::string("partition") : str("name");
+        if (type == "pdf") {
+            const fs::path path = ask_export_path(name, "pdf");
+            if (path.empty()) atelier_post("{\"type\":\"pdf_done\"}");  // annulé : la page reprend l'affichage normal
+            else if (!atelier_print_pdf(path.wstring())) notify(tr("Export PDF impossible."));
+        } else if (type == "save") {
+            const std::string ext = str("ext"), data = str("data");
+            const bool        b64 = yyjson_get_bool(yyjson_obj_get(root, "base64"));
+            std::string       bytes = data;
+            if (b64) {  // décodage base 64 (crypt32)
+                DWORD n = 0;
+                CryptStringToBinaryA(data.c_str(), (DWORD) data.size(), CRYPT_STRING_BASE64, nullptr, &n, nullptr, nullptr);
+                bytes.assign(n, '\0');
+                if (!n || !CryptStringToBinaryA(data.c_str(), (DWORD) data.size(), CRYPT_STRING_BASE64, (BYTE *) bytes.data(), &n, nullptr, nullptr)) bytes.clear();
+            }
+            fs::path path;
+            if (const char * dir = getenv("STUDIO_TEST_EXPORT_DIR")) path = fs::path(widen(dir)) / widen(safe_filename(name) + "." + ext);  // essai sans clic
+            else if (!bytes.empty()) path = ask_export_path(name, ext);
+            if (!path.empty()) {
+                std::ofstream out(path, std::ios::binary);
+                out.write(bytes.data(), (std::streamsize) bytes.size());
+                notify(out ? trf("Partition enregistrée : %s", narrow(path.wstring()).c_str()) : std::string(tr("Enregistrement impossible.")));
+            } else if (bytes.empty()) {
+                notify(tr("Export impossible : fichier vide."));
+            }
+        }
+        yyjson_doc_free(doc);
+    }
+    fs::path ask_export_path(const std::string & name, const std::string & ext) {
+        std::wstring  wext           = widen(ext);
+        std::wstring  def            = widen(safe_filename(name) + "." + ext);
         wchar_t       file[MAX_PATH] = {};
         wcsncpy_s(file, def.c_str(), _TRUNCATE);
-        std::wstring  filter = std::wstring(L"PDF (*.pdf)") + L'\0' + L"*.pdf" + L'\0' + L'\0';
-        std::wstring  title  = wtr("Exporter la partition en PDF");
+        const std::string label = ext == "pdf" ? "PDF" : ext == "mid" ? "MIDI" : ext == "musicxml" ? "MusicXML" : "ABC";
+        std::wstring  filter = widen(label) + L" (*." + wext + L")" + L'\0' + L"*." + wext + L'\0' + L'\0';
+        std::wstring  title  = ext == "pdf" ? wtr("Exporter la partition en PDF") : wtr("Exporter la partition");
         std::wstring  dir    = atelier_dir.wstring();
         OPENFILENAMEW ofn{ sizeof(ofn) };
         ofn.hwndOwner       = nullptr;
         ofn.lpstrFilter     = filter.c_str();
         ofn.lpstrFile       = file;
         ofn.nMaxFile        = MAX_PATH;
-        ofn.lpstrDefExt     = L"pdf";
+        ofn.lpstrDefExt     = wext.c_str();
         ofn.lpstrTitle      = title.c_str();
         ofn.lpstrInitialDir = dir.empty() ? nullptr : dir.c_str();
         ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
@@ -12662,6 +12696,10 @@ struct App {
                 atelier_post("{\"type\":\"print_layout\"}");
                 atelier_print_pdf(widen(pdf));
             }
+        if (getenv("STUDIO_TEST_EXPORT_DIR") && !atelier_export_done && atelier_ready_at > 0 && ImGui::GetTime() - atelier_ready_at > 4) {
+            atelier_export_done = true;  // essai 1.0.92 : MIDI, MusicXML et ABC écrits dans ce dossier
+            atelier_post("{\"type\":\"test_export\"}");
+        }
         if (!atelier_test_done) {  // 1.0.91 : STUDIO_TEST_ATELIER=<titre> ouvre l'Atelier partition sur la partition de ce morceau
             const char * v = getenv("STUDIO_TEST_ATELIER");
             if (!v) atelier_test_done = true;
