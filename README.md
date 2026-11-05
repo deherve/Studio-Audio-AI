@@ -1,8 +1,8 @@
+![Studio Audio AI](presentation.png)
+
 # Studio Audio AI
 
 **[English](#english) · [Français](#français)**
-
-![Studio Audio AI](ressources/aide/img/en/principal.jpg)
 
 ---
 
@@ -41,6 +41,8 @@
 - Interface in 10 languages (English, French, Spanish, Italian, German, Portuguese, Japanese, Korean, Mandarin, Cantonese) and 4 themes.
 
 ### Screenshots
+
+![Studio Audio AI](ressources/aide/img/en/principal.jpg)
 
 | | |
 |---|---|
