@@ -1,4 +1,4 @@
-# Studio Audio AI (1.0.84)
+# Studio Audio AI (1.0.85)
 
 Générateur de chansons local basé sur **YuE2-3B** (moteur `yue2.cpp`, Vulkan). Application Windows native : pas de navigateur, pas de serveur, tout reste sur votre PC.
 
@@ -56,7 +56,7 @@ Les versions précédentes rangeaient ces éléments à la racine du dossier : i
 ## Utilisation
 **Créer un morceau** : titre, style (balises en anglais séparées par des virgules, boutons par catégories : Genres, Ambiance, Voix, Instruments, Son ; environ 335 balises tirées du vocabulaire de la famille YuE, et le champ accepte aussi du texte libre ; langues : anglais, français, espagnol, italien, allemand, portugais, japonais, coréen, mandarin, cantonais), paroles avec sections `[Verse]`, `[Chorus]`… Le bouton de génération reste grisé tant que titre et style sont vides. Mode **instrumental** (sans paroles, LoRA dédiée), langue (anglais, français, espagnol, italien), durée maximale (180 s par défaut), 1 à 3 versions, graine aléatoire ou fixe.
 
-**Adapter un prompt Suno** : collez titre, style et paroles dans le formulaire, puis « Adapter au format YuE2 » convertit un prompt de style Suno (titre, groupe, album, style en français, sections) en style et paroles YuE2. 42 profils d'influence (chanteur + musiciens) peuvent être ajoutés au style. Boutons « Vider » pour chaque champ.
+**Adapter un prompt Suno** : collez titre, style et paroles dans le formulaire, puis « Adapter au format YuE2 » convertit un prompt de style Suno (titre, groupe, album, style en français, sections) en style et paroles YuE2. 42 profils d'influence (le son d'un genre ou d'un groupe, sans nom de musicien) peuvent être ajoutés au style. Boutons « Vider » pour chaque champ.
 
 **Blocs repliables et morceaux neufs** :
 - Les blocs Morceau, Style, Paroles/Structure, LoRA et Génération se replient d'un clic sur leur titre (flèche ▾ / ▸) ; replié, un bloc affiche un résumé de son contenu. L'état est mémorisé. Dans le bloc Génération, les boutons « Générer… » et « Ajouter en pause » restent visibles sur une même ligne, même replié.

@@ -2,7 +2,7 @@
 # en distribution\StudioAudioAI-<version>.zip. Le dossier cible est entièrement vidé avant chaque construction.
 # Usage : powershell -ExecutionPolicy Bypass -File native\make_distribution.ps1 [-NoZip]
 #
-# MODÈLE DE RÉFÉRENCE (1.0.31) : C:\Users\deher\Downloads\test_livrable\StudioYuE2 (dossier de Herve, nom inchangé), paramétré par Herve le 23/10/2026.
+# MODÈLE DE RÉFÉRENCE (1.0.31) : une copie du livrable paramétrée à la main, gardée hors du dépôt.
 # Tout réglage qu'il y fait devient une valeur par défaut du code (struct Settings de main.cpp) : on ne livre JAMAIS de
 # fichier de réglages (donnees\ est créé au premier lancement chez chaque utilisateur). Ne pas modifier ce dossier de
 # référence ; les essais se font ailleurs (Downloads\test_livrable_verif).

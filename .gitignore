@@ -3,7 +3,6 @@
 !/.gitignore
 !/.gitmodules
 !/README.md
-!/CLAUDE.md
 !/ressources/
 !/_developpement/
 
@@ -12,6 +11,11 @@
 !/_developpement/patches/
 !/_developpement/*.cmd
 !/_developpement/*.md
+# Notes de travail internes : restent sur le PC (nettoyage du dépôt public, 5/11/2026)
+/_developpement/CONTEXTE_PROJET_StudioYuE2.md
+/_developpement/SUITE_ATELIER_CLIP.md
+/_developpement/IDEES_YuE2-Studio.md
+/_developpement/ATELIER_CLIP.md
 
 # Fabriqué ou trop lourd
 /_developpement/native/build/

@@ -1285,7 +1285,7 @@ AiAlbumPlan ai_parse_album_plan(const std::string & raw, const AiAlbumRequest & 
     if (!r.band.empty()) plan.band = r.band;
     if (!r.album.empty()) plan.album = r.album;
     if (!trim(r.sound).empty()) plan.sound = trim(r.sound);  // 1.0.47 : son de l'album ou du groupe gardé tel quel
-    if (plan.band.empty()) plan.band = r.influence.empty() ? "Studio Audio AI" : r.influence + " Tribute";
+    if (plan.band.empty()) plan.band = "Studio Audio AI";  // 1.0.85 : jamais un nom réel
     if (plan.album.empty()) plan.album = plan.band;
     if ((int) plan.tracks.size() > n) plan.tracks.resize(n);
     while ((int) plan.tracks.size() < n) plan.tracks.push_back(AiTrackPlan{});

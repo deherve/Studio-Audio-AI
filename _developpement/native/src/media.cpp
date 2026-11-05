@@ -654,7 +654,7 @@ fs::path pick_folder(void * owner, const wchar_t * title) {
 
 // ---- 1.0.57 : descriptions rédigées par l'IA locale
 
-// Les styles citent de vrais artistes (« Jerry Cantrell fuzz solo ») et des réglages (« 105 BPM ») : seuls les genres sont
+// Les styles citent de vrais artistes (« <guitariste> fuzz solo ») et des réglages (« 105 BPM ») : seuls les genres sont
 // montrés à l'IA. Une balise est gardée si elle contient un mot de genre, sans chiffre ni autre mot à majuscule (un nom propre).
 static bool is_genre_word(const std::string & w) {
     std::string low = w;
