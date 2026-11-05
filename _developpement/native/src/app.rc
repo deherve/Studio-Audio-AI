@@ -12,7 +12,6 @@ BEGIN
     BEGIN
         BLOCK "040C04B0"
         BEGIN
-            VALUE "CompanyName", "Herve"
             VALUE "FileDescription", APP_NAME
             VALUE "ProductName", APP_NAME
             VALUE "FileVersion", STUDIO_VERSION

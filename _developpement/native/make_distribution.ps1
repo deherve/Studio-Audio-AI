@@ -99,6 +99,7 @@ Copy-Item "$fixed\modeles\*" "$dist\modeles" -Recurse -Force
 if (Test-Path "$fixed\Audios") { Copy-Item "$fixed\Audios\*" "$dist\Audios" -Recurse -Force }
 Copy-Item "$fixed\LICENSES\*" "$dist\LICENSES" -Force
 Copy-Item "$dev\yue2.cpp\LICENSE" "$dist\LICENSES\yue2.cpp-MIT.txt" -Force
+Copy-Item "$root\LICENSE" "$dist\LICENSES\StudioAudioAI-MIT.txt" -Force  # 1.0.86 : code du Studio sous MIT
 Copy-Item "$dev\native\third_party\imgui\LICENSE.txt" "$dist\LICENSES\DearImGui-MIT.txt" -Force
 Copy-Item "$root\outils\whisper\LICENSE-whisper.cpp.txt" "$dist\LICENSES\whisper.cpp-MIT.txt" -Force
 Copy-Item "$dev\native\third_party\onnxruntime\LICENSE" "$dist\LICENSES\ONNXRuntime-MIT.txt" -Force

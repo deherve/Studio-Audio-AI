@@ -95,7 +95,7 @@ Built with C++20, Win32, DirectX 11 and [Dear ImGui](https://github.com/ocornut/
 | FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image (covers) | Apache 2.0 |
 | ffmpeg (distribution build) | GPL v3 |
 
-The component licences shipped with the program are in the `LICENSES` folder of the zip. No licence has yet been chosen for the source code of Studio Audio AI itself: until a `LICENSE` file is added, all rights are reserved.
+The component licences shipped with the program are in the `LICENSES` folder of the zip. The source code of Studio Audio AI itself is released under the **MIT licence** (see [LICENSE](LICENSE)); this does not change the licences of the models.
 
 Models are downloaded from their official Hugging Face pages; check each model's licence before any public or commercial use of your creations.
 
@@ -192,6 +192,6 @@ Puis lancer `_developpement/build_studio_natif.cmd`, et `_developpement/native/m
 | FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image (pochettes) | Apache 2.0 |
 | ffmpeg (version livrée) | GPL v3 |
 
-Les licences des composants livrés sont dans le dossier `LICENSES` du zip. Aucune licence n'a encore été choisie pour le code source de Studio Audio AI lui-même : tant qu'aucun fichier `LICENSE` n'est ajouté, tous droits réservés.
+Les licences des composants livrés sont dans le dossier `LICENSES` du zip. Le code source de Studio Audio AI lui-même est publié sous **licence MIT** (voir [LICENSE](LICENSE)) ; cela ne change pas les licences des modèles.
 
 Les modèles sont téléchargés depuis leurs pages officielles sur Hugging Face ; vérifiez la licence de chaque modèle avant toute utilisation publique ou commerciale de vos créations.
