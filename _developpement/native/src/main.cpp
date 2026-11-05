@@ -575,6 +575,7 @@ static const char * INST_TAGS[] = { "[intro]", "[verse]", "[pre-chorus]", "[chor
 static const char * COT_LABELS[] = { N_("Complet (mélodie + accords)"), N_("Mélodie seule"), N_("Sans partition (plus rapide)") };
 static const char * COT_VALUES[] = { "full", "melody", "off" };
 static const int    COT_FASTEST  = 2;
+static const int    COT_DEFAULT  = 0;  // 1.0.87 : « Complet » par défaut (choix de Herve 5/11 : tonalité et tempo suivis, ≈ +28 % de temps)
 
 // Structures courantes (formes pop, AABA, strophique, build/drop…), en balises comprises par le modèle.
 struct Structure {
@@ -681,7 +682,7 @@ struct Form {
     bool        auto_duration = true;  // le modèle conclut seul ; plafond calculé
     bool        long_track    = false; // 1.0.48 : morceau long en 2 parties enchaînées (prototype)
     bool        fade_structure = false;  // fin en fondu sur la dernière section de la structure
-    int         engine = 0, cot = COT_FASTEST, duration = 180, versions = 1, language = 0;
+    int         engine = 0, cot = COT_DEFAULT, duration = 180, versions = 1, language = 0;
     int64_t     seed = -1;
     fs::path    cover;  // fichier audio source d'une reprise
     double      cover_seconds = 0;
@@ -693,7 +694,7 @@ struct Form {
 
 static void set_mode(Form & f, bool instrumental) {
     f.instrumental = instrumental;
-    f.cot          = f.cover.empty() ? COT_FASTEST : (instrumental ? 0 : 1);
+    f.cot          = f.cover.empty() ? COT_DEFAULT : (instrumental ? 0 : 1);
     f.cursor       = -1;
     f.dirty        = true;
 }
@@ -5396,7 +5397,7 @@ struct App {
             if (ImGui::SmallButton(tr("Retirer"))) {
                 f.cover.clear();
                 f.cover_seconds = 0;
-                f.cot           = COT_FASTEST;
+                f.cot           = COT_DEFAULT;
                 if (analysis) analysis->cancel = true;
                 analysis.reset();
             }
@@ -8697,6 +8698,11 @@ struct App {
             if (s.has_used_seeds) stat_copyable(tr("Graine"), std::to_string(s.used_lm_seed), "seed_" + s.id);
             stat(tr("Modèle"), model_label(s.model));
             if (!s.solver.empty()) stat(tr("Solveur"), solver_label(s.solver));
+            {  // 1.0.87 : partition écrite par le modèle
+                const ScoreInfo & sc = score_info(s);
+                if (!sc.key.empty() || sc.tempo > 0)
+                    stat(tr("Partition"), key_name(sc.key) + (sc.tempo > 0 ? " · " + std::to_string(sc.tempo) + " BPM" : std::string()));
+            }
             if (!s.adapters.empty()) {
                 std::string names;
                 for (const auto & [file, scale] : s.adapters) {
@@ -9016,6 +9022,15 @@ struct App {
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                 ImGui::SetTooltip("%s", tr("Même composition, nouvelle synthèse audio (timbre et mixage différents)."));
+            {  // 1.0.87
+                const bool has_score = score_info(s).present;
+                if (ImGui::Selectable(tr("Voir la partition…"), false, has_score ? 0 : ImGuiSelectableFlags_Disabled)) {
+                    score_view_id   = s.id;
+                    open_score_view = true;
+                }
+                if (!has_score && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                    ImGui::SetTooltip("%s", tr("Morceau créé sans partition (mode « Sans partition » ou avant la version 1.0.87)."));
+            }
             if (ImGui::Selectable(tr("Nouvelle version (mêmes paroles)"), false, s.kind == "extend" ? ImGuiSelectableFlags_Disabled : 0)) recompose(s);
             if (ImGui::Selectable(tr("Prolonger…"), false, (!has_codes || s.audio_seconds >= 340) ? ImGuiSelectableFlags_Disabled : 0)) {
                 extend_id      = s.id;
@@ -9047,7 +9062,167 @@ struct App {
             if (li > 0) out += "  ·  " + trf("Paroles : %s", tr(LANGUAGES[li].label));
         }
         if (!s.adapters.empty()) out += tr("  ·  LoRA ×") + std::to_string(s.adapters.size());
+        const ScoreInfo & sc = score_info(s);  // 1.0.87 : tonalité et tempo de la partition, si le moteur en a écrit une
+        if (!sc.key.empty() || sc.tempo > 0) {
+            out += "  ·  ♪ " + key_name(sc.key);
+            if (sc.tempo > 0) out += " " + std::to_string(sc.tempo) + " BPM";
+        }
         return out;
+    }
+
+    // ---- 1.0.87 : partition ABC écrite par le modèle (score.abc), lue pour un résumé lisible : tonalité, tempo, mesure,
+    // accords de chaque section (dans l'ordre, sans répétition consécutive).
+    struct ScoreInfo {
+        bool                                             present = false;
+        std::string                                      key, meter, text;
+        int                                              tempo = 0;
+        std::vector<std::pair<std::string, std::string>> sections;  // nom de section, accords
+    };
+    mutable std::map<std::string, std::pair<double, ScoreInfo>> score_cache;  // dossier du morceau -> (heure de lecture, partition)
+    static ScoreInfo parse_score(const std::string & abc) {
+        ScoreInfo info;
+        info.present = !abc.empty();
+        info.text    = abc;
+        std::istringstream in(abc);
+        std::string        section = "intro", line, last_chord;
+        std::vector<std::string> chords;
+        auto flush = [&]() {
+            // motifs répétés regroupés : « D A D A D A » -> « (D A) ×3 », « Em Em » déjà fusionnés plus haut
+            std::string list;
+            for (size_t i = 0; i < chords.size();) {
+                size_t best_p = 0, best_k = 1;
+                for (size_t p = 1; p <= 4 && i + 2 * p <= chords.size(); p++) {
+                    size_t k = 1;
+                    while (i + (k + 1) * p <= chords.size() && std::equal(chords.begin() + i, chords.begin() + i + p, chords.begin() + i + k * p)) k++;
+                    if (k >= 2 && k * p > best_k * best_p) { best_p = p; best_k = k; }
+                }
+                std::string part;
+                const size_t len = best_p ? best_p : 1;
+                for (size_t j = i; j < i + len; j++) part += (part.empty() ? "" : " ") + chords[j];
+                if (best_p) part = (best_p > 1 ? "(" + part + ")" : part) + " ×" + std::to_string(best_k);
+                list += (list.empty() ? "" : "  ") + part;
+                i += best_p ? best_p * best_k : 1;
+            }
+            if (!list.empty()) info.sections.push_back({ section, list });
+            chords.clear();
+            last_chord.clear();
+        };
+        while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.rfind("K:", 0) == 0 && info.key.empty()) info.key = trim(line.substr(2));
+            else if (line.rfind("M:", 0) == 0 && info.meter.empty()) info.meter = trim(line.substr(2));
+            else if (line.rfind("Q:", 0) == 0 && info.tempo == 0) {
+                size_t eq = line.find('=');
+                info.tempo = atoi(line.c_str() + (eq == std::string::npos ? 2 : eq + 1));
+            } else if (line.rfind("%", 0) == 0) {
+                flush();
+                section = trim(line.substr(1));
+            } else if (line.rfind("V:", 0) != 0) {
+                for (size_t p = line.find('"'); p != std::string::npos; p = line.find('"', p + 1)) {
+                    size_t q = line.find('"', p + 1);
+                    if (q == std::string::npos) break;
+                    std::string c = line.substr(p + 1, q - p - 1);
+                    if (!c.empty() && c[0] >= 'A' && c[0] <= 'G' && c != last_chord) {
+                        chords.push_back(c);
+                        last_chord = c;
+                    }
+                    p = q;
+                }
+            }
+        }
+        flush();
+        return info;
+    }
+    const ScoreInfo & score_info(const Song & s) const {
+        static const ScoreInfo none;
+        if (s.status != "done") return none;
+        const fs::path f   = song_folder(s.id) / "score.abc";
+        const std::string k = narrow(f.wstring());
+        const double now = ImGui::GetTime();
+        auto it = score_cache.find(k);
+        if (it != score_cache.end() && now - it->second.first < 10.0) return it->second.second;
+        ScoreInfo info;
+        std::error_code ec;
+        if (fs::exists(f, ec)) {
+            std::ifstream in(f, std::ios::binary);
+            info = parse_score(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()));
+        }
+        auto & slot = score_cache[k];
+        slot = { now, info };
+        return slot.second;
+    }
+    // Tonalité ABC (« Em », « F#m », « Bb ») en clair : « Mi mineur » / « E minor »
+    static std::string key_name(const std::string & key) {
+        if (key.empty()) return std::string();
+        static const char * notes[] = { N_("Do"), N_("Ré"), N_("Mi"), N_("Fa"), N_("Sol"), N_("La"), N_("Si") };
+        const char * letters = "CDEFGAB";
+        const char * at = strchr(letters, toupper((unsigned char) key[0]));
+        if (!at) return key;
+        std::string out = tr(notes[at - letters]);
+        size_t i = 1;
+        if (i < key.size() && key[i] == '#') { out += std::string(" ") + tr("dièse"); i++; }
+        else if (i < key.size() && key[i] == 'b') { out += std::string(" ") + tr("bémol"); i++; }
+        std::string rest = key.substr(i);
+        for (char & c : rest) c = (char) tolower((unsigned char) c);
+        const bool minor = rest.rfind("m", 0) == 0 && rest.rfind("maj", 0) != 0 && rest.rfind("mix", 0) != 0;
+        return out + " " + (minor ? tr("mineur") : tr("majeur"));
+    }
+    std::string score_view_id;  // morceau dont la partition est affichée
+    bool        open_score_view = false;
+    bool        score_test_done = false;
+    void draw_score_view() {
+        if (open_score_view) {
+            ImGui::OpenPopup(tr("Partition"));
+            open_score_view = false;
+        }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(760 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Partition"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        Song target;
+        for (const Song & s : studio->snapshot())
+            if (s.id == score_view_id) target = s;
+        const ScoreInfo & sc = score_info(target);
+        ImGui::PushFont(g_bold);
+        ImGui::TextUnformatted(display_title(target.title).c_str());
+        ImGui::PopFont();
+        if (!sc.present) {
+            muted_wrapped(tr("Pas de partition pour ce morceau : il a été créé en mode « Sans partition » ou avant la version 1.0.87."));
+        } else {
+            ImGui::TextColored(P.accent, "%s", trf("Tonalité : %s (%s)", key_name(sc.key).c_str(), sc.key.c_str()).c_str());
+            ImGui::SameLine(0, 20 * g_dpi);
+            ImGui::TextColored(P.accent, "%s", trf("Tempo : %d BPM", sc.tempo).c_str());
+            ImGui::SameLine(0, 20 * g_dpi);
+            ImGui::TextColored(P.accent, "%s", trf("Mesure : %s", sc.meter.c_str()).c_str());
+            ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+            if (ImGui::BeginTable("score_sections", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY,
+                                  ImVec2(0, std::min(260.0f, 26.0f * (float) sc.sections.size() + 30) * g_dpi))) {
+                ImGui::TableSetupColumn(tr("Section"), ImGuiTableColumnFlags_WidthFixed, 150 * g_dpi);
+                ImGui::TableSetupColumn(tr("Accords"));
+                ImGui::TableSetupScrollFreeze(0, 1);
+                ImGui::TableHeadersRow();
+                for (const auto & [name, chords] : sc.sections) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(name.c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::TextWrapped("%s", chords.c_str());
+                }
+                ImGui::EndTable();
+            }
+            if (ImGui::CollapsingHeader(tr("Partition complète (texte ABC)"))) {
+                std::string text = sc.text;
+                ImGui::InputTextMultiline("##abc", text.data(), text.size() + 1, ImVec2(-FLT_MIN, 240 * g_dpi), ImGuiInputTextFlags_ReadOnly);
+            }
+            muted_wrapped(tr("La partition est le plan que le modèle a écrit avant de composer le son ; le morceau la suit (tonalité, tempo, accords)."));
+        }
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (sc.present && soft_button(tr("Ouvrir le fichier"), P.teal)) {
+            std::wstring arg = L"/select,\"" + (song_folder(target.id) / "score.abc").wstring() + L"\"";
+            ShellExecuteW(nullptr, L"open", L"explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
+        }
+        if (sc.present) ImGui::SameLine();
+        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
 
     // 1.0.62 : logos des plateformes sur la ligne de titre : gris, en couleur quand le clip du morceau existe. Largeur 0 si le morceau
@@ -12115,6 +12290,7 @@ struct App {
 
     void draw_modals() {
         draw_startup_issues();  // 1.0.81
+        draw_score_view();      // 1.0.87
         // Essai (1.0.51) : STUDIO_TEST_ALBUMS=<clé d'album>[|1] ouvre « Albums » avec cet album déplié (onglet Vidéos si « |1 »)
         static bool test_library = [this] {  // essai (1.0.62) : STUDIO_TEST_LIBRARY=<filtre> : bibliothèque filtrée, cartes dépliées une sur deux
             wchar_t v[256];
@@ -12163,6 +12339,13 @@ struct App {
             return true;
         }();
         (void) test_albums;
+        if (!score_test_done) {  // 1.0.87 : STUDIO_TEST_SCORE=<titre> ouvre « Partition » sur ce morceau (dès que la bibliothèque est lue)
+            const char * v = getenv("STUDIO_TEST_SCORE");
+            if (!v) score_test_done = true;
+            else
+                for (const Song & s : studio->snapshot())
+                    if (s.title == v) { score_view_id = s.id; open_score_view = true; score_test_done = true; }
+        }
         // Essai (1.0.69, captures de l'aide) : STUDIO_TEST_SHOT="clé=valeur;…" : filter, cards, marks, style, gauge, theme,
         // reglages (catégorie), scroll, ia, open (blocs dépliés), fold (blocs repliés), reuse (premier morceau filtré), edit.
         static bool test_shot = [this] {
@@ -13269,7 +13452,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             s.instrumental = true;
             s.instrumental_lora = false;
             s.cot          = "off";
-            s.duration     = 20;
+            if (const char * c = getenv("STUDIO_TEST_COT")) {  // 1.0.87 : chanson avec partition (full / melody)
+                s.cot          = c;
+                s.style        = "English, indie rock, electric guitar, male vocal, 100 BPM";
+                s.lyrics       = "[Verse]\nWalking down the empty road tonight\nCity lights are fading out of sight\n\n[Chorus]\nHold on, hold on, the morning comes\nHold on, hold on, we are the ones";
+                s.instrumental = false;
+            }
+            s.duration     = getenv("STUDIO_TEST_COT") ? 40 : 20;
             s.kind         = "new";
             std::string id = studio.submit(s, false);
             auto        t0 = std::chrono::steady_clock::now();

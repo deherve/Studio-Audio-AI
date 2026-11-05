@@ -2030,6 +2030,9 @@ void Studio::generate(const std::string & id) {
     std::wstring cmd = quote(paths_.synth.wstring()) + L" " + engine_flags() + L" --model " +
                        quote(paths_.model_for(song.model).wstring()) + L" --vae " + quote(paths_.vae.wstring()) +
                        L" --request " + quote((folder / "request.json").wstring()) + L" --out " + quote(wav.wstring());
+    // 1.0.87 : la partition écrite par le modèle (modes « full » et « melody ») est gardée à côté du morceau. Rien n'est écrit
+    // quand la partition est fournie (reprise) ou en mode « off ».
+    if (song.cot != "off" && run.has_score) cmd += L" --score " + quote((folder / "score.abc").wstring());
     if (adapter) {
         cmd += L" --adapters " + quote(paths_.adapters.wstring());
     }
