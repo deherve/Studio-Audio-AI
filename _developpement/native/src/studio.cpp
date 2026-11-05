@@ -15,6 +15,7 @@
 #include <sstream>
 
 #include "fiches.hpp"
+#include "score.hpp"  // 1.0.90
 #include "gpuinfo.hpp"
 #include "i18n.hpp"
 #include "suno.hpp"
@@ -295,6 +296,8 @@ static bool load_song(const fs::path & meta, Song & song) {
     song.lyrics            = get_str(r, "lyrics");
     song.cot               = get_str(r, "cot", "full");
     song.abc               = get_str(r, "abc");
+    song.score_key         = get_str(r, "score_key");
+    song.score_tempo       = (int) get_int(r, "score_tempo", 0);
     song.instrumental      = get_bool(r, "instrumental", false);
     song.instrumental_lora = get_bool(r, "instrumental_lora", true);
     song.lm_seed           = get_int(r, "lm_seed", -1);
@@ -401,6 +404,8 @@ void Studio::save(const Song & s) {
     if (!s.heard_vocals_lang.empty()) yyjson_mut_obj_add_strcpy(doc, o, "heard_vocals_lang", s.heard_vocals_lang.c_str());
     if (s.fade_seconds > 0) yyjson_mut_obj_add_real(doc, o, "fade_seconds", s.fade_seconds);
     if (!s.abc.empty() && s.status != "done") yyjson_mut_obj_add_strcpy(doc, o, "abc", s.abc.c_str());  // 1.0.88 (ensuite : score.abc)
+    if (!s.score_key.empty()) yyjson_mut_obj_add_strcpy(doc, o, "score_key", s.score_key.c_str());  // 1.0.90
+    if (s.score_tempo > 0) yyjson_mut_obj_add_int(doc, o, "score_tempo", s.score_tempo);
     if (!s.negative_style.empty()) {
         yyjson_mut_obj_add_strcpy(doc, o, "negative_style", s.negative_style.c_str());
         yyjson_mut_obj_add_real(doc, o, "negative_scale", s.negative_scale);
@@ -1838,6 +1843,14 @@ void Studio::launch_long_part(const std::string & id) {
     n.long_join         = 25;
     n.auto_duration     = true;
     n.lm_seed = n.seed  = -1;
+    {  // 1.0.90 : même tonalité et même tempo que la partie précédente (si elle a une partition)
+        const ScoreInfo prev = parse_score(read_file(song_folder(p.id) / "score.abc"));
+        if (prev.present && !prev.key.empty()) {
+            n.score_key   = prev.key;
+            n.score_tempo = prev.tempo;
+            n.cot         = p.cot == "melody" ? "melody" : "full";
+        }
+    }
     double rest         = estimate_seconds(part, p.instrumental);
     n.duration          = p.instrumental ? std::min(360.0, n.long_join + rest) : 360;
     n.expected_seconds  = std::min(360.0, n.long_join + rest);
@@ -1957,6 +1970,32 @@ void Studio::generate(const std::string & id) {
             put_num(doc, o, "duration", song.duration);
             run.has_score       = false;
             run.expected_frames = song.duration * 25;
+            // 1.0.90 : partie 2 ou 3 d'un morceau long : sa partition est préparée d'après ses paroles, puis ramenée à la
+            // tonalité et au tempo de la partie précédente ; le moteur la suit en continuant les codes de la partie précédente.
+            if (!song.score_key.empty()) {
+                update(id, [](Song & s) {
+                    s.stage    = tr("Écriture de la partition");
+                    s.progress = 0.02;
+                });
+                Song plan  = song;
+                plan.kind  = "new";
+                plan.cot   = song.cot == "melody" ? "melody" : "full";
+                std::string perr;
+                std::string abc = plan_score(plan, perr);
+                if (check_cancel()) {
+                    yyjson_mut_doc_free(doc);
+                    finish_stopped(id, wav);
+                    return;
+                }
+                if (!abc.empty()) {
+                    const ScoreInfo planned = parse_score(abc);
+                    abc = abc_transpose(abc, key_distance(planned.key, song.score_key));
+                    if (song.score_tempo > 0) abc = abc_set_tempo(abc, song.score_tempo);
+                    put_str(doc, o, "abc", abc);
+                    put_str(doc, o, "cot", plan.cot);
+                    write_file_atomic(folder / "score.abc", abc.data(), abc.size());
+                }  // échec : la suite se fait sans partition, comme avant la 1.0.90
+            }
         }
     } else {
         doc = new_request(song, adapter);

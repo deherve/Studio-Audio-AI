@@ -72,6 +72,7 @@ add_executable(CreateurStyles WIN32
     src/net.cpp
     src/studio.cpp
     src/fiches.cpp
+    src/score.cpp
     src/gpuinfo.cpp
     src/suno.cpp
     src/i18n.cpp

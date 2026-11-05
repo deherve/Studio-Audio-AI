@@ -13653,6 +13653,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 s.duration         = 360;
                 s.expected_seconds = estimate_seconds(s.lyrics, false);
             }
+            if (const char * c = getenv("STUDIO_TEST_COT")) s.cot = c;  // 1.0.90 : parties enchaînées avec partition
             std::string id1 = studio.submit(s, false), id2;
             auto        t0  = std::chrono::steady_clock::now();
             Song        last;

@@ -57,6 +57,9 @@ struct Song {
     double      negative_scale = 1.5;
     // 1.0.88 : partition fournie (texte ABC) : le modèle la suit au lieu d'écrire la sienne (onglet « Partition »)
     std::string abc;
+    // 1.0.90 : partie 2 ou 3 d'un morceau long : tonalité et tempo de la partie précédente, imposés à sa partition
+    std::string score_key;
+    int         score_tempo = 0;
     std::string solver;  // solveur de la phase NAR : « midpoint » (référence) ou « ab2 » (2x plus rapide) ; vide = midpoint
     std::string model;  // fichier GGUF du modèle utilisé (« YuE2-3B-Q6_K.gguf ») ; vide = Q8_0 d'origine
     std::string artist, album, track;  // groupe, album et numéro de piste (métadonnées des fichiers)
