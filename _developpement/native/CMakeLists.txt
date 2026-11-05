@@ -18,6 +18,7 @@ add_executable(StudioYuE2 WIN32
     src/player.cpp
     src/suno.cpp
     src/media.cpp
+    src/score.cpp
     src/clip.cpp
     src/fiches.cpp
     src/setup.cpp

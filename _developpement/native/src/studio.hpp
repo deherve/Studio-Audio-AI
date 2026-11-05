@@ -166,6 +166,8 @@ class Studio {
     bool              can_transcribe() const;
     // 1.0.88 : écrit seulement la partition d'un morceau (yue-plan, ≈ 20 s, carte graphique). Vide + error si échec.
     std::string       plan_score(const Song & song, std::string & error);
+    // 1.0.89 : partition reconnue dans un enregistrement (SheetSage2, ≈ 1 min) ; melody_only = sans les accords.
+    std::string       transcribe_score(const fs::path & audio, bool melody_only, std::string & error);
     // Langue des paroles établie à l'écoute (code vide = inchangée) ; check : voir Song::lyrics_lang_check.
     void              set_heard_vocals(const std::string & id, const std::string & lang);  // instrumental : voix entendue (lang) ou non (vide)
     void              set_language_check(const std::string & id, const std::string & code, int check);

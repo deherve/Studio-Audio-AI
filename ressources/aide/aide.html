@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Aide et présentation · version 1.0.88 · mise à jour le 5 novembre 2026</p>
+  <p class="sub">Aide et présentation · version 1.0.89 · mise à jour le 5 novembre 2026</p>
   <input id="q" type="search" placeholder="Rechercher dans l'aide…" aria-label="Rechercher dans l'aide">
   <ol id="toc"></ol>
 </nav>
@@ -662,6 +662,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">Cette aide est mise à jour à chaque ajout ou modification de fonctionnalité.</p>
 <table>
 <tr><th>Date</th><th>Évolution</th></tr>
+<tr><td>5 nov. 2026 (1.0.89)</td><td>Partition reconnue : dans l'onglet « Partition », « Reconnaître la partition d'un fichier audio… » fait écouter un morceau par SheetSage2 (≈ 1 min pour 3 min de musique) ; sa partition (tonalité, tempo, sections, accords, mélodie) arrive dans l'onglet, où on la transpose ou la retouche, puis on génère avec ses propres paroles et son style : comme une reprise, mais la partition est visible et modifiable. Aussi : « Ouvrir une partition (.abc)… », et Actions › « Reconnaître sa partition… » pour un morceau de la bibliothèque qui n'en a pas.</td></tr>
 <tr><td>5 nov. 2026 (1.0.88)</td><td>Onglet « Partition » (à côté de « Nouveau morceau » et « Composer avec l'IA ») : « Préparer la partition » fait écrire au modèle la partition seule (≈ 1 min) d'après le titre, le style et les paroles de « Nouveau morceau » ; on la vérifie (tonalité, tempo, mesure, accords par section), on la transpose (± 1 demi-ton, notes et accords), on change son tempo (le « BPM » du style suit) ou son texte, puis « Générer avec cette partition ». Actions › « Utiliser cette partition… » reprend un morceau et sa partition pour le rejouer, le transposer ou le refaire dans un autre style.</td></tr>
 <tr><td>5 nov. 2026 (1.0.87)</td><td>Partition : le mode de composition « Complet (mélodie + accords) » devient le mode par défaut d'un nouveau morceau (≈ 28 % de temps en plus ; tonalité, tempo et accords suivis). La partition écrite par le modèle est gardée dans le dossier du morceau (score.abc). La carte détaillée affiche sa tonalité et son tempo ; Actions › « Voir la partition… » montre la tonalité, le tempo, la mesure, les accords de chaque section et le texte complet. « Sans partition (plus rapide) » et « Mélodie seule » restent au choix.</td></tr>
 <tr><td>5 nov. 2026 (1.0.86)</td><td>Le code source de Studio Audio AI est publié sous licence MIT (fichier LICENSE du dépôt, copié dans le dossier LICENSES du programme) ; les licences des modèles ne changent pas. Les propriétés de l'exe n'affichent plus de nom d'éditeur.</td></tr>

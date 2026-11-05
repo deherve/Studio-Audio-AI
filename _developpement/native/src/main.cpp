@@ -36,6 +36,7 @@ using std::min;
 #include "analysis.hpp"
 #include "suno.hpp"
 #include "fiches.hpp"
+#include "score.hpp"  // 1.0.89
 #include "media.hpp"
 #include "setup.hpp"
 #include "gpumem.hpp"
@@ -5981,8 +5982,9 @@ struct App {
     struct PlanJob {
         std::thread       thread;
         std::atomic<bool> done{ false };
-        std::string       abc, error;
-        double            started = 0;
+        std::string       abc, error, label;
+        double            started = 0, expected = 60;  // durée attendue pour la barre (s)
+        bool              recognized = false;          // 1.0.89 : partition reconnue dans un enregistrement
         ~PlanJob() { if (thread.joinable()) thread.join(); }
     };
     std::unique_ptr<PlanJob> plan_job;
@@ -6005,6 +6007,7 @@ struct App {
         s.model             = settings.model;
         plan_job            = std::make_unique<PlanJob>();
         plan_job->started   = ImGui::GetTime();
+        plan_job->label     = trim(f.title);
         PlanJob * j         = plan_job.get();
         Studio *  st        = studio;
         j->thread           = std::thread([j, st, s]() {
@@ -6017,13 +6020,67 @@ struct App {
         if (plan_job->thread.joinable()) plan_job->thread.join();
         if (!plan_job->abc.empty()) {
             score_abc = score_original = plan_job->abc;
-            score_source               = trim(form.title);
+            score_source               = plan_job->label;
             score_tempo_edit           = parse_score(score_abc).tempo;
-            notify(tr("Partition prête : vérifiez-la, retouchez-la si besoin, puis générez le morceau."));
+            notify(plan_job->recognized ? tr("Partition reconnue : choisissez vos paroles et votre style dans « Nouveau morceau », retouchez-la si besoin, puis générez.")
+                                        : tr("Partition prête : vérifiez-la, retouchez-la si besoin, puis générez le morceau."));
         } else {
             notify(plan_job->error.empty() ? std::string(tr("La préparation de la partition a échoué.")) : plan_job->error);
         }
         plan_job.reset();
+    }
+    // 1.0.89 : partition reconnue dans un enregistrement (fichier audio ou morceau de la bibliothèque) par SheetSage2
+    void start_recognize(const fs::path & audio, const std::string & label) {
+        if (audio.empty() || plan_busy()) return;
+        plan_job             = std::make_unique<PlanJob>();
+        plan_job->started    = ImGui::GetTime();
+        plan_job->label      = label;
+        plan_job->recognized = true;
+        const double secs    = media_duration(audio);
+        plan_job->expected   = std::max(20.0, secs * 0.35);  // ≈ 1 min pour 3 min de musique (mesuré : 60 s pour 187 s)
+        PlanJob *  j         = plan_job.get();
+        Studio *   st        = studio;
+        const bool melody    = score_mode == 1;
+        j->thread            = std::thread([j, st, audio, melody]() {
+            j->abc  = st->transcribe_score(audio, melody, j->error);
+            j->done = true;
+        });
+        form_tab_request = 2;
+    }
+    fs::path ask_audio_for_score() {
+        wchar_t       file[MAX_PATH] = {};
+        OPENFILENAMEW ofn{ sizeof(ofn) };
+        ofn.hwndOwner       = hwnd;
+        std::wstring filter = file_filter(wtr("Fichiers audio"), L"*.mp3;*.wav;*.flac;*.ogg;*.m4a;*.aac;*.opus");
+        std::wstring title  = wtr("Morceau dont reconnaître la partition");
+        ofn.lpstrFilter     = filter.c_str();
+        ofn.lpstrFile       = file;
+        ofn.nMaxFile        = MAX_PATH;
+        ofn.lpstrTitle      = title.c_str();
+        ofn.Flags           = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        return GetOpenFileNameW(&ofn) ? fs::path(file) : fs::path();
+    }
+    void open_abc_file() {
+        wchar_t       file[MAX_PATH] = {};
+        OPENFILENAMEW ofn{ sizeof(ofn) };
+        ofn.hwndOwner       = hwnd;
+        std::wstring filter = file_filter(wtr("Partitions ABC"), L"*.abc;*.txt");
+        std::wstring title  = wtr("Ouvrir une partition");
+        ofn.lpstrFilter     = filter.c_str();
+        ofn.lpstrFile       = file;
+        ofn.nMaxFile        = MAX_PATH;
+        ofn.lpstrTitle      = title.c_str();
+        ofn.Flags           = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        if (!GetOpenFileNameW(&ofn)) return;
+        std::ifstream in(fs::path(file), std::ios::binary);
+        std::string   text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (text.find("K:") == std::string::npos) {
+            notify(tr("Ce fichier ne ressemble pas à une partition ABC (pas de ligne « K: »)."));
+            return;
+        }
+        score_abc = score_original = text;
+        score_source               = narrow(fs::path(file).filename().wstring());
+        score_tempo_edit           = parse_score(text).tempo;
     }
     // Actions › « Utiliser cette partition… » : formulaire rempli comme « Modifier et renvoyer », partition du morceau dans l'onglet
     void use_song_score(const Song & s) {
@@ -6037,157 +6094,6 @@ struct App {
         form_tab_request           = 2;
     }
 
-    // Transposition d'une partition ABC de k demi-tons : armure, notes (lettre, altération, octave) et accords.
-    // shortcut: une altération écrite vaut pour sa note seulement (en ABC elle vaut jusqu'à la barre) ; sans effet notable sur
-    // les partitions de YuE2, qui répètent les altérations. Modes (dorien…) traités comme majeur/mineur.
-    static int abc_step(char L) { static const int st[] = { 9, 11, 0, 2, 4, 5, 7 }; return st[L - 'A']; }  // A B C D E F G
-    static int key_signature(const std::string & key, bool * minor_out = nullptr) {
-        if (key.empty()) return 0;
-        const char L = (char) toupper((unsigned char) key[0]);
-        if (L < 'A' || L > 'G') return 0;
-        size_t i  = 1;
-        int    acc = 0;
-        if (i < key.size() && key[i] == '#') { acc = 1; i++; }
-        else if (i < key.size() && key[i] == 'b') { acc = -1; i++; }
-        std::string rest = key.substr(i);
-        for (char & c : rest) c = (char) tolower((unsigned char) c);
-        const bool minor = rest.rfind("m", 0) == 0 && rest.rfind("maj", 0) != 0 && rest.rfind("mix", 0) != 0;
-        if (minor_out) *minor_out = minor;
-        static const int maj[] = { 3, 5, 0, 2, 4, -1, 1 }, min[] = { 0, 2, -3, -1, 1, -4, -2 };  // A..G
-        return (minor ? min : maj)[L - 'A'] + 7 * acc;
-    }
-    static std::map<char, int> key_alter(int sig) {
-        std::map<char, int> m;
-        const char * sharps = "FCGDAEB", * flats = "BEADGCF";
-        for (int i = 0; i < std::abs(sig) && i < 7; i++) m[sig > 0 ? sharps[i] : flats[i]] = sig > 0 ? 1 : -1;
-        return m;
-    }
-    static std::string key_for(int pc, bool minor) {  // nom de tonalité le plus simple (moins d'altérations à l'armure)
-        std::string best;
-        int         best_abs = 99;
-        for (char L : std::string("CDEFGAB"))
-            for (int a = -1; a <= 1; a++) {
-                if (((abc_step(L) + a) % 12 + 12) % 12 != pc) continue;
-                std::string name = std::string(1, L) + (a > 0 ? "#" : a < 0 ? "b" : "") + (minor ? "m" : "");
-                int         sig  = std::abs(key_signature(name));
-                if (sig < best_abs) { best_abs = sig; best = name; }
-            }
-        return best;
-    }
-    static std::string pc_name(int pc, bool flats) {
-        static const char * sh[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        static const char * fl[] = { "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B" };
-        return (flats ? fl : sh)[((pc % 12) + 12) % 12];
-    }
-    static std::string transpose_chord(const std::string & c, int k, bool flats) {
-        if (c.empty() || c[0] < 'A' || c[0] > 'G') return c;
-        size_t i  = 1;
-        int    pc = abc_step(c[0]);
-        if (i < c.size() && c[i] == '#') { pc++; i++; }
-        else if (i < c.size() && c[i] == 'b') { pc--; i++; }
-        std::string rest = c.substr(i);
-        const size_t slash = rest.find('/');
-        if (slash != std::string::npos) rest = rest.substr(0, slash + 1) + transpose_chord(rest.substr(slash + 1), k, flats);
-        return pc_name(pc + k, flats) + rest;
-    }
-    static std::string abc_transpose(const std::string & abc, int k) {
-        if (k == 0) return abc;
-        std::string src_key;
-        {
-            std::istringstream in(abc);
-            for (std::string l; std::getline(in, l);)
-                if (l.rfind("K:", 0) == 0) { src_key = trim(l.substr(2)); break; }
-        }
-        bool       minor = false;
-        const int  sig   = key_signature(src_key, &minor);
-        const int  tonic = src_key.empty() ? 0 : ((abc_step((char) toupper((unsigned char) src_key[0])) +
-                                                    (src_key.size() > 1 && src_key[1] == '#' ? 1 : src_key.size() > 1 && src_key[1] == 'b' ? -1 : 0)) % 12 + 12) % 12;
-        const std::string dst_key = key_for(tonic + k, minor);
-        const int         dsig    = key_signature(dst_key);
-        const auto        sa = key_alter(sig), da = key_alter(dsig);
-        (void) sig;
-        std::istringstream in(abc);
-        std::string        out, line;
-        while (std::getline(in, line)) {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.rfind("K:", 0) == 0) { out += "K:" + dst_key + "\n"; continue; }
-            if (line.empty() || line[0] == '%' || (line.size() > 1 && isalpha((unsigned char) line[0]) && line[1] == ':')) { out += line + "\n"; continue; }
-            std::string res;
-            for (size_t i = 0; i < line.size();) {
-                const char ch = line[i];
-                if (ch == '"') {  // accord
-                    const size_t q = line.find('"', i + 1);
-                    if (q == std::string::npos) { res += line.substr(i); break; }
-                    res += '"' + transpose_chord(line.substr(i + 1, q - i - 1), k, dsig < 0) + '"';
-                    i = q + 1;
-                    continue;
-                }
-                if (ch == '!') {  // décoration
-                    const size_t q = line.find('!', i + 1);
-                    if (q == std::string::npos) { res += line.substr(i); break; }
-                    res += line.substr(i, q - i + 1);
-                    i = q + 1;
-                    continue;
-                }
-                size_t j   = i;
-                int    acc = 0;
-                bool   has_acc = false;
-                while (j < line.size() && (line[j] == '^' || line[j] == '_' || line[j] == '=')) {
-                    acc += line[j] == '^' ? 1 : line[j] == '_' ? -1 : 0;
-                    has_acc = true;
-                    j++;
-                }
-                if (j < line.size() && strchr("ABCDEFGabcdefg", line[j])) {
-                    const char L      = (char) toupper((unsigned char) line[j]);
-                    int        octave = islower((unsigned char) line[j]) ? 1 : 0;
-                    j++;
-                    while (j < line.size() && (line[j] == '\'' || line[j] == ',')) { octave += line[j] == '\'' ? 1 : -1; j++; }
-                    const int alter = has_acc ? acc : (sa.count(L) ? sa.at(L) : 0);
-                    const int pitch = 12 * octave + abc_step(L) + alter + k;
-                    // écriture dans la nouvelle tonalité : lettre dont la note (avec armure) tombe juste, sinon altération écrite
-                    std::string best;
-                    int         best_cost = 99;
-                    for (char M : std::string("CDEFGAB"))
-                        for (int o = octave - 2; o <= octave + 2; o++) {
-                            const int base = 12 * o + abc_step(M);
-                            const int dd   = pitch - base;
-                            const int key_a = da.count(M) ? da.at(M) : 0;
-                            if (dd < -1 || dd > 1) continue;
-                            int cost = dd == key_a ? 0 : (dsig >= 0 ? (dd >= 0 ? 1 : 2) : (dd <= 0 ? 1 : 2));
-                            if (cost >= best_cost) continue;
-                            std::string s = dd == key_a ? "" : dd == 1 ? "^" : dd == -1 ? "_" : "=";
-                            s += o >= 1 ? (char) tolower((unsigned char) M) : M;
-                            for (int x = o; x > 1; x--) s += '\'';
-                            for (int x = o; x < 0; x++) s += ',';
-                            best = s;
-                            best_cost = cost;
-                        }
-                    res += best.empty() ? line.substr(i, j - i) : best;
-                    i = j;
-                    continue;
-                }
-                res += ch;
-                i++;
-            }
-            out += res + "\n";
-        }
-        return out;
-    }
-    static std::string abc_set_tempo(const std::string & abc, int bpm) {
-        std::istringstream in(abc);
-        std::string        out, line;
-        bool               done = false;
-        while (std::getline(in, line)) {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (!done && line.rfind("Q:", 0) == 0) {
-                const size_t eq = line.find('=');
-                line = (eq == std::string::npos ? std::string("Q:1/4") : line.substr(0, eq)) + "=" + std::to_string(bpm);
-                done = true;
-            }
-            out += line + "\n";
-        }
-        return out;
-    }
     void draw_score_tab() {
         const float field_x = 150 * g_dpi;
         colored_wrapped(P.muted, tr("Le modèle écrit d'abord la partition du morceau (tonalité, tempo, accords, mélodie), puis compose le son en la suivant. Ici, vous pouvez préparer cette partition seule (≈ 1 min), la vérifier, la transposer ou changer son tempo, puis générer le morceau avec elle. Le titre, le style et les paroles sont ceux de l'onglet « Nouveau morceau »."));
@@ -6217,10 +6123,29 @@ struct App {
                                     : !ready         ? tr("Renseignez d'abord le titre, le style et les paroles dans « Nouveau morceau ».")
                                     : busy           ? tr("Indisponible pendant une génération ou une demande à l'IA locale.")
                                                      : tr("Le modèle écrit la partition seule, sans le son (≈ 1 min). Les LoRA ne servent qu'à la génération du morceau."));
+        // 1.0.89 : ou partir de la partition d'un morceau existant (mélodie et accords reconnus par SheetSage2)
+        ImGui::Dummy(ImVec2(0, 2 * g_dpi));
+        ImGui::TextColored(P.muted, "%s", tr("Ou partir d'un morceau existant :"));
+        const bool can_rec = studio->can_transcribe() && !busy;
+        ImGui::BeginDisabled(!can_rec);
+        if (soft_button(tr("Reconnaître la partition d'un fichier audio…"), P.teal)) {
+            fs::path a = ask_audio_for_score();
+            if (!a.empty()) start_recognize(a, narrow(a.stem().wstring()));
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", !studio->can_transcribe() ? tr("Modèles de transcription absents (SheetSage2 et MERT dans modeles\\musique).")
+                                    : busy                    ? tr("Indisponible pendant une génération ou une demande à l'IA locale.")
+                                                              : tr("SheetSage2 écoute le morceau et écrit sa partition (mélodie, et accords si « Complète » est choisi), ≈ 1 min pour 3 min de musique. Vous la retouchez, puis vous générez avec vos paroles et votre style : comme une reprise, mais la partition est visible et modifiable."));
+        ImGui::SameLine();
+        ImGui::BeginDisabled(plan_busy());
+        if (soft_button(tr("Ouvrir une partition (.abc)…"), P.blue)) open_abc_file();
+        ImGui::EndDisabled();
         if (plan_busy()) {
             const float t = (float) (ImGui::GetTime() - plan_job->started);
             ImGui::SameLine();
-            progress_bar(std::min(0.95f, t / 60.0f), ImVec2(-FLT_MIN, 0), trf("Écriture de la partition… %d s", (int) t).c_str());
+            progress_bar(std::min(0.95f, t / (float) plan_job->expected), ImVec2(-FLT_MIN, 0),
+                         trf(plan_job->recognized ? tr("Reconnaissance de la partition… %d s") : tr("Écriture de la partition… %d s"), (int) t).c_str());
         }
         end_card();
         if (score_abc.empty()) return;
@@ -6280,7 +6205,7 @@ struct App {
             for (const auto & [name, chords] : sc.sections) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(name.c_str());
+                ImGui::TextUnformatted(name.empty() ? tr("(morceau entier)") : name.c_str());
                 ImGui::TableNextColumn();
                 ImGui::TextWrapped("%s", chords.c_str());
             }
@@ -9380,6 +9305,14 @@ struct App {
                 if (!has_score && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                     ImGui::SetTooltip("%s", tr("Morceau créé sans partition (mode « Sans partition » ou avant la version 1.0.87)."));
                 if (ImGui::Selectable(tr("Utiliser cette partition…"), false, has_score ? 0 : ImGuiSelectableFlags_Disabled)) use_song_score(s);
+                if (!has_score) {  // 1.0.89 : partition reconnue par SheetSage2 dans le son du morceau
+                    fs::path audio = playable_file(s.id);
+                    const bool ok  = !audio.empty() && studio->can_transcribe() && !plan_busy() && !studio->local_active() && !ai_local_busy();
+                    if (ImGui::Selectable(tr("Reconnaître sa partition…"), false, ok ? 0 : ImGuiSelectableFlags_Disabled))
+                        start_recognize(audio, display_title(s.title));
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                        ImGui::SetTooltip("%s", tr("SheetSage2 écoute le morceau et écrit sa partition dans l'onglet « Partition » (≈ 1 min pour 3 min) : pour en faire un nouveau morceau avec d'autres paroles ou un autre style."));
+                }
                 if (has_score && ImGui::IsItemHovered())
                     ImGui::SetTooltip("%s", tr("Reprend le morceau et sa partition dans l'onglet « Partition » : même mélodie et mêmes accords, à transposer ou à rejouer dans un autre style."));
             }
@@ -9416,7 +9349,7 @@ struct App {
         if (!s.adapters.empty()) out += tr("  ·  LoRA ×") + std::to_string(s.adapters.size());
         const ScoreInfo & sc = score_info(s);  // 1.0.87 : tonalité et tempo de la partition, si le moteur en a écrit une
         if (!sc.key.empty() || sc.tempo > 0) {
-            out += "  ·  ♪ " + key_name(sc.key);
+            out += std::string("  ·  ") + tr("Partition") + " " + key_name(sc.key);
             if (sc.tempo > 0) out += " " + std::to_string(sc.tempo) + " BPM";
         }
         return out;
@@ -9424,67 +9357,7 @@ struct App {
 
     // ---- 1.0.87 : partition ABC écrite par le modèle (score.abc), lue pour un résumé lisible : tonalité, tempo, mesure,
     // accords de chaque section (dans l'ordre, sans répétition consécutive).
-    struct ScoreInfo {
-        bool                                             present = false;
-        std::string                                      key, meter, text;
-        int                                              tempo = 0;
-        std::vector<std::pair<std::string, std::string>> sections;  // nom de section, accords
-    };
     mutable std::map<std::string, std::pair<double, ScoreInfo>> score_cache;  // dossier du morceau -> (heure de lecture, partition)
-    static ScoreInfo parse_score(const std::string & abc) {
-        ScoreInfo info;
-        info.present = !abc.empty();
-        info.text    = abc;
-        std::istringstream in(abc);
-        std::string        section = "intro", line, last_chord;
-        std::vector<std::string> chords;
-        auto flush = [&]() {
-            // motifs répétés regroupés : « D A D A D A » -> « (D A) ×3 », « Em Em » déjà fusionnés plus haut
-            std::string list;
-            for (size_t i = 0; i < chords.size();) {
-                size_t best_p = 0, best_k = 1;
-                for (size_t p = 1; p <= 4 && i + 2 * p <= chords.size(); p++) {
-                    size_t k = 1;
-                    while (i + (k + 1) * p <= chords.size() && std::equal(chords.begin() + i, chords.begin() + i + p, chords.begin() + i + k * p)) k++;
-                    if (k >= 2 && k * p > best_k * best_p) { best_p = p; best_k = k; }
-                }
-                std::string part;
-                const size_t len = best_p ? best_p : 1;
-                for (size_t j = i; j < i + len; j++) part += (part.empty() ? "" : " ") + chords[j];
-                if (best_p) part = (best_p > 1 ? "(" + part + ")" : part) + " ×" + std::to_string(best_k);
-                list += (list.empty() ? "" : "  ") + part;
-                i += best_p ? best_p * best_k : 1;
-            }
-            if (!list.empty()) info.sections.push_back({ section, list });
-            chords.clear();
-            last_chord.clear();
-        };
-        while (std::getline(in, line)) {
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (line.rfind("K:", 0) == 0 && info.key.empty()) info.key = trim(line.substr(2));
-            else if (line.rfind("M:", 0) == 0 && info.meter.empty()) info.meter = trim(line.substr(2));
-            else if (line.rfind("Q:", 0) == 0 && info.tempo == 0) {
-                size_t eq = line.find('=');
-                info.tempo = atoi(line.c_str() + (eq == std::string::npos ? 2 : eq + 1));
-            } else if (line.rfind("%", 0) == 0) {
-                flush();
-                section = trim(line.substr(1));
-            } else if (line.rfind("V:", 0) != 0) {
-                for (size_t p = line.find('"'); p != std::string::npos; p = line.find('"', p + 1)) {
-                    size_t q = line.find('"', p + 1);
-                    if (q == std::string::npos) break;
-                    std::string c = line.substr(p + 1, q - p - 1);
-                    if (!c.empty() && c[0] >= 'A' && c[0] <= 'G' && c != last_chord) {
-                        chords.push_back(c);
-                        last_chord = c;
-                    }
-                    p = q;
-                }
-            }
-        }
-        flush();
-        return info;
-    }
     const ScoreInfo & score_info(const Song & s) const {
         static const ScoreInfo none;
         if (s.status != "done") return none;
@@ -9555,7 +9428,7 @@ struct App {
                 for (const auto & [name, chords] : sc.sections) {
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::TextUnformatted(name.c_str());
+                    ImGui::TextUnformatted(name.empty() ? tr("(morceau entier)") : name.c_str());
                     ImGui::TableNextColumn();
                     ImGui::TextWrapped("%s", chords.c_str());
                 }
@@ -12691,6 +12564,12 @@ struct App {
             return true;
         }();
         (void) test_albums;
+        static bool recognize_test = [this] {  // 1.0.89 : STUDIO_TEST_RECOGNIZE=<fichier audio> lance la reconnaissance
+            const char * v = getenv("STUDIO_TEST_RECOGNIZE");
+            if (v) start_recognize(fs::path(widen(v)), narrow(fs::path(widen(v)).stem().wstring()));
+            return v != nullptr;
+        }();
+        (void) recognize_test;
         if (!score_test_done) {  // 1.0.87 : STUDIO_TEST_SCORE=<titre> ouvre « Partition » sur ce morceau (dès que la bibliothèque est lue)
             const char * v = getenv("STUDIO_TEST_SCORE");
             if (!v) score_test_done = true;
@@ -13839,6 +13718,54 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             studio.shutdown();
             return 0;
         }
+        if (argv && argc >= 4 && std::wstring(argv[1]) == L"--plan-song") {  // 1.0.88 : partition d'abord, d'après un morceau
+            Song model;
+            for (const Song & x : studio.snapshot())
+                if (x.status == "done" && x.title == narrow(argv[2])) model = x;
+            Song s;
+            s.title        = model.title + " (partition)";
+            s.artist       = model.artist;
+            s.album        = model.album;
+            s.track        = model.track;
+            s.style        = model.style;
+            s.lyrics       = model.lyrics;
+            s.instrumental = model.instrumental;
+            s.instrumental_lora = model.instrumental_lora;
+            s.adapters     = model.adapters;
+            s.negative_style = model.negative_style;
+            s.negative_scale = model.negative_scale;
+            s.model        = model.model;
+            s.solver       = model.solver;
+            s.cot          = "full";
+            s.auto_duration = true;
+            s.duration     = 360;
+            s.expected_seconds = model.audio_seconds;
+            std::string error;
+            auto        t0  = std::chrono::steady_clock::now();
+            std::string abc = model.id.empty() ? std::string() : studio.plan_score(s, error);
+            const double plan_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            s.abc = abc;
+            std::string id = abc.empty() ? std::string() : studio.submit(s, false);
+            Song done;
+            while (!id.empty()) {
+                Sleep(2000);
+                for (const Song & x : studio.snapshot())
+                    if (x.id == id) done = x;
+                if (done.status == "done" || done.status == "error" || std::chrono::steady_clock::now() - t0 > std::chrono::seconds(1500)) break;
+            }
+            Sleep(500);
+            ScoreInfo a = parse_score(abc);
+            if (FILE * out = _wfopen(argv[3], L"wb")) {
+                fprintf(out, "modele=%s trouve=%d\nplan=%.0f s erreur=%s\npartition : K=%s Q=%d M=%s\nstatut=%s message=%s duree=%.1f total=%.0f s\ndossier=%s\n",
+                        narrow(argv[2]).c_str(), (int) !model.id.empty(), plan_s, error.c_str(), a.key.c_str(), a.tempo, a.meter.c_str(),
+                        done.status.c_str(), done.message.c_str(), done.audio_seconds,
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), id.empty() ? "" : narrow(song_folder(id).wstring()).c_str());
+                for (const auto & [sec, ch] : a.sections) fprintf(out, "  %s : %s\n", sec.c_str(), ch.c_str());
+                fclose(out);
+            }
+            studio.shutdown();
+            return 0;
+        }
         if (argv && argc >= 3 && std::wstring(argv[1]) == L"--plan-test") {  // 1.0.88
             Song s;
             s.title        = "Essai partition retouchee";
@@ -13854,9 +13781,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             auto        t0  = std::chrono::steady_clock::now();
             std::string abc = studio.plan_score(s, error);
             const double plan_s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-            App::ScoreInfo a = App::parse_score(abc);
-            std::string    abc2 = App::abc_set_tempo(App::abc_transpose(abc, 2), 120);
-            App::ScoreInfo b = App::parse_score(abc2);
+            ScoreInfo a = parse_score(abc);
+            std::string    abc2 = abc_set_tempo(abc_transpose(abc, 2), 120);
+            ScoreInfo b = parse_score(abc2);
             s.abc = abc2;
             std::string id = abc.empty() ? std::string() : studio.submit(s, false);
             Song done;

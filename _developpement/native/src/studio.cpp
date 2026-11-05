@@ -2437,3 +2437,35 @@ std::string Studio::plan_score(const Song & song, std::string & error) {
     if (code != 0 || abc.empty()) error = trf("La préparation de la partition a échoué (code %d, journal : %s).", code, narrow((dir / "plan.log").wstring()).c_str());
     return abc;
 }
+
+// 1.0.89 : partition reconnue (onglet « Partition ») ; même chemin que la transcription d'une reprise.
+std::string Studio::transcribe_score(const fs::path & audio, bool melody_only, std::string & error) {
+    std::error_code ec;
+    if (!can_transcribe()) {
+        error = tr("Modèles de transcription absents (SheetSage2 et MERT dans modeles\\musique).");
+        return std::string();
+    }
+    const fs::path dir = app_temp_dir() / L"partition";
+    fs::create_directories(dir, ec);
+    fs::path    input = audio;
+    std::string ext   = narrow(audio.extension().wstring());
+    for (auto & c : ext) c = (char) tolower((unsigned char) c);
+    if (ext != ".mp3" && ext != ".wav") {  // yue-transcribe ne lit que WAV et MP3
+        input = dir / "source.wav";
+        std::wstring ff = ffmpeg_exe() + L" -v error -y -i " + quote(audio.wstring()) + L" " + quote(input.wstring());
+        if (run_process(ff, nullptr, nullptr) != 0) {
+            error = trf("Impossible de lire le fichier source : %s", narrow(audio.wstring()).c_str());
+            return std::string();
+        }
+    }
+    const fs::path out = dir / "reconnue.abc";
+    fs::remove(out, ec);
+    std::wstring cmd = quote(paths_.transcribe.wstring()) + L" --no-fa --model " + quote(paths_.transcriber.wstring()) + L" --audio " +
+                       quote(input.wstring()) + L" --out " + quote(out.wstring()) + (melody_only ? L" --melody-only" : L"");
+    std::string log;
+    const int   code = run_process(cmd, [&](const std::string & l) { log += l + "\n"; }, nullptr);
+    write_file_atomic(dir / "transcription.log", log.data(), log.size());
+    std::string abc = read_file(out);
+    if (code != 0 || abc.empty()) error = trf("La reconnaissance de la partition a échoué (code %d, journal : %s).", code, narrow((dir / "transcription.log").wstring()).c_str());
+    return abc;
+}
