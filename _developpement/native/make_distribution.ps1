@@ -63,7 +63,7 @@ Copy-Runtime $dist
 Copy-Item "$fixed\LISEZMOI.md" $dist -Force
 
 # ---- 3. Moteur de synthèse
-foreach ($f in 'yue-synth.exe','yue-transcribe.exe','ggml.dll','ggml-base.dll','ggml-cpu.dll','ggml-vulkan.dll') { Copy-Item "$rel\$f" "$dist\outils\moteur" -Force }
+foreach ($f in 'yue-synth.exe','yue-transcribe.exe','yue-plan.exe','ggml.dll','ggml-base.dll','ggml-cpu.dll','ggml-vulkan.dll') { Copy-Item "$rel\$f" "$dist\outils\moteur" -Force }
 Copy-Runtime "$dist\outils\moteur"
 
 # ---- 4. Outils : ffmpeg (build « essentials », bien plus légère que la « full »), whisper, llama.cpp processeur réduit

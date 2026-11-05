@@ -12,5 +12,5 @@ cmake --build . --config Release -j %NUMBER_OF_PROCESSORS% || exit /b 1
 rem 1.0.45 : moteur copié dans le Studio installé (music\outils\moteur), qui ne le cherche plus dans yue2.cpp\build.
 set OUT=%~dp0..\outils\moteur
 if not exist "%OUT%" mkdir "%OUT%"
-for %%f in (yue-synth.exe yue-transcribe.exe ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll) do copy /y "Release\%%f" "%OUT%\" >nul || exit /b 1
+for %%f in (yue-synth.exe yue-transcribe.exe yue-plan.exe ggml.dll ggml-base.dll ggml-cpu.dll ggml-vulkan.dll) do copy /y "Release\%%f" "%OUT%\" >nul || exit /b 1
 echo Moteur copie dans %OUT%

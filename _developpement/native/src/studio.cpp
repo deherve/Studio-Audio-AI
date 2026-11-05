@@ -90,7 +90,7 @@ bool other_synth_running() {
     PROCESSENTRY32W entry{ sizeof(entry) };
     bool            found = false;
     for (BOOL ok = Process32FirstW(snap, &entry); ok && !found; ok = Process32NextW(snap, &entry)) {
-        found = _wcsicmp(entry.szExeFile, L"yue-synth.exe") == 0;
+        found = _wcsicmp(entry.szExeFile, L"yue-synth.exe") == 0 || _wcsicmp(entry.szExeFile, L"yue-plan.exe") == 0;  // 1.0.88
     }
     CloseHandle(snap);
     return found;
@@ -294,6 +294,7 @@ static bool load_song(const fs::path & meta, Song & song) {
     song.style             = get_str(r, "style");
     song.lyrics            = get_str(r, "lyrics");
     song.cot               = get_str(r, "cot", "full");
+    song.abc               = get_str(r, "abc");
     song.instrumental      = get_bool(r, "instrumental", false);
     song.instrumental_lora = get_bool(r, "instrumental_lora", true);
     song.lm_seed           = get_int(r, "lm_seed", -1);
@@ -399,6 +400,7 @@ void Studio::save(const Song & s) {
     if (s.lyrics_lang_check > 0) yyjson_mut_obj_add_int(doc, o, "lyrics_lang_check", s.lyrics_lang_check);
     if (!s.heard_vocals_lang.empty()) yyjson_mut_obj_add_strcpy(doc, o, "heard_vocals_lang", s.heard_vocals_lang.c_str());
     if (s.fade_seconds > 0) yyjson_mut_obj_add_real(doc, o, "fade_seconds", s.fade_seconds);
+    if (!s.abc.empty() && s.status != "done") yyjson_mut_obj_add_strcpy(doc, o, "abc", s.abc.c_str());  // 1.0.88 (ensuite : score.abc)
     if (!s.negative_style.empty()) {
         yyjson_mut_obj_add_strcpy(doc, o, "negative_style", s.negative_style.c_str());
         yyjson_mut_obj_add_real(doc, o, "negative_scale", s.negative_scale);
@@ -2003,6 +2005,11 @@ void Studio::generate(const std::string & id) {
             }
             put_str(doc, o, "abc", abc);
             run.has_score = false;  // partition fournie : pas d'étape d'écriture
+        } else if (!song.abc.empty()) {
+            // 1.0.88 : partition préparée (et peut-être retouchée) dans l'onglet « Partition » : le modèle la suit telle quelle.
+            put_str(doc, o, "abc", song.abc);
+            run.has_score = false;
+            write_file_atomic(folder / "score.abc", song.abc.data(), song.abc.size());
         }
     }
     if (adapter) adapter = drop_missing_adapters(doc, paths_.adapters);  // LoRA supprimées : plus réclamées (1.0.29)
@@ -2401,4 +2408,32 @@ void Studio::run_health_check() {
                  rel * 100);
         finish(3, buf, rel);
     }
+}
+
+// 1.0.88 : partition seule (yue-plan) pour l'onglet « Partition ». Même requête que la génération (style, paroles, mode, graine) ;
+// yue-plan ne prend pas les LoRA : la partition est écrite par le modèle de base, le morceau est ensuite généré avec les LoRA.
+std::string Studio::plan_score(const Song & song, std::string & error) {
+    std::error_code ec;
+    const fs::path  plan = paths_.synth.parent_path() / "yue-plan.exe";
+    if (!fs::exists(plan, ec)) {
+        error = tr("yue-plan.exe est absent du dossier outils\\moteur.");
+        return std::string();
+    }
+    bool             adapter = false;
+    yyjson_mut_doc * doc     = new_request(song, adapter);
+    std::string      request = write_doc(doc);
+    yyjson_mut_doc_free(doc);
+    const fs::path dir = app_temp_dir() / L"partition";
+    fs::create_directories(dir, ec);
+    const fs::path req = dir / "request.json", out = dir / "score.abc";
+    fs::remove(out, ec);
+    write_file_atomic(req, request.data(), request.size());
+    std::wstring cmd = quote(plan.wstring()) + L" " + engine_flags() + L" --model " + quote(paths_.model_for(song.model).wstring()) +
+                       L" --request " + quote(req.wstring()) + L" --out " + quote(out.wstring());
+    std::string log;
+    const int   code = run_process(cmd, [&](const std::string & l) { log += l + "\n"; }, nullptr);
+    write_file_atomic(dir / "plan.log", log.data(), log.size());
+    std::string abc = read_file(out);
+    if (code != 0 || abc.empty()) error = trf("La préparation de la partition a échoué (code %d, journal : %s).", code, narrow((dir / "plan.log").wstring()).c_str());
+    return abc;
 }

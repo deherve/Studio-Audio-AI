@@ -55,6 +55,8 @@ struct Song {
     // Vide = aucun guidage, composition à vitesse normale ; rempli = phase de composition environ 2 fois plus lente.
     std::string negative_style;
     double      negative_scale = 1.5;
+    // 1.0.88 : partition fournie (texte ABC) : le modèle la suit au lieu d'écrire la sienne (onglet « Partition »)
+    std::string abc;
     std::string solver;  // solveur de la phase NAR : « midpoint » (référence) ou « ab2 » (2x plus rapide) ; vide = midpoint
     std::string model;  // fichier GGUF du modèle utilisé (« YuE2-3B-Q6_K.gguf ») ; vide = Q8_0 d'origine
     std::string artist, album, track;  // groupe, album et numéro de piste (métadonnées des fichiers)
@@ -162,6 +164,8 @@ class Studio {
     void              cancel_all_local();
     const Paths &     paths() const { return paths_; }
     bool              can_transcribe() const;
+    // 1.0.88 : écrit seulement la partition d'un morceau (yue-plan, ≈ 20 s, carte graphique). Vide + error si échec.
+    std::string       plan_score(const Song & song, std::string & error);
     // Langue des paroles établie à l'écoute (code vide = inchangée) ; check : voir Song::lyrics_lang_check.
     void              set_heard_vocals(const std::string & id, const std::string & lang);  // instrumental : voix entendue (lang) ou non (vide)
     void              set_language_check(const std::string & id, const std::string & code, int check);
