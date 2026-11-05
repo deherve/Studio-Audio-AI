@@ -33,13 +33,44 @@
     <button id="exp_abc">ABC…</button>
   </div>
 </header>
+<!-- 1.0.94 : édition (clic sur une note, puis boutons ou clavier) -->
+<nav id="barre_edition">
+  <span id="lib_note" class="lib"></span><span id="note_choisie" class="code"></span>
+  <div class="groupe">
+    <button id="ed_descendre" data-k="↓">▼</button><button id="ed_monter" data-k="↑">▲</button>
+    <button id="ed_oct_bas" data-k="Maj+↓">8▼</button><button id="ed_oct_haut" data-k="Maj+↑">8▲</button>
+    <button id="ed_diese" data-k="#">♯</button><button id="ed_bemol" data-k="b">♭</button><button id="ed_becarre" data-k="n">♮</button>
+  </div>
+  <div class="groupe" id="durees">
+    <button data-v="1" data-k="1">𝅝</button><button data-v="0.5" data-k="2">𝅗𝅥</button><button data-v="0.25" data-k="3">♩</button>
+    <button data-v="0.125" data-k="4">♪</button><button data-v="0.0625" data-k="5">𝅘𝅥𝅯</button><button id="ed_point" data-k=".">•</button>
+  </div>
+  <div class="groupe">
+    <button id="ed_silence" data-k="Suppr"></button><button id="ed_dupliquer" data-k="d"></button><button id="ed_supprimer"></button><button id="ed_accord" data-k="c"></button>
+  </div>
+  <div class="groupe">
+    <button id="annuler" data-k="Ctrl+Z">↶</button><button id="refaire" data-k="Ctrl+Y">↷</button>
+    <button id="ed_paroles"></button><button id="ed_texte"></button>
+  </div>
+</nav>
 <main>
   <div id="infos"></div>
+  <div id="mesures"></div>
+  <section id="panneau_paroles" hidden>
+    <div class="lib" id="lib_paroles"></div>
+    <textarea id="paroles" rows="6" spellcheck="false"></textarea>
+    <div><button id="placer_paroles" class="principal"></button> <button id="retirer_paroles"></button> <span id="paroles_etat" class="lib"></span></div>
+  </section>
+  <section id="panneau_texte" hidden>
+    <div class="lib" id="lib_texte"></div>
+    <textarea id="texte_abc" rows="14" spellcheck="false"></textarea>
+  </section>
   <div id="partition"></div>
   <pre id="erreurs"></pre>
 </main>
 <script src="atelier_formats.js"></script>
 <script src="atelier_import.js"></script>
+<script src="atelier_edition.js"></script>
 <script src="atelier.js"></script>
 </body>
 </html>

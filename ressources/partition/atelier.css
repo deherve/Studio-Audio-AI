@@ -27,10 +27,24 @@ main { padding: 16px; }
 #erreurs { color: #b3261e; white-space: pre-wrap; max-width: 1200px; margin: 10px auto; }
 #erreurs:empty { display: none; }
 .abcjs-note_playing, .abcjs-note_playing path { fill: var(--accent); }
+/* 1.0.94 : édition */
+nav#barre_edition {
+  position: sticky; top: 58px; z-index: 4; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 16px; background: #faf9fd; border-bottom: 1px solid var(--ligne);
+}
+nav#barre_edition button { padding: 3px 9px; min-width: 32px; }
+#durees button { font-family: "Segoe UI Symbol", "Segoe UI", sans-serif; font-size: 17px; line-height: 1; }
+.lib { color: var(--gris); font-size: 12px; }
+.code { font-family: Consolas, monospace; background: #fff; border: 1px solid var(--ligne); border-radius: 4px; padding: 2px 6px; min-width: 60px; display: inline-block; }
+#mesures { color: #9a5b00; max-width: 1200px; margin: 0 auto 8px; font-size: 12px; }
+#mesures:empty { display: none; }
+section#panneau_paroles, section#panneau_texte { max-width: 1150px; margin: 0 auto 12px; background: #fff; border: 1px solid var(--ligne); border-radius: 6px; padding: 10px 12px; }
+section textarea { width: 100%; font: 13px Consolas, monospace; border: 1px solid var(--ligne); border-radius: 4px; padding: 6px; resize: vertical; margin: 6px 0; }
+.abcjs-note_selected, .abcjs-note_selected path { fill: #d9480f; }
 @media print {
   @page { size: A4 portrait; margin: 10mm; }
   html, body { background: #fff; }
-  header#barre, #erreurs { display: none; }
+  header#barre, #erreurs, nav#barre_edition, #mesures, section#panneau_paroles, section#panneau_texte { display: none !important; }
   main { padding: 0; }
   #infos { color: #000; }
   /* abcjs met au conteneur display:inline-block, overflow:hidden et une hauteur fixe : un bloc que l'impression ne coupe pas */

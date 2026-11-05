@@ -33,6 +33,8 @@ function dessiner(impression) {
     staffwidth: impression ? 640 : 760,
     wrap: { minSpacing: 1.6, maxSpacing: 2.7, preferredMeasuresPerLine: 4 },
     format: { gchordfont: "Segoe UI 12", vocalfont: "Segoe UI 12", titlefont: "Segoe UI 20 bold", subtitlefont: "Segoe UI 13" },
+    clickListener: impression ? undefined : (abcElem) => clicNote(abcElem),  // 1.0.94 : choix de la note à modifier
+    selectionColor: "#d9480f",
   });
   etat.visuel = vus && vus[0];
   const msgs = (etat.visuel && etat.visuel.warnings) || [];
@@ -61,13 +63,30 @@ function charger(m) {
   el("importer").title = tx("import_tip", "");
   el("utiliser").textContent = tx("use", "Utiliser dans le Studio");
   el("utiliser").title = tx("use_tip", "");
+  // 1.0.94 : édition
+  edition.choix = null; edition.annuler = []; edition.refaire = [];
+  el("paroles").value = m.lyrics || "";
+  const textes = {
+    lib_note: ["note", "Note choisie :"], ed_silence: ["rest", "Silence"], ed_dupliquer: ["duplicate", "Dupliquer"], ed_supprimer: ["delete", "Supprimer"],
+    ed_accord: ["chord", "Accord…"], ed_paroles: ["lyrics", "Paroles…"], ed_texte: ["abc_text", "Texte ABC"], lib_paroles: ["lyrics_help",
+      "Paroles placées sous la mélodie chantée, une syllabe par note (séparez les syllabes d'un mot par « - », ex. : « le ma-tin se lè-ve »). Les sections entre crochets sont ignorées."],
+    placer_paroles: ["place_lyrics", "Placer sous les notes"], retirer_paroles: ["remove_lyrics", "Retirer les paroles"],
+    lib_texte: ["abc_help", "Texte de la partition (format ABC) : chaque modification est redessinée aussitôt."],
+  };
+  for (const [id, [cle, defaut]] of Object.entries(textes)) el(id).textContent = tx(cle, defaut);
+  const bulles = { ed_descendre: "down", ed_monter: "up", ed_oct_bas: "oct_down", ed_oct_haut: "oct_up", ed_diese: "sharp", ed_bemol: "flat", ed_becarre: "natural",
+    ed_point: "dot", annuler: "undo", refaire: "redo", ed_silence: "rest_tip", ed_dupliquer: "duplicate_tip", ed_supprimer: "delete_tip", ed_accord: "chord_tip" };
+  for (const [id, cle] of Object.entries(bulles)) el(id).title = tx(cle, "") + (el(id).dataset.k ? "  (" + el(id).dataset.k + ")" : "");
+  const noms = ["whole", "half", "quarter", "eighth", "sixteenth"];
+  el("durees").querySelectorAll("button[data-v]").forEach((b, i) => { b.title = tx(noms[i], "") + "  (" + b.dataset.k + ")"; });
   majBoutons();
-  dessiner(false);
+  apresEdition();
 }
 
 function majBoutons() {
   const vide = !etat.abc.trim();
   for (const id of ["utiliser", "exp_midi", "exp_xml", "exp_abc", "pdf", "imprimer"]) el(id).disabled = vide;
+  el("barre_edition").style.display = vide ? "none" : "";
   if (vide) el("infos").textContent = tx("empty", "Aucune partition : « Importer… » pour ouvrir un fichier MusicXML, MIDI ou ABC.");
 }
 
@@ -88,12 +107,57 @@ el("fichier").onchange = async () => {
     const sc = ABCJS.parseOnly(etat.abc)[0];
     const k = sc && sc.lines[0] && sc.lines[0].staff && sc.lines[0].staff[0].key;
     el("infos").textContent = (r.remarques || []).join(" ") + (k ? "  " + tx("key", "Tonalité") + " : " + k.root + (k.acc === "sharp" ? "♯" : k.acc === "flat" ? "♭" : "") + (k.mode === "m" ? "m" : "") : "");
-    dessiner(false);
+    edition.choix = null; edition.annuler = []; edition.refaire = [];
+    apresEdition();
   } catch (e) {
     el("erreurs").textContent = tx("import_error", "Import impossible :") + " " + (e && e.message ? e.message : e);
   }
 };
-el("utiliser").onclick = () => envoyer({ type: "use", abc: etat.abc, name: etat.name });
+// le moteur n'utilise pas les paroles placées sous les notes (« w: ») : retirées avant l'envoi
+el("utiliser").onclick = () => envoyer({ type: "use", abc: etat.abc.split("\n").filter((l) => !/^w:/.test(l)).join("\n"), name: etat.name });
+
+// 1.0.94 : boutons d'édition, clavier, paroles, texte ABC
+el("ed_monter").onclick = actions.monter;
+el("ed_descendre").onclick = actions.descendre;
+el("ed_oct_haut").onclick = actions.octave_haut;
+el("ed_oct_bas").onclick = actions.octave_bas;
+el("ed_diese").onclick = actions.diese;
+el("ed_bemol").onclick = actions.bemol;
+el("ed_becarre").onclick = actions.becarre;
+el("ed_point").onclick = actions.pointee;
+el("ed_silence").onclick = actions.silence;
+el("ed_dupliquer").onclick = actions.dupliquer;
+el("ed_supprimer").onclick = actions.supprimer;
+el("ed_accord").onclick = actions.accord;
+el("annuler").onclick = annuler;
+el("refaire").onclick = refaire;
+el("durees").querySelectorAll("button[data-v]").forEach((b) => { b.onclick = () => duree(+b.dataset.v); });
+document.addEventListener("keydown", clavier);
+el("ed_paroles").onclick = () => { el("panneau_paroles").hidden = !el("panneau_paroles").hidden; };
+el("ed_texte").onclick = () => { el("panneau_texte").hidden = !el("panneau_texte").hidden; el("texte_abc").value = etat.abc; };
+el("placer_paroles").onclick = () => {
+  const r = placerParoles(etat.abc, el("paroles").value);
+  edition.annuler.push(etat.abc); edition.refaire = [];
+  etat.abc = r.abc;
+  el("paroles_etat").textContent = tx("lyrics_placed", "%d syllabe(s) placée(s) sur %d.").replace("%d", r.places).replace("%d", r.total);
+  apresEdition();
+};
+el("retirer_paroles").onclick = () => {
+  edition.annuler.push(etat.abc); edition.refaire = [];
+  etat.abc = etat.abc.split("\n").filter((l) => !/^w:/.test(l)).join("\n");
+  el("paroles_etat").textContent = "";
+  apresEdition();
+};
+el("texte_abc").addEventListener("input", () => {
+  clearTimeout(window._t);
+  window._t = setTimeout(() => {
+    if (el("texte_abc").value === etat.abc) return;
+    edition.annuler.push(etat.abc); edition.refaire = [];
+    etat.abc = el("texte_abc").value;
+    edition.choix = null;
+    apresEdition();
+  }, 400);
+});
 
 function zoomer(d) {
   etat.zoom = Math.max(60, Math.min(180, etat.zoom + d));

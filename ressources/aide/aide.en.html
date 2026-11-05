@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Help and overview · version 1.0.93 · updated 5 November 2026</p>
+  <p class="sub">Help and overview · version 1.0.94 · updated 5 November 2026</p>
   <input id="q" type="search" placeholder="Search the help…" aria-label="Search the help">
   <ol id="toc"></ol>
 </nav>
@@ -664,6 +664,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">This help is updated with every added or modified feature. The French version (aide.html) is the reference; this English version follows it.</p>
 <table>
 <tr><th>Date</th><th>Change</th></tr>
+<tr><td>5 Nov 2026 (1.0.94)</td><td>Score workshop, editing: click a note, then ▲ ▼ (keyboard arrows; Shift + arrow = octave), ♯ ♭ ♮, durations from whole to sixteenth note, dotted note, rest, duplicate, delete, chord above the note; left/right arrows move from note to note; Undo / Redo (Ctrl+Z / Ctrl+Y); measures with a wrong length are flagged; “Lyrics…” places the lyrics under the sung melody, one syllable per note (also in the MusicXML export); “ABC text” edits the score as text, redrawn at once.</td></tr>
 <tr><td>5 Nov 2026 (1.0.93)</td><td>Score workshop, import: “Import…” opens a MusicXML (.musicxml, .xml, .mxl), MIDI (.mid) or ABC file; the score is converted to the engine’s format (sung voice and instrument; MIDI: rhythms rounded to sixteenth notes, key and chords estimated) and “Use in the Studio” places it in the “Score” tab. “Score” tab: “Import MusicXML or MIDI (Score workshop)…”. Test: “Ode to Joy” imported as MIDI, song generated with it, 97% of the melody notes found in the singing (D major, 99 BPM).</td></tr>
 <tr><td>5 Nov 2026 (1.0.92)</td><td>Score workshop, exports: MIDI…, MusicXML… and ABC… buttons (the Studio asks where to save). MusicXML keeps notes, durations, measures, rests, ties, triplets and chord symbols; it opens in MuseScore, Finale, Sibelius or Dorico. Round-trip check ABC → MusicXML → ABC on 10 scores: 100% identical notes and chords.</td></tr>
 <tr><td>5 Nov 2026 (1.0.91)</td><td>Score workshop: “View as notes…” (in the “View the score…” window and the “Score” tab) opens a Studio window showing the score as real notes (abcjs library, in the WebView2 engine included with Windows): sung voice and instrument (automatic bass clef for a low instrument), chords, title, key, tempo; offline piano playback with the playing note highlighted, zoom, printing and A4 PDF export.</td></tr>

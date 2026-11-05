@@ -6218,7 +6218,8 @@ struct App {
             ImGui::EndTable();
         }
         if (accent_button(tr("Voir en notes…"), ImVec2(0, 0), &P.violet))  // 1.0.91 : Atelier partition
-            open_atelier(score_abc, score_source, trim(form.artist), score_source, fs::path());
+            open_atelier(score_abc, score_source, trim(form.artist), score_source, fs::path(),
+                         trim(form.instrumental ? std::string() : form.lyrics_song));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ouvre l'Atelier partition : la partition en notes, à écouter, imprimer ou enregistrer en PDF."));
         if (ImGui::CollapsingHeader(tr("Modifier le texte de la partition (ABC, pour les connaisseurs)"))) {
             tx::InputTextMultiline("##score_text", &score_abc, ImVec2(-FLT_MIN, 260 * g_dpi));
@@ -6244,6 +6245,18 @@ struct App {
             submit_abc.clear();
         }
         ImGui::EndDisabled();
+        if (!can_generate && !trim(score_abc).empty()) {  // 1.0.94 : dire pourquoi les boutons sont grisés
+            if (!f.cover.empty())
+                colored_wrapped(P.warn, tr("« Nouveau morceau » est en mode Reprise : repassez en mode Chanson ou Instrumental pour créer un morceau avec cette partition."));
+            else {
+                std::string missing;
+                auto add = [&](bool absent, const char * what) { if (absent) missing += (missing.empty() ? "" : ", ") + std::string(what); };
+                add(trim(f.title).empty(), tr("le titre"));
+                add(trim(f.style).empty(), tr("le style"));
+                add(!f.instrumental && lyrics.empty(), tr("les paroles"));
+                colored_wrapped(P.warn, trf("Pour générer, renseignez dans « Nouveau morceau » : %s.", missing.c_str()).c_str());
+            }
+        }
         muted_wrapped(tr("Le morceau suit la partition donnée (tonalité, tempo, accords, mélodie) ; le style, les paroles, les LoRA et les réglages sont ceux de « Nouveau morceau »."));
         end_card();
     }
@@ -9407,7 +9420,8 @@ struct App {
     fs::path atelier_dir;
     double   atelier_ready_at = 0;  // page de l'atelier prête (essai PDF)
     bool     atelier_pdf_done = false, atelier_export_done = false, atelier_import_done = false;
-    void open_atelier(const std::string & abc, const std::string & title, const std::string & subtitle, const std::string & name, const fs::path & dir) {
+    void open_atelier(const std::string & abc, const std::string & title, const std::string & subtitle, const std::string & name, const fs::path & dir,
+                      const std::string & lyrics = std::string()) {  // 1.0.94 : paroles proposées pour l'édition
         if (atelier_runtime_version().empty()) {
             notify(tr("L'Atelier partition a besoin du moteur Microsoft Edge WebView2 (fourni avec Windows 10 et 11). Installez « WebView2 Runtime » depuis le site de Microsoft."));
             return;
@@ -9427,6 +9441,7 @@ struct App {
         yyjson_mut_obj_add_strcpy(doc, o, "subtitle", subtitle.c_str());
         yyjson_mut_obj_add_strcpy(doc, o, "info", info.c_str());
         yyjson_mut_obj_add_strcpy(doc, o, "name", name.c_str());
+        yyjson_mut_obj_add_strcpy(doc, o, "lyrics", lyrics.c_str());
         yyjson_mut_obj_add_strcpy(doc, o, "composer", subtitle.substr(0, subtitle.find(" — ")).c_str());  // 1.0.92 : auteur du MusicXML
         yyjson_mut_val * t = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_strcpy(doc, t, "export_error", tr("Export impossible :"));
@@ -9446,6 +9461,41 @@ struct App {
         yyjson_mut_obj_add_strcpy(doc, t, "zoom_in", tr("Agrandir"));
         yyjson_mut_obj_add_strcpy(doc, t, "zoom_out", tr("Réduire"));
         yyjson_mut_obj_add_strcpy(doc, t, "warnings", tr("Remarques de lecture de la partition :"));
+        // 1.0.94 : édition
+        yyjson_mut_obj_add_strcpy(doc, t, "note", tr("Note choisie :"));
+        yyjson_mut_obj_add_strcpy(doc, t, "rest", tr("Silence"));
+        yyjson_mut_obj_add_strcpy(doc, t, "duplicate", tr("Dupliquer"));
+        yyjson_mut_obj_add_strcpy(doc, t, "delete", tr("Supprimer"));
+        yyjson_mut_obj_add_strcpy(doc, t, "chord", tr("Accord…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "lyrics", tr("Paroles…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "abc_text", tr("Texte ABC"));
+        yyjson_mut_obj_add_strcpy(doc, t, "lyrics_help", tr("Paroles placées sous la mélodie chantée, une syllabe par note (séparez les syllabes d'un mot par « - », ex. : « le ma-tin se lè-ve »). Les sections entre crochets sont ignorées."));
+        yyjson_mut_obj_add_strcpy(doc, t, "place_lyrics", tr("Placer sous les notes"));
+        yyjson_mut_obj_add_strcpy(doc, t, "remove_lyrics", tr("Retirer les paroles"));
+        yyjson_mut_obj_add_strcpy(doc, t, "abc_help", tr("Texte de la partition (format ABC) : chaque modification est redessinée aussitôt."));
+        yyjson_mut_obj_add_strcpy(doc, t, "lyrics_placed", tr("%d syllabe(s) placée(s) sur %d."));
+        yyjson_mut_obj_add_strcpy(doc, t, "bad_measures", tr("Mesures de durée incorrecte :"));
+        yyjson_mut_obj_add_strcpy(doc, t, "chord_prompt", tr("Accord (ex. : Dm, G7, Cmaj7, F#m, Bb/D) ; vide pour l'enlever :"));
+        yyjson_mut_obj_add_strcpy(doc, t, "not_editable", tr("(non modifiable ici : utilisez le texte ABC)"));
+        yyjson_mut_obj_add_strcpy(doc, t, "down", tr("Note plus basse"));
+        yyjson_mut_obj_add_strcpy(doc, t, "up", tr("Note plus haute"));
+        yyjson_mut_obj_add_strcpy(doc, t, "oct_down", tr("Une octave plus bas"));
+        yyjson_mut_obj_add_strcpy(doc, t, "oct_up", tr("Une octave plus haut"));
+        yyjson_mut_obj_add_strcpy(doc, t, "sharp", tr("Dièse"));
+        yyjson_mut_obj_add_strcpy(doc, t, "flat", tr("Bémol"));
+        yyjson_mut_obj_add_strcpy(doc, t, "natural", tr("Bécarre"));
+        yyjson_mut_obj_add_strcpy(doc, t, "dot", tr("Note pointée"));
+        yyjson_mut_obj_add_strcpy(doc, t, "undo", tr("Annuler la dernière modification"));
+        yyjson_mut_obj_add_strcpy(doc, t, "redo", tr("Rétablir la modification annulée"));
+        yyjson_mut_obj_add_strcpy(doc, t, "rest_tip", tr("Remplacer la note par un silence"));
+        yyjson_mut_obj_add_strcpy(doc, t, "duplicate_tip", tr("Répéter la note juste après"));
+        yyjson_mut_obj_add_strcpy(doc, t, "delete_tip", tr("Retirer la note (la mesure devient plus courte)"));
+        yyjson_mut_obj_add_strcpy(doc, t, "chord_tip", tr("Accord affiché au-dessus de la note"));
+        yyjson_mut_obj_add_strcpy(doc, t, "whole", tr("Ronde"));
+        yyjson_mut_obj_add_strcpy(doc, t, "half", tr("Blanche"));
+        yyjson_mut_obj_add_strcpy(doc, t, "quarter", tr("Noire"));
+        yyjson_mut_obj_add_strcpy(doc, t, "eighth", tr("Croche"));
+        yyjson_mut_obj_add_strcpy(doc, t, "sixteenth", tr("Double croche"));
         yyjson_mut_obj_add_val(doc, o, "t", t);
         size_t      len  = 0;
         char *      json = yyjson_mut_write(doc, 0, &len);
@@ -9579,7 +9629,7 @@ struct App {
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
         if (sc.present && accent_button(tr("Voir en notes…"), ImVec2(0, 0), &P.violet)) {  // 1.0.91
             open_atelier(sc.text, display_title(target.title), target.artist + (target.album.empty() ? std::string() : " — " + target.album),
-                         display_title(target.title), song_folder(target.id));
+                         display_title(target.title), song_folder(target.id), target.lyrics);
             ImGui::CloseCurrentPopup();
         }
         if (sc.present) ImGui::SameLine();
@@ -12743,7 +12793,7 @@ struct App {
                 for (const Song & s : studio->snapshot())
                     if (s.title == v && score_info(s).present) {
                         atelier_test_done = true;
-                        open_atelier(score_info(s).text, display_title(s.title), s.artist, display_title(s.title), song_folder(s.id));
+                        open_atelier(score_info(s).text, display_title(s.title), s.artist, display_title(s.title), song_folder(s.id), s.lyrics);
                     }
         }
         if (!score_test_done) {  // 1.0.87 : STUDIO_TEST_SCORE=<titre> ouvre « Partition » sur ce morceau (dès que la bibliothèque est lue)

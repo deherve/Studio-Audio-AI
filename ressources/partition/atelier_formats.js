@@ -114,7 +114,19 @@ function elementsDe(abcVoix) {  // éléments de l'unique voix d'une partition d
   return { tune, clef, cle, els };
 }
 
+// 1.0.94 : syllabe chantée (lignes « w: ») -> <lyric>, syllabic selon le tiret qui la relie à la suivante
+let motOuvert = false;
+function paroleXml(e) {
+  const l = e.lyric && e.lyric[0];
+  if (!l || !l.syllable) return "";
+  const suite = l.divider === "-";
+  const syl = motOuvert ? (suite ? "middle" : "end") : (suite ? "begin" : "single");
+  motOuvert = suite;
+  const t = l.syllable.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<lyric number="1"><syllabic>${syl}</syllabic><text>${t}</text></lyric>`;
+}
 function abcVersMusicXML(abc, titre, auteur) {
+  motOuvert = false;
   const tune = ABCJS.parseOnly(abc)[0];
   if (!tune) throw new Error("partition illisible");
   const voix = separerVoix(abc).map((v) => { const e = elementsDe(v.abc); return { nom: v.nom, clef: e.clef, cle: e.cle, elements: e.els }; });
@@ -170,7 +182,7 @@ function abcVersMusicXML(abc, titre, auteur) {
             `<pitch><step>${lettre}</step>${alt ? `<alter>${alt}</alter>` : ""}<octave>${octave}</octave></pitch>` +
             `<duration>${duree}</duration>${lie}<voice>1</voice>${fin}${tm}` +
             (p.accidental ? `<accidental>${{ sharp: "sharp", flat: "flat", natural: "natural", dblsharp: "double-sharp", dblflat: "flat-flat" }[p.accidental] || "natural"}</accidental>` : "") +
-            (lieN ? `<notations>${lieN}</notations>` : "") + "</note>";
+            (lieN ? `<notations>${lieN}</notations>` : "") + (ip === 0 ? paroleXml(e) : "") + "</note>";
         });
       }
       harm = "";
