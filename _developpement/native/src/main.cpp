@@ -4340,6 +4340,47 @@ struct App {
         }
     }
     // Réglages › Système : version installée et état de la recherche de mise à jour.
+    // 1.0.84 : licences des modèles (vérifiées sur Hugging Face le 5/11/2026). La commercialisation des morceaux en dépend.
+    void draw_model_licences() {
+        ImGui::PushFont(g_bold);
+        ImGui::TextColored(P.amber, "%s", tr("Licences des modèles"));
+        ImGui::PopFont();
+        colored_wrapped(P.text, tr("La commercialisation des morceaux, pochettes et vidéos créés avec Studio Audio AI est soumise aux licences des modèles utilisés. Référez-vous à leurs licences :"));
+        struct Row { const char * use; const char * models; const char * licence; bool nc; };
+        const Row rows[] = {
+            { N_("Musique"), "YuE2-3B, YuE2-Vae", "CC BY-NC 4.0", true },
+            { N_("Reprises et partitions"), "MERT-v2-FullSong, SheetSage2", "CC BY-NC 4.0", true },
+            { N_("Analyse audio"), "Essentia (MTG)", "CC BY-NC-SA 4.0", true },
+            { N_("LoRA"), "—", N_("licence propre à chaque LoRA (voir sa page)"), false },
+            { N_("Transcription des paroles"), "Whisper", "MIT", false },
+            { N_("Pochettes et clips"), "FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image", "Apache 2.0", false },
+            { N_("Pochettes et clips"), "SDXL-Lightning", "CreativeML OpenRAIL++-M", false },
+            { N_("IA de texte"), "Mistral Nemo, Mistral Small, Qwen 3, Qwen 2.5 (7B, 14B)", "Apache 2.0", false },
+            { N_("IA de texte"), "Qwen 2.5 3B", "Qwen Research", true },
+            { N_("IA de texte"), "Llama 3.1", "Llama 3.1 Community License", false },
+            { N_("IA de texte"), "Gemma 2, Gemma 3", "Gemma Terms of Use", false },
+        };
+        if (ImGui::BeginTable("model_licences", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn(tr("Usage"), ImGuiTableColumnFlags_WidthStretch, 1.0f);
+            ImGui::TableSetupColumn(tr("Modèles"), ImGuiTableColumnFlags_WidthStretch, 1.6f);
+            ImGui::TableSetupColumn(tr("Licence"), ImGuiTableColumnFlags_WidthStretch, 1.4f);
+            ImGui::TableHeadersRow();
+            for (const Row & r : rows) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(tr(r.use));
+                ImGui::TableNextColumn();
+                ImGui::TextWrapped("%s", r.models);
+                ImGui::TableNextColumn();
+                if (r.nc) ImGui::TextColored(P.amber, "%s · %s", r.licence, tr("non commercial"));
+                else ImGui::TextWrapped("%s", tr(r.licence));
+            }
+            ImGui::EndTable();
+        }
+        muted_wrapped(tr("Les textes complets sont sur la page de chaque modèle (Hugging Face) ; ceux des programmes livrés sont dans le dossier « LICENSES »."));
+        if (ImGui::SmallButton(tr("Ouvrir le dossier LICENSES"))) ShellExecuteW(nullptr, L"open", (app_dir() / L"LICENSES").c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+
     void draw_update_settings() {
         ImGui::TextColored(P.muted, tr("Version installée : %s"), STUDIO_VERSION);
         ImGui::SameLine(0, 12 * g_dpi);
@@ -11448,7 +11489,12 @@ struct App {
             ImVec2 vp = ImGui::GetMainViewport()->Size;
             ImGui::SetNextWindowSizeConstraints(ImVec2(std::min(640 * g_dpi, vp.x - 20 * g_dpi), std::min(420 * g_dpi, vp.y - 20 * g_dpi)),
                                                 ImVec2(vp.x - 20 * g_dpi, vp.y - 20 * g_dpi));
-            ImGui::SetNextWindowSize(ImVec2(std::min(1100 * g_dpi, vp.x - 40 * g_dpi), std::min(820 * g_dpi, vp.y - 60 * g_dpi)), ImGuiCond_Appearing);
+            // fenêtre ouverte pendant que le Studio était réduit (essais) : taille et place reprises quand la fenêtre change de taille
+            static ImVec2 last_vp;
+            const bool    vp_changed = vp.x != last_vp.x || vp.y != last_vp.y;
+            last_vp = vp;
+            ImGui::SetNextWindowSize(ImVec2(std::min(1100 * g_dpi, vp.x - 40 * g_dpi), std::min(820 * g_dpi, vp.y - 60 * g_dpi)), vp_changed ? ImGuiCond_Always : ImGuiCond_Appearing);
+            ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), vp_changed ? ImGuiCond_Always : ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
         }
         if (!ImGui::BeginPopupModal(tr("Réglages"), nullptr, ImGuiWindowFlags_NoCollapse)) return;
         settings_shown = true;
@@ -11857,6 +11903,9 @@ struct App {
             ImGui::SameLine();
             ImGui::TextColored(P.muted, tr("Indisponible pendant une génération."));
         }
+        end_card();
+        begin_card(P.amber, "c_model_licences");  // 1.0.84 (demande de Herve 5/11)
+        draw_model_licences();
         end_card();
         }
 

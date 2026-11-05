@@ -78,19 +78,21 @@ Built with C++20, Win32, DirectX 11 and [Dear ImGui](https://github.com/ocornut/
 
 ### Licences and usage
 
-> **Non-commercial use.** The **YuE2** music models are released under **CC BY-NC 4.0** and the **Essentia** audio-analysis models under **CC BY-NC-SA 4.0**. Music generated with Studio Audio AI is therefore for **non-commercial use only**, unless you obtain other rights from the model authors.
+> **Non-commercial use.** The **YuE2** music models are released under **CC BY-NC 4.0** and the **Essentia** audio-analysis models under **CC BY-NC-SA 4.0**. Selling the tracks, covers and videos made with Studio Audio AI is subject to the licences of the models used: refer to the table below (also shown in Settings › System).
 
 | Component | Licence |
 |---|---|
 | YuE2-3B models (music) | CC BY-NC 4.0 (non-commercial) |
 | Essentia models (audio analysis) | CC BY-NC-SA 4.0 (non-commercial) |
-| MERT, SheetSage (covers) | see their model pages |
+| MERT-v2, SheetSage2 (covers, scores) | CC BY-NC 4.0 (non-commercial) |
 | LoRA from the catalogue | each LoRA has its own licence, often non-commercial |
 | Whisper models and whisper.cpp | MIT |
 | llama.cpp, stable-diffusion.cpp, ggml, ONNX Runtime | MIT |
-| Qwen, Mistral (local AI) | Apache 2.0 |
+| Qwen 3, Qwen 2.5 7B/14B, Mistral Nemo/Small (text AI) | Apache 2.0 |
+| Qwen 2.5 3B (text AI) | Qwen Research (non-commercial) |
+| Llama 3.1, Gemma 2/3 (text AI) | Llama 3.1 Community License, Gemma Terms of Use |
 | SDXL-Lightning (covers) | CreativeML OpenRAIL++-M |
-| FLUX.2 klein, Z-Image Turbo, MOSS (covers) | see their model pages |
+| FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image (covers) | Apache 2.0 |
 | ffmpeg (distribution build) | GPL v3 |
 
 The component licences shipped with the program are in the `LICENSES` folder of the zip. No licence has yet been chosen for the source code of Studio Audio AI itself: until a `LICENSE` file is added, all rights are reserved.
@@ -173,19 +175,21 @@ Puis lancer `_developpement/build_studio_natif.cmd`, et `_developpement/native/m
 
 ### Licences et usage
 
-> **Usage non commercial.** Les modèles musicaux **YuE2** sont publiés sous licence **CC BY-NC 4.0** et les modèles d'analyse audio **Essentia** sous **CC BY-NC-SA 4.0**. La musique créée avec Studio Audio AI est donc réservée à un **usage non commercial**, sauf droits obtenus auprès des auteurs des modèles.
+> **Usage non commercial.** Les modèles musicaux **YuE2** sont publiés sous licence **CC BY-NC 4.0** et les modèles d'analyse audio **Essentia** sous **CC BY-NC-SA 4.0**. La commercialisation des morceaux, pochettes et vidéos créés avec Studio Audio AI est soumise aux licences des modèles utilisés : référez-vous au tableau ci-dessous (aussi affiché dans Réglages › Système).
 
 | Composant | Licence |
 |---|---|
 | Modèles YuE2-3B (musique) | CC BY-NC 4.0 (non commercial) |
 | Modèles Essentia (analyse audio) | CC BY-NC-SA 4.0 (non commercial) |
-| MERT, SheetSage (reprises) | voir leurs pages de modèle |
+| MERT-v2, SheetSage2 (reprises, partitions) | CC BY-NC 4.0 (non commercial) |
 | LoRA du catalogue | chaque LoRA a sa licence, souvent non commerciale |
 | Modèles Whisper et whisper.cpp | MIT |
 | llama.cpp, stable-diffusion.cpp, ggml, ONNX Runtime | MIT |
-| Qwen, Mistral (IA locale) | Apache 2.0 |
+| Qwen 3, Qwen 2.5 7B/14B, Mistral Nemo/Small (IA de texte) | Apache 2.0 |
+| Qwen 2.5 3B (IA de texte) | Qwen Research (non commercial) |
+| Llama 3.1, Gemma 2/3 (IA de texte) | Llama 3.1 Community License, Gemma Terms of Use |
 | SDXL-Lightning (pochettes) | CreativeML OpenRAIL++-M |
-| FLUX.2 klein, Z-Image Turbo, MOSS (pochettes) | voir leurs pages de modèle |
+| FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image (pochettes) | Apache 2.0 |
 | ffmpeg (version livrée) | GPL v3 |
 
 Les licences des composants livrés sont dans le dossier `LICENSES` du zip. Aucune licence n'a encore été choisie pour le code source de Studio Audio AI lui-même : tant qu'aucun fichier `LICENSE` n'est ajouté, tous droits réservés.
