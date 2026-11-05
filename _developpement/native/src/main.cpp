@@ -4356,7 +4356,125 @@ struct App {
             if (ImGui::SmallButton(tr("Vérifier maintenant"))) start_app_update_check();
             ImGui::EndDisabled();
         }
+        // 1.0.81 : sauvegarde automatique du jour et vérification au démarrage
+        ImGui::TextColored(P.muted, "%s", last_backup.empty() ? tr("Sauvegarde automatique : aucune pour l'instant.")
+                                                              : trf("Sauvegarde automatique : %s (%d gardées)", last_backup.c_str(), backup_count).c_str());
+        ImGui::SameLine(0, 12 * g_dpi);
+        if (ImGui::SmallButton(tr("Ouvrir les sauvegardes"))) ShellExecuteW(nullptr, L"open", backups_dir().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        if (startup_issues.empty()) ImGui::TextColored(P.ok, "%s", tr("● Vérification au démarrage : aucun fichier manquant."));
+        for (const std::string & s : startup_issues) colored_wrapped(P.amber, "• " + s);
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+    }
+
+    // ---- 1.0.81 : sauvegarde automatique et vérification au démarrage (après les suppressions accidentelles du 23/10)
+    // Une sauvegarde par jour, au premier lancement, dans <programme>\sauvegardes\AAAA-MM-JJ : config\*.json (réglages,
+    // styles, mots à éviter, clés d'API chiffrées, dernier album), liste et fiches des LoRA, liste des modèles présents
+    // (modeles.txt) et le meta.json de chaque morceau (titres, groupes, albums, réglages). Ni audio ni modèles (trop
+    // lourds). Les 15 dernières sont gardées. Au démarrage, un modèle ou une LoRA présents à la dernière sauvegarde mais
+    // absents maintenant, et une LoRA cochée dans un de vos styles mais absente, sont signalés.
+    std::vector<std::string> startup_issues;
+    bool                     startup_issues_open = false;
+    std::string              last_backup;
+    int                      backup_count = 0;
+    fs::path backups_dir() const { return app_dir() / L"sauvegardes"; }
+    // Fichiers de modeles\ d'au moins 1 Mo (les notes .txt et petites fiches ne comptent pas), chemin relatif → taille
+    std::map<std::string, unsigned long long> model_files() const {
+        std::map<std::string, unsigned long long> out;
+        std::error_code ec;
+        const fs::path root = studio->paths().models_dir;
+        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
+            if (ec) break;
+            if (!it->is_regular_file(ec)) continue;
+            unsigned long long size = (unsigned long long) it->file_size(ec);
+            if (size >= (1ull << 20)) out[narrow(it->path().lexically_relative(root).generic_wstring())] = size;
+        }
+        return out;
+    }
+    void startup_checks() {
+        std::error_code ec;
+        const fs::path        root = backups_dir();
+        std::vector<fs::path> olds;
+        for (const auto & e : fs::directory_iterator(root, ec))
+            if (e.is_directory(ec)) olds.push_back(e.path());
+        std::sort(olds.begin(), olds.end());
+        // 1. Modèles et LoRA présents à la dernière sauvegarde, absents maintenant
+        const auto models   = model_files();
+        bool       vanished = false;  // un fichier a disparu : la fenêtre s'ouvre à chaque lancement, pas une fois par jour
+        if (!olds.empty()) {
+            std::ifstream in(olds.back() / L"modeles.txt");
+            const std::string when = narrow(olds.back().filename().wstring());
+            for (std::string line; std::getline(in, line);) {
+                std::string name = line.substr(0, line.find('\t'));
+                if (!name.empty() && !models.count(name)) {
+                    std::string shown = name;
+                    std::replace(shown.begin(), shown.end(), '/', '\\');
+                    startup_issues.push_back(trf("Disparu depuis la sauvegarde du %s : modeles\\%s", when.c_str(), shown.c_str()));
+                    vanished = true;
+                }
+            }
+        }
+        // 2. LoRA cochées dans vos styles mais absentes du dossier des LoRA
+        scan_loras(true);
+        std::set<std::string> seen;
+        for (const Preset & p : settings.presets)
+            for (const LoraUse & u : p.loras)
+                if (u.enabled && !lora_files.count(u.file) && seen.insert(u.file).second)
+                    startup_issues.push_back(trf("Le style « %s » utilise une LoRA absente : %s", p.name.c_str(), u.file.c_str()));
+        // 3. Sauvegarde du jour (une seule par jour)
+        SYSTEMTIME st;
+        GetLocalTime(&st);
+        wchar_t day[16];
+        swprintf(day, 16, L"%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+        const fs::path dst = root / day;
+        const bool     first_today = !fs::exists(dst, ec);
+        if (first_today) {
+            fs::create_directories(dst / L"config", ec);
+            for (const auto & e : fs::directory_iterator(studio->paths().config, ec))
+                if (e.is_regular_file(ec)) fs::copy_file(e.path(), dst / L"config" / e.path().filename(), fs::copy_options::overwrite_existing, ec);
+            {
+                std::ofstream out(dst / L"modeles.txt", std::ios::binary);
+                for (const auto & [name, size] : models) out << name << '\t' << size << '\n';
+            }
+            fs::create_directories(dst / L"lora", ec);
+            for (const auto & e : fs::directory_iterator(studio->paths().adapters, ec))
+                if (e.is_regular_file(ec) && e.path().extension() == L".json") fs::copy_file(e.path(), dst / L"lora" / e.path().filename(), fs::copy_options::overwrite_existing, ec);
+            const fs::path lib = studio->paths().library;
+            for (fs::recursive_directory_iterator it(lib, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
+                if (ec) break;
+                if (it->path().filename() != L"meta.json" || !it->is_regular_file(ec)) continue;
+                const fs::path to = dst / L"Audios" / it->path().lexically_relative(lib);
+                fs::create_directories(to.parent_path(), ec);
+                fs::copy_file(it->path(), to, fs::copy_options::overwrite_existing, ec);
+            }
+            olds.push_back(dst);
+            // les 15 dernières sont gardées (dossiers de ce programme seulement, nommés AAAA-MM-JJ)
+            while (olds.size() > 15) {
+                if (olds.front().filename().wstring().size() == 10) fs::remove_all(olds.front(), ec);
+                olds.erase(olds.begin());
+            }
+        }
+        last_backup         = narrow(fs::path(day).wstring());
+        backup_count        = (int) olds.size();
+        startup_issues_open = !startup_issues.empty() && (first_today || vanished);  // LoRA d'un style absente : une fois par jour
+    }
+    void draw_startup_issues() {
+        if (startup_issues_open) {
+            ImGui::OpenPopup(tr("Vérification au démarrage"));
+            startup_issues_open = false;
+        }
+        ImGui::SetNextWindowSize(ImVec2(720 * g_dpi, 0));
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        if (!ImGui::BeginPopupModal(tr("Vérification au démarrage"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        muted_wrapped(tr("Des fichiers attendus sont introuvables. Vos réglages, vos styles, la liste des LoRA et la fiche de chaque morceau sont sauvegardés chaque jour dans le dossier « sauvegardes » du programme."));
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        for (const std::string & s : startup_issues) colored_wrapped(P.amber, "• " + s);
+        ImGui::Dummy(ImVec2(0, 6 * g_dpi));
+        if (soft_button(tr("Ouvrir le dossier des modèles"), P.violet)) ShellExecuteW(nullptr, L"open", studio->paths().models_dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        ImGui::SameLine();
+        if (soft_button(tr("Ouvrir les sauvegardes"), P.teal)) ShellExecuteW(nullptr, L"open", backups_dir().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
     }
     std::shared_ptr<RemoteSizes>  remote = std::make_shared<RemoteSizes>();  // fichiers à jour (modèles, LoRA)
     bool                          updates_announced = false;
@@ -11782,6 +11900,7 @@ struct App {
     }
 
     void draw_modals() {
+        draw_startup_issues();  // 1.0.81
         // Essai (1.0.51) : STUDIO_TEST_ALBUMS=<clé d'album>[|1] ouvre « Albums » avec cet album déplié (onglet Vidéos si « |1 »)
         static bool test_library = [this] {  // essai (1.0.62) : STUDIO_TEST_LIBRARY=<filtre> : bibliothèque filtrée, cartes dépliées une sur deux
             wchar_t v[256];
@@ -13083,6 +13202,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     app.start_update_check();  // modèles et LoRA installés : y a-t-il une version plus récente ?
     app.start_app_update_check();  // Studio Audio AI : version plus récente publiée ? (rien si aucune adresse)
+    app.startup_checks();          // 1.0.81 : sauvegarde du jour et fichiers manquants
+    int       targc = 0;  // essai : compte rendu de la vérification (« --startup-test sortie.txt »)
+    wchar_t ** targv = CommandLineToArgvW(GetCommandLineW(), &targc);
+    if (targv && targc >= 3 && std::wstring(targv[1]) == L"--startup-test") {
+        if (FILE * f = _wfopen(targv[2], L"wb")) {
+            fprintf(f, "sauvegarde=%s nombre=%d manquants=%d\n", app.last_backup.c_str(), app.backup_count, (int) app.startup_issues.size());
+            for (const std::string & s : app.startup_issues) fprintf(f, "%s\n", s.c_str());
+            fclose(f);
+        }
+        return 0;
+    }
     studio.set_fade_seconds(app.settings.fade_seconds);
     // Jauges de mémoire vidéo : la carte de calcul détectée (sur un portable, la carte Nvidia/AMD et non la puce
     // intégrée qui affiche la fenêtre) ; à défaut, celle de la fenêtre.
