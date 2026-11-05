@@ -16,6 +16,10 @@ button {
   padding: 5px 12px; cursor: pointer;
 }
 button:hover { border-color: var(--accent); color: var(--accent); }
+button.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.principal:hover { filter: brightness(1.1); color: #fff; }
+button:disabled { opacity: .45; cursor: default; }
+#vide { max-width: 1200px; margin: 40px auto; text-align: center; color: var(--gris); font-size: 15px; }
 #zoom_val { min-width: 52px; text-align: center; color: var(--gris); }
 main { padding: 16px; }
 #infos { color: var(--gris); margin: 0 auto 10px; max-width: 1200px; }

@@ -57,8 +57,43 @@ function charger(m) {
   el("pdf").textContent = tx("pdf", "Exporter en PDF…");
   el("zoom_moins").title = tx("zoom_out", "Réduire");
   el("zoom_plus").title = tx("zoom_in", "Agrandir");
+  el("importer").textContent = tx("import", "Importer…");
+  el("importer").title = tx("import_tip", "");
+  el("utiliser").textContent = tx("use", "Utiliser dans le Studio");
+  el("utiliser").title = tx("use_tip", "");
+  majBoutons();
   dessiner(false);
 }
+
+function majBoutons() {
+  const vide = !etat.abc.trim();
+  for (const id of ["utiliser", "exp_midi", "exp_xml", "exp_abc", "pdf", "imprimer"]) el(id).disabled = vide;
+  if (vide) el("infos").textContent = tx("empty", "Aucune partition : « Importer… » pour ouvrir un fichier MusicXML, MIDI ou ABC.");
+}
+
+// 1.0.93 : import d'un fichier (MusicXML, .mxl, MIDI, ABC), mis au format de YuE2, puis « Utiliser dans le Studio »
+el("importer").onclick = () => el("fichier").click();
+el("fichier").onchange = async () => {
+  const f = el("fichier").files[0];
+  el("fichier").value = "";
+  if (!f) return;
+  try {
+    const r = await importerFichier(f);
+    etat.abc = r.abc;
+    etat.name = r.nom;
+    etat.titre = r.nom;
+    el("titre").textContent = r.nom;
+    el("soustitre").textContent = tx("imported", "Partition importée") + " · " + f.name;
+    majBoutons();
+    const sc = ABCJS.parseOnly(etat.abc)[0];
+    const k = sc && sc.lines[0] && sc.lines[0].staff && sc.lines[0].staff[0].key;
+    el("infos").textContent = (r.remarques || []).join(" ") + (k ? "  " + tx("key", "Tonalité") + " : " + k.root + (k.acc === "sharp" ? "♯" : k.acc === "flat" ? "♭" : "") + (k.mode === "m" ? "m" : "") : "");
+    dessiner(false);
+  } catch (e) {
+    el("erreurs").textContent = tx("import_error", "Import impossible :") + " " + (e && e.message ? e.message : e);
+  }
+};
+el("utiliser").onclick = () => envoyer({ type: "use", abc: etat.abc, name: etat.name });
 
 function zoomer(d) {
   etat.zoom = Math.max(60, Math.min(180, etat.zoom + d));
@@ -93,5 +128,11 @@ if (studio) studio.addEventListener("message", (e) => {
   else if (m && m.type === "pdf_done") dessiner(false);
   else if (m && m.type === "print_layout") dessiner(true);  // essai sans clic
   else if (m && m.type === "test_export") { exporter("mid"); exporter("musicxml"); exporter("abc"); }
+  else if (m && m.type === "test_import") {  // essai sans clic : fichier lu par le Studio, passé en base 64
+    const octets = Uint8Array.from(atob(m.data), (c) => c.charCodeAt(0));
+    const f = new File([octets], m.name);
+    const dt = new DataTransfer(); dt.items.add(f); el("fichier").files = dt.files;
+    el("fichier").onchange().then(() => { if (m.use) setTimeout(() => el("utiliser").click(), 1500); });
+  }
 });
 envoyer({ type: "ready" });

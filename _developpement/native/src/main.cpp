@@ -6143,6 +6143,10 @@ struct App {
         ImGui::BeginDisabled(plan_busy());
         if (soft_button(tr("Ouvrir une partition (.abc)…"), P.blue)) open_abc_file();
         ImGui::EndDisabled();
+        if (soft_button(tr("Importer MusicXML ou MIDI (Atelier partition)…"), P.violet))  // 1.0.93
+            open_atelier(std::string(), tr("Atelier partition"), std::string(), "partition", fs::path());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("Ouvre l'Atelier partition vide : « Importer… » lit un fichier MusicXML, MIDI ou ABC, l'affiche en notes, puis « Utiliser dans le Studio » le place ici."));
         if (plan_busy()) {
             const float t = (float) (ImGui::GetTime() - plan_job->started);
             ImGui::SameLine();
@@ -9352,11 +9356,8 @@ struct App {
             if (li > 0) out += "  ·  " + trf("Paroles : %s", tr(LANGUAGES[li].label));
         }
         if (!s.adapters.empty()) out += tr("  ·  LoRA ×") + std::to_string(s.adapters.size());
-        const ScoreInfo & sc = score_info(s);  // 1.0.87 : tonalité et tempo de la partition, si le moteur en a écrit une
-        if (!sc.key.empty() || sc.tempo > 0) {
-            out += std::string("  ·  ") + tr("Partition") + " " + key_name(sc.key);
-            if (sc.tempo > 0) out += " " + std::to_string(sc.tempo) + " BPM";
-        }
+        // 1.0.93 : la tonalité de la partition n'est plus ajoutée ici (elle raccourcissait le titre des cartes compactes) ;
+        // elle reste sur la carte détaillée et dans « Voir la partition… »
         return out;
     }
 
@@ -9405,7 +9406,7 @@ struct App {
     // proposé pour les exports (dossier du morceau, sinon vide).
     fs::path atelier_dir;
     double   atelier_ready_at = 0;  // page de l'atelier prête (essai PDF)
-    bool     atelier_pdf_done = false, atelier_export_done = false;
+    bool     atelier_pdf_done = false, atelier_export_done = false, atelier_import_done = false;
     void open_atelier(const std::string & abc, const std::string & title, const std::string & subtitle, const std::string & name, const fs::path & dir) {
         if (atelier_runtime_version().empty()) {
             notify(tr("L'Atelier partition a besoin du moteur Microsoft Edge WebView2 (fourni avec Windows 10 et 11). Installez « WebView2 Runtime » depuis le site de Microsoft."));
@@ -9416,9 +9417,10 @@ struct App {
         yyjson_mut_doc * doc = yyjson_mut_doc_new(nullptr);
         yyjson_mut_val * o   = yyjson_mut_obj(doc);
         yyjson_mut_doc_set_root(doc, o);
-        const std::string shown = abc_for_display(abc, title, subtitle);
-        const std::string info  = trf("Tonalité : %s (%s)", key_name(sc.key).c_str(), sc.key.c_str()) + "   ·   " + trf("Tempo : %d BPM", sc.tempo) + "   ·   " +
-                                 trf("Mesure : %s", sc.meter.c_str());
+        const std::string shown = trim(abc).empty() ? std::string() : abc_for_display(abc, title, subtitle);
+        const std::string info  = !sc.present ? std::string()
+                                              : trf("Tonalité : %s (%s)", key_name(sc.key).c_str(), sc.key.c_str()) + "   ·   " + trf("Tempo : %d BPM", sc.tempo) +
+                                                    "   ·   " + trf("Mesure : %s", sc.meter.c_str());
         yyjson_mut_obj_add_str(doc, o, "type", "load");
         yyjson_mut_obj_add_strcpy(doc, o, "abc", shown.c_str());
         yyjson_mut_obj_add_strcpy(doc, o, "title", title.c_str());
@@ -9428,6 +9430,14 @@ struct App {
         yyjson_mut_obj_add_strcpy(doc, o, "composer", subtitle.substr(0, subtitle.find(" — ")).c_str());  // 1.0.92 : auteur du MusicXML
         yyjson_mut_val * t = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_strcpy(doc, t, "export_error", tr("Export impossible :"));
+        yyjson_mut_obj_add_strcpy(doc, t, "import", tr("Importer…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "import_tip", tr("Ouvrir une partition : MusicXML (.musicxml, .xml, .mxl), MIDI (.mid) ou ABC (.abc). Elle est mise au format du moteur YuE2 (voix chantée et instrument)."));
+        yyjson_mut_obj_add_strcpy(doc, t, "use", tr("Utiliser dans le Studio"));
+        yyjson_mut_obj_add_strcpy(doc, t, "use_tip", tr("Envoie cette partition dans l'onglet « Partition » du Studio, pour générer un morceau qui la suit."));
+        yyjson_mut_obj_add_strcpy(doc, t, "empty", tr("Aucune partition : « Importer… » pour ouvrir un fichier MusicXML, MIDI ou ABC."));
+        yyjson_mut_obj_add_strcpy(doc, t, "imported", tr("Partition importée"));
+        yyjson_mut_obj_add_strcpy(doc, t, "key", tr("Tonalité"));
+        yyjson_mut_obj_add_strcpy(doc, t, "import_error", tr("Import impossible :"));
         yyjson_mut_obj_add_strcpy(doc, t, "midi_tip", tr("Fichier MIDI : les notes et le tempo, pour un logiciel de musique ou un clavier."));
         yyjson_mut_obj_add_strcpy(doc, t, "xml_tip", tr("Fichier MusicXML : la partition complète (notes, mesures, accords) pour MuseScore, Finale, Sibelius, Dorico…"));
         yyjson_mut_obj_add_strcpy(doc, t, "abc_tip", tr("Fichier ABC : la partition au format texte du moteur YuE2."));
@@ -9449,7 +9459,8 @@ struct App {
             atelier_post("{\"type\":\"pdf_done\"}");  // la page reprend l'affichage normal
         };
         cb.on_ready = [this](const std::string &) { atelier_ready_at = ImGui::GetTime(); };
-        if (!atelier_open(hwnd, widen(tr("Atelier partition") + std::string(" — ") + title), app_resource_dir(L"partition").wstring(),
+        const std::string wtitle = title.empty() || title == tr("Atelier partition") ? std::string(tr("Atelier partition")) : tr("Atelier partition") + std::string(" — ") + title;
+        if (!atelier_open(hwnd, widen(wtitle), app_resource_dir(L"partition").wstring(),
                           (studio->paths().cache / L"webview2").wstring(), msg, cb))
             notify(tr("Impossible d'ouvrir l'Atelier partition."));
     }
@@ -9465,6 +9476,17 @@ struct App {
             const fs::path path = ask_export_path(name, "pdf");
             if (path.empty()) atelier_post("{\"type\":\"pdf_done\"}");  // annulé : la page reprend l'affichage normal
             else if (!atelier_print_pdf(path.wstring())) notify(tr("Export PDF impossible."));
+        } else if (type == "use") {  // 1.0.93 : partition (importée ou retouchée) envoyée dans l'onglet « Partition »
+            const std::string abc = str("abc");
+            if (!trim(abc).empty()) {
+                score_abc = score_original = abc;
+                score_source               = name;
+                score_tempo_edit           = parse_score(abc).tempo;
+                form_tab_request           = 2;
+                if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+                SetForegroundWindow(hwnd);
+                notify(trf("Partition « %s » placée dans l'onglet « Partition » : choisissez le style et les paroles dans « Nouveau morceau », puis « Générer avec cette partition ».", name.c_str()));
+            }
         } else if (type == "save") {
             const std::string ext = str("ext"), data = str("data");
             const bool        b64 = yyjson_get_bool(yyjson_obj_get(root, "base64"));
@@ -12696,6 +12718,20 @@ struct App {
                 atelier_post("{\"type\":\"print_layout\"}");
                 atelier_print_pdf(widen(pdf));
             }
+        if (const char * imp = getenv("STUDIO_TEST_IMPORT")) {  // essai 1.0.93 : atelier vide, import du fichier puis « Utiliser dans le Studio »
+            if (!atelier_import_done && atelier_ready_at == 0 && !atelier_is_open()) open_atelier(std::string(), tr("Atelier partition"), std::string(), "partition", fs::path());
+            if (!atelier_import_done && atelier_ready_at > 0 && ImGui::GetTime() - atelier_ready_at > 3) {
+                atelier_import_done = true;
+                std::ifstream in(fs::path(widen(imp)), std::ios::binary);
+                std::string   bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                DWORD         n = 0;
+                CryptBinaryToStringA((const BYTE *) bytes.data(), (DWORD) bytes.size(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &n);
+                std::string b64(n, '\0');
+                CryptBinaryToStringA((const BYTE *) bytes.data(), (DWORD) bytes.size(), CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, b64.data(), &n);
+                b64.resize(strlen(b64.c_str()));
+                atelier_post("{\"type\":\"test_import\",\"use\":true,\"name\":\"" + narrow(fs::path(widen(imp)).filename().wstring()) + "\",\"data\":\"" + b64 + "\"}");
+            }
+        }
         if (getenv("STUDIO_TEST_EXPORT_DIR") && !atelier_export_done && atelier_ready_at > 0 && ImGui::GetTime() - atelier_ready_at > 4) {
             atelier_export_done = true;  // essai 1.0.92 : MIDI, MusicXML et ABC écrits dans ce dossier
             atelier_post("{\"type\":\"test_export\"}");
@@ -13855,6 +13891,37 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 for (const auto & e : fs::directory_iterator(song_folder(id), ec))
                     fprintf(f, "  %s %llu\n", narrow(e.path().filename().wstring()).c_str(), (unsigned long long) (e.is_regular_file() ? e.file_size() : 0));
                 fclose(f);
+            }
+            studio.shutdown();
+            return 0;
+        }
+        if (argv && argc >= 6 && std::wstring(argv[1]) == L"--abc-song") {  // 1.0.93 : chanson générée avec une partition importée
+            // « --abc-song partition.abc paroles.txt "style" sortie.txt » : le moteur suit la partition donnée (comme « Générer
+            // avec cette partition ») ; compte rendu : statut, durée, dossier.
+            Song s;
+            s.abc          = read_text(argv[2]);
+            s.lyrics       = read_text(argv[3]);
+            s.style        = narrow(argv[4]);
+            s.title        = "Essai partition importee";
+            s.artist       = "Groupe Essai";
+            s.cot          = "full";
+            s.auto_duration = true;
+            s.duration     = 360;
+            s.instrumental_lora = false;
+            auto        t0 = std::chrono::steady_clock::now();
+            std::string id = studio.submit(s, false);
+            Song        done;
+            for (;;) {
+                Sleep(2000);
+                for (const Song & x : studio.snapshot())
+                    if (x.id == id) done = x;
+                if (done.status == "done" || done.status == "error" || std::chrono::steady_clock::now() - t0 > std::chrono::seconds(900)) break;
+            }
+            Sleep(500);
+            if (FILE * out = _wfopen(argv[5], L"wb")) {
+                fprintf(out, "statut=%s message=%s duree=%.1f secondes=%.0f\ndossier=%s\n", done.status.c_str(), done.message.c_str(), done.audio_seconds,
+                        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), narrow(song_folder(id).wstring()).c_str());
+                fclose(out);
             }
             studio.shutdown();
             return 0;

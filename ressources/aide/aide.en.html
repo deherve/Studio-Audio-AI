@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Help and overview · version 1.0.92 · updated 5 November 2026</p>
+  <p class="sub">Help and overview · version 1.0.93 · updated 5 November 2026</p>
   <input id="q" type="search" placeholder="Search the help…" aria-label="Search the help">
   <ol id="toc"></ol>
 </nav>
@@ -664,6 +664,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">This help is updated with every added or modified feature. The French version (aide.html) is the reference; this English version follows it.</p>
 <table>
 <tr><th>Date</th><th>Change</th></tr>
+<tr><td>5 Nov 2026 (1.0.93)</td><td>Score workshop, import: “Import…” opens a MusicXML (.musicxml, .xml, .mxl), MIDI (.mid) or ABC file; the score is converted to the engine’s format (sung voice and instrument; MIDI: rhythms rounded to sixteenth notes, key and chords estimated) and “Use in the Studio” places it in the “Score” tab. “Score” tab: “Import MusicXML or MIDI (Score workshop)…”. Test: “Ode to Joy” imported as MIDI, song generated with it, 97% of the melody notes found in the singing (D major, 99 BPM).</td></tr>
 <tr><td>5 Nov 2026 (1.0.92)</td><td>Score workshop, exports: MIDI…, MusicXML… and ABC… buttons (the Studio asks where to save). MusicXML keeps notes, durations, measures, rests, ties, triplets and chord symbols; it opens in MuseScore, Finale, Sibelius or Dorico. Round-trip check ABC → MusicXML → ABC on 10 scores: 100% identical notes and chords.</td></tr>
 <tr><td>5 Nov 2026 (1.0.91)</td><td>Score workshop: “View as notes…” (in the “View the score…” window and the “Score” tab) opens a Studio window showing the score as real notes (abcjs library, in the WebView2 engine included with Windows): sung voice and instrument (automatic bass clef for a low instrument), chords, title, key, tempo; offline piano playback with the playing note highlighted, zoom, printing and A4 PDF export.</td></tr>
 <tr><td>5 Nov 2026 (1.0.90)</td><td>Consistent long tracks: when part 1 has a score, parts 2 and 3 keep its key and tempo. Each continuation's score is prepared from its lyrics, transposed to the previous part's key and set to its tempo, then the engine continues the track following it (≈ 20 to 60 s more per part). Test on 3 parts: the same key (D♯ minor) heard in every part, tempo 126 to 128.</td></tr>

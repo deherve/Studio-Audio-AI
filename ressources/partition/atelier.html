@@ -7,6 +7,9 @@
 <link rel="stylesheet" href="abcjs-audio.css">
 <link rel="stylesheet" href="atelier.css">
 <script src="abcjs-basic-min.js"></script>
+<script src="jquery.min.js"></script>
+<script src="xml2abc.js"></script>
+<script src="tonejs-midi.js"></script>
 </head>
 <body>
 <header id="barre">
@@ -20,6 +23,11 @@
     <button id="pdf"></button>
   </div>
   <div class="groupe">
+    <button id="importer"></button>
+    <input id="fichier" type="file" accept=".abc,.musicxml,.xml,.mxl,.mid,.midi,.txt" hidden>
+    <button id="utiliser" class="principal"></button>
+  </div>
+  <div class="groupe">
     <button id="exp_midi">MIDI…</button>
     <button id="exp_xml">MusicXML…</button>
     <button id="exp_abc">ABC…</button>
@@ -31,6 +39,7 @@
   <pre id="erreurs"></pre>
 </main>
 <script src="atelier_formats.js"></script>
+<script src="atelier_import.js"></script>
 <script src="atelier.js"></script>
 </body>
 </html>

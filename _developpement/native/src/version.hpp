@@ -3,10 +3,10 @@
 // et dans le journal des Ã©volutions de l'aide).
 #pragma once
 
-#define STUDIO_VERSION   "1.0.92"
+#define STUDIO_VERSION   "1.0.93"
 #define APP_NAME         "Studio Audio AI"
 #define APP_NAME_W       L"Studio Audio AI"
-#define STUDIO_VERSION_W L"1.0.92"
+#define STUDIO_VERSION_W L"1.0.93"
 
 // Adresse interrogÃ©e au dÃ©marrage pour savoir si une version plus rÃ©cente existe (voir update_check.hpp).
 // 1.0.77 : derniÃ¨re publication (release) du dÃ©pÃ´t GitHub public du Studio ; Â« html_url Â» = sa page de tÃ©lÃ©chargement.
