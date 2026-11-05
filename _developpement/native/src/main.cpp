@@ -7219,6 +7219,7 @@ struct App {
     double      auto_t0 = 0;
     std::string auto_infl, auto_style, auto_key, auto_formats = "yt";
     bool        skip_existing_clips = false;  // essai automatique : ne refait pas un clip déjà présent
+    bool        video_per_album     = false;  // 1.0.82 : Shorts en série : dossier et pochette de l'album de chaque morceau
     std::wstring auto_report;
     int         auto_count = 8;
     void auto_log(const std::string & line) {
@@ -9781,6 +9782,12 @@ struct App {
         if (songs.empty()) return;
         video_redo = false;
         video_songs = songs;
+        compute_video_recs(songs);
+        video_title = display_title(title);
+        video_key   = key;
+        open_video_dialog_images(songs, key, clip);
+    }
+    void compute_video_recs(const std::vector<Song> & songs) {
         {  // recommandation du nombre d'images de chaque morceau, d'après ses paroles (morceau long : les deux parties)
             video_lines.clear();
             video_rec.clear();
@@ -9796,8 +9803,8 @@ struct App {
                 video_rec[s0.id]   = clip_recommend_images(n, s0.audio_seconds);
             }
         }
-        video_title = display_title(title);
-        video_key   = key;
+    }
+    void open_video_dialog_images(const std::vector<Song> & songs, const std::string & key, bool clip) {
         auto pick   = [&](const std::string & slot) {  // image du réseau, à défaut la pochette de l'album
             std::string c = key.empty() ? std::string() : cover_for(slot);
             if (c.empty() && !key.empty()) c = cover_for(key);
@@ -9817,6 +9824,81 @@ struct App {
     }
 
     // Une vidéo par réseau coché : <titre>_YouTube.mp4 (16:9), <titre>_TikTok.mp4 (9:16), <titre>_Instagram.mp4 (1:1).
+    // 1.0.82 : morceaux sans Short (terminés, ni « partie 1 » ni « partie 2 » d'un morceau long) : de l'album « key », ou de
+    // toute la bibliothèque si key est vide.
+    std::vector<Song> songs_missing_short(const std::vector<Song> & all, const std::string & key) const {
+        std::vector<Song> out;
+        for (const Song & s : all) {
+            if (s.status != "done" || !s.long_rest.empty()) continue;
+            if (!key.empty() && (s.album.empty() || album_key(s.artist, s.album) != key)) continue;
+            const fs::path f = album_folder(s.artist, s.album) / L"videos" / L"Shorts" / (widen(safe_filename(display_title(s.title))) + L"_Short.mp4");
+            if (!cached_exists(f)) out.push_back(s);
+        }
+        return out;
+    }
+    // Une seule file de création (comme les clips) : Short seul, avec les réglages du clip (rendu, moteur d'images, durée) ;
+    // les images d'un clip déjà fait sont reprises, sinon elles sont créées d'abord.
+    void start_missing_shorts(const std::vector<Song> & songs, const std::string & label) {
+        if (songs.empty()) return;
+        const bool keep_skip = skip_existing_clips;
+        video_songs     = songs;
+        compute_video_recs(songs);  // nombre d'images conseillé par morceau, comme la fenêtre « Créer des vidéos »
+        if (!clip_style_loaded) {   // type de rendu mémorisé dans les réglages
+            clip_style_loaded = true;
+            for (int i = 0; i < (int) clip_styles().size(); i++)
+                if (settings.clip_style_id == clip_styles()[i].id) clip_style = i;
+        }
+        video_dest      = album_folder(songs[0].artist, songs[0].album) / L"videos";
+        video_title     = label;
+        video_key.clear();
+        img_yt = img_tt = img_ig = fs::path();
+        video_clip      = true;
+        video_yt = video_tt = video_ig = false;
+        video_short     = true;
+        video_redo      = false;
+        video_per_album = true;
+        skip_existing_clips = true;
+        create_videos();
+        skip_existing_clips = keep_skip;
+        video_per_album     = false;
+    }
+    std::vector<Song> shorts_pending;  // série en attente de confirmation
+    std::string       shorts_label;
+    bool              shorts_open = false;
+    bool              shorts_test = false;  // essai STUDIO_TEST_ALBUMS=shorts
+    void draw_shorts_confirm() {
+        if (shorts_open) {
+            ImGui::OpenPopup(tr("Shorts en série"));
+            shorts_open = false;
+        }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(620 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Shorts en série"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        ImGui::PushFont(g_bold);
+        ImGui::TextUnformatted(shorts_label.c_str());
+        ImGui::PopFont();
+        colored_wrapped(P.text, trf("%d morceau(x) sans Short : un Short de %s s par morceau, centré sur le refrain, rangé dans le dossier « videos\\Shorts » de son album.",
+                                    (int) shorts_pending.size(), settings.clip_short_seconds.c_str()));
+        muted_wrapped(tr("Les images du clip d'un morceau sont reprises. Si un morceau n'a pas encore de clip, ses images sont créées d'abord (quelques minutes par morceau). Les Shorts déjà faits ne sont pas refaits. Type de rendu, moteur d'images et durée : ceux de la fenêtre « Créer des vidéos »."));
+        int shown = 0;
+        for (const Song & s : shorts_pending)
+            if (shown++ < 6) ImGui::TextColored(P.muted, "  %s — %s", s.artist.c_str(), display_title(s.title).c_str());
+        if (shown > 6) ImGui::TextColored(P.muted, "%s", trf("… et %d autre(s) morceau(x).", shown - 6).c_str());
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (modal_buttons(tr("Créer les Shorts"), !shorts_pending.empty(), &P.teal)) {
+            start_missing_shorts(shorts_pending, shorts_label);
+            shorts_pending.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+    void ask_missing_shorts(const std::vector<Song> & all, const std::string & key, const std::string & label) {
+        shorts_pending = songs_missing_short(all, key);
+        shorts_label   = label;
+        if (shorts_pending.empty()) notify(tr("Tous les morceaux ont déjà leur Short."));
+        else shorts_open = true;
+    }
+
     void create_videos() {
         std::error_code ec;
         fs::create_directories(video_dest, ec);
@@ -9915,7 +9997,15 @@ struct App {
                 t.image  = img_tt.empty() ? img_yt : img_tt;
                 t.width  = 1080;
                 t.height = 1920;
-                t.output = video_dest / L"Shorts" / (widen(safe_filename(display_title(s.title))) + L"_Short.mp4");
+                fs::path dest = video_dest;
+                if (video_per_album) {  // 1.0.82 : série sur plusieurs albums
+                    dest = album_folder(s.artist, s.album) / L"videos";
+                    const std::string key = s.album.empty() ? std::string() : album_key(s.artist, s.album);
+                    std::string       c   = key.empty() ? std::string() : cover_for(slot_tiktok(key));
+                    if (c.empty() && !key.empty()) c = cover_for(key);
+                    t.image = c.empty() ? fs::path() : fs::path(widen(c));
+                }
+                t.output = dest / L"Shorts" / (widen(safe_filename(display_title(s.title))) + L"_Short.mp4");
                 std::error_code ec7;
                 if (skip_existing_clips && fs::exists(t.output, ec7)) continue;
                 ClipTask c      = clip_task(t);
@@ -10592,6 +10682,22 @@ struct App {
         ImGui::Checkbox("MP3", &exp_mp3);
         ImGui::SameLine();
         ImGui::Checkbox("WAV", &exp_wav);
+        {  // 1.0.82 : Shorts manquants de toute la bibliothèque, en une seule file
+            const char * lib_label = tr("Shorts manquants (bibliothèque)…");
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(lib_label).x - ImGui::GetStyle().FramePadding.x * 2);
+            const bool busy = studio->local_active() || ai_local_busy();
+            ImGui::BeginDisabled(busy);
+            if (soft_button(lib_label, P.teal, false)) ask_missing_shorts(all, std::string(), tr("Toute la bibliothèque"));
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", busy ? tr("Les images des clips se font au repos : attendez la fin de la génération en cours.")
+                                             : tr("Crée un Short pour chaque morceau terminé qui n'en a pas encore, dans tous les albums."));
+        }
+        if (shorts_test && !all.empty()) {  // essai : bibliothèque lue
+            shorts_test = false;
+            ask_missing_shorts(all, std::string(), tr("Toute la bibliothèque"));
+        }
+        draw_shorts_confirm();
         ImGui::BeginChild("albums_list", ImVec2(0, 470 * g_dpi), ImGuiChildFlags_Borders);
         if (albums.empty()) {
             ImGui::Dummy(ImVec2(0, 20 * g_dpi));
@@ -10755,6 +10861,8 @@ struct App {
                     ImGui::SetTooltip("%s", tr("Un morceau de cet album est en cours de génération."));
                 if (ImGui::MenuItem(tr("Ouvrir le dossier de l'album")))
                     ShellExecuteW(nullptr, L"open", album_folder(a.artist, a.album).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                if (ImGui::MenuItem(tr("Shorts manquants de l'album…"), nullptr, false, !ai_local_busy() && !studio->local_active()))
+                    ask_missing_shorts(all, a.key, a.album);  // 1.0.82
                 if (ImGui::MenuItem(tr("Rédiger les descriptions (IA locale)"), nullptr, false, !ai_local_busy() && !studio->local_active()))
                     start_descriptions(a.key, all);
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
@@ -11927,6 +12035,11 @@ struct App {
                 open_video_dialog(album_songs(all, key, false), name, key);
                 video_clip = true;
                 video_short = true;  // 1.0.75 : liste des durées visible sur la capture
+                return true;
+            }
+            if (s == "shorts") {  // 1.0.82 : fenêtre de confirmation des Shorts manquants de toute la bibliothèque
+                shorts_test = true;
+                open_albums = true;
                 return true;
             }
             album_menu_test = s.size() > 2 && s.compare(s.size() - 2, 2, "|m") == 0;
