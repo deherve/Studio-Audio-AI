@@ -22,4 +22,6 @@ std::string pc_name(int pc, bool flats);
 std::string transpose_chord(const std::string & chord, int k, bool flats);
 std::string abc_transpose(const std::string & abc, int k);                // k demi-tons, armure + notes + accords
 std::string abc_set_tempo(const std::string & abc, int bpm);
+// 1.0.91 : partition prête à afficher : titre (T:), auteur (C:), clé de fa pour la voix d'instrument quand elle est grave
+std::string abc_for_display(const std::string & abc, const std::string & title, const std::string & composer);
 int         key_distance(const std::string & from, const std::string & to);  // demi-tons de from à to (-5..+6), 0 si inconnu

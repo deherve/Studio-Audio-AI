@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Aide et présentation · version 1.0.90 · mise à jour le 5 novembre 2026</p>
+  <p class="sub">Aide et présentation · version 1.0.91 · mise à jour le 5 novembre 2026</p>
   <input id="q" type="search" placeholder="Rechercher dans l'aide…" aria-label="Rechercher dans l'aide">
   <ol id="toc"></ol>
 </nav>
@@ -662,6 +662,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">Cette aide est mise à jour à chaque ajout ou modification de fonctionnalité.</p>
 <table>
 <tr><th>Date</th><th>Évolution</th></tr>
+<tr><td>5 nov. 2026 (1.0.91)</td><td>Atelier partition : « Voir en notes… » (fenêtre « Voir la partition… » et onglet « Partition ») ouvre une fenêtre du Studio qui affiche la partition en vraies notes (bibliothèque abcjs, dans le moteur WebView2 fourni avec Windows) : voix chantée et instrument (clé de fa automatique pour l'instrument grave), accords, titre, tonalité, tempo ; écoute au piano sans internet avec la note jouée en couleur, zoom, impression et export PDF au format A4.</td></tr>
 <tr><td>5 nov. 2026 (1.0.90)</td><td>Morceaux longs cohérents : quand la partie 1 a une partition, les parties 2 et 3 gardent sa tonalité et son tempo. La partition de chaque suite est préparée d'après ses paroles, transposée dans la tonalité de la partie précédente et réglée sur son tempo, puis le moteur continue le morceau en la suivant (≈ 20 à 60 s de plus par partie). Essai sur 3 parties : la même tonalité (Ré dièse mineur) entendue dans chaque partie, tempo 126 à 128.</td></tr>
 <tr><td>5 nov. 2026 (1.0.89)</td><td>Partition reconnue : dans l'onglet « Partition », « Reconnaître la partition d'un fichier audio… » fait écouter un morceau par SheetSage2 (≈ 1 min pour 3 min de musique) ; sa partition (tonalité, tempo, sections, accords, mélodie) arrive dans l'onglet, où on la transpose ou la retouche, puis on génère avec ses propres paroles et son style : comme une reprise, mais la partition est visible et modifiable. Aussi : « Ouvrir une partition (.abc)… », et Actions › « Reconnaître sa partition… » pour un morceau de la bibliothèque qui n'en a pas.</td></tr>
 <tr><td>5 nov. 2026 (1.0.88)</td><td>Onglet « Partition » (à côté de « Nouveau morceau » et « Composer avec l'IA ») : « Préparer la partition » fait écrire au modèle la partition seule (≈ 1 min) d'après le titre, le style et les paroles de « Nouveau morceau » ; on la vérifie (tonalité, tempo, mesure, accords par section), on la transpose (± 1 demi-ton, notes et accords), on change son tempo (le « BPM » du style suit) ou son texte, puis « Générer avec cette partition ». Actions › « Utiliser cette partition… » reprend un morceau et sa partition pour le rejouer, le transposer ou le refaire dans un autre style.</td></tr>

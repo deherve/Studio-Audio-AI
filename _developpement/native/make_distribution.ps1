@@ -93,6 +93,7 @@ Set-Content -Encoding UTF8 "$dist\outils\llama-vulkan\TELECHARGE_PAR_LE_STUDIO.t
 Copy-Item "$root\ressources\aide" "$dist\ressources\aide" -Recurse -Force
 foreach ($old in 'import_ia.jpg') { Remove-Item "$dist\ressources\aide\img\$old" -Force -ErrorAction SilentlyContinue }
 Copy-Item "$root\ressources\langues" "$dist\ressources\langues" -Recurse -Force
+Copy-Item "$root\ressources\partition" "$dist\ressources\partition" -Recurse -Force  # 1.0.91 : Atelier partition (pages, abcjs, sons de piano)
 
 # ---- 6. Modèles (dossiers vides avec leurs notes), démos, licences
 Copy-Item "$fixed\modeles\*" "$dist\modeles" -Recurse -Force
@@ -100,6 +101,7 @@ if (Test-Path "$fixed\Audios") { Copy-Item "$fixed\Audios\*" "$dist\Audios" -Rec
 Copy-Item "$fixed\LICENSES\*" "$dist\LICENSES" -Force
 Copy-Item "$dev\yue2.cpp\LICENSE" "$dist\LICENSES\yue2.cpp-MIT.txt" -Force
 Copy-Item "$root\LICENSE" "$dist\LICENSES\StudioAudioAI-MIT.txt" -Force  # 1.0.86 : code du Studio sous MIT
+Copy-Item "$dev\native\third_party\webview2\LICENSE.txt" "$dist\LICENSES\WebView2-BSD.txt" -Force  # 1.0.91 : Atelier partition (abcjs et sons : ressources\partition)
 Copy-Item "$dev\native\third_party\imgui\LICENSE.txt" "$dist\LICENSES\DearImGui-MIT.txt" -Force
 Copy-Item "$root\outils\whisper\LICENSE-whisper.cpp.txt" "$dist\LICENSES\whisper.cpp-MIT.txt" -Force
 Copy-Item "$dev\native\third_party\onnxruntime\LICENSE" "$dist\LICENSES\ONNXRuntime-MIT.txt" -Force

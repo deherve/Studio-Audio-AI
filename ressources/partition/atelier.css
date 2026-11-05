@@ -1,0 +1,36 @@
+/* Studio Audio AI 1.0.91 : Atelier partition. Page blanche comme une feuille de musique (impression fidèle). */
+:root { --accent: #6c4fd8; --texte: #1d1b26; --gris: #6b6880; --fond: #f4f3f8; --ligne: #dcd9e6; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--fond); color: var(--texte); font: 14px "Segoe UI", system-ui, sans-serif; }
+header#barre {
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; background: #fff; border-bottom: 1px solid var(--ligne); box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+#titres { min-width: 220px; flex: 1 1 260px; }
+#titre { font-weight: 600; font-size: 16px; }
+#soustitre { color: var(--gris); font-size: 12px; margin-top: 2px; }
+#lecteur { flex: 1 1 320px; min-width: 260px; }
+.groupe { display: flex; align-items: center; gap: 6px; }
+button {
+  font: inherit; border: 1px solid var(--ligne); background: #fff; color: var(--texte); border-radius: 6px;
+  padding: 5px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+#zoom_val { min-width: 52px; text-align: center; color: var(--gris); }
+main { padding: 16px; }
+#infos { color: var(--gris); margin: 0 auto 10px; max-width: 1200px; }
+#partition { background: #fff; margin: 0 auto; max-width: 1150px; padding: 18px 22px; border-radius: 6px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
+#erreurs { color: #b3261e; white-space: pre-wrap; max-width: 1200px; margin: 10px auto; }
+#erreurs:empty { display: none; }
+.abcjs-note_playing, .abcjs-note_playing path { fill: var(--accent); }
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  html, body { background: #fff; }
+  header#barre, #erreurs { display: none; }
+  main { padding: 0; }
+  #infos { color: #000; }
+  /* abcjs met au conteneur display:inline-block, overflow:hidden et une hauteur fixe : un bloc que l'impression ne coupe pas */
+  #partition { box-shadow: none; padding: 0; max-width: none !important; width: 100%; display: block !important; overflow: visible !important; height: auto !important; }
+  #partition svg { display: block; break-inside: avoid; page-break-inside: avoid; }
+  #partition > div { break-inside: avoid; page-break-inside: avoid; overflow: visible !important; }
+}

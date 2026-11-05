@@ -37,6 +37,7 @@ using std::min;
 #include "suno.hpp"
 #include "fiches.hpp"
 #include "score.hpp"  // 1.0.89
+#include "atelier.hpp"  // 1.0.91
 #include "media.hpp"
 #include "setup.hpp"
 #include "gpumem.hpp"
@@ -6211,6 +6212,9 @@ struct App {
             }
             ImGui::EndTable();
         }
+        if (accent_button(tr("Voir en notes…"), ImVec2(0, 0), &P.violet))  // 1.0.91 : Atelier partition
+            open_atelier(score_abc, score_source, trim(form.artist), score_source, fs::path());
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ouvre l'Atelier partition : la partition en notes, à écouter, imprimer ou enregistrer en PDF."));
         if (ImGui::CollapsingHeader(tr("Modifier le texte de la partition (ABC, pour les connaisseurs)"))) {
             tx::InputTextMultiline("##score_text", &score_abc, ImVec2(-FLT_MIN, 260 * g_dpi));
         }
@@ -9395,6 +9399,82 @@ struct App {
     std::string score_view_id;  // morceau dont la partition est affichée
     bool        open_score_view = false;
     bool        score_test_done = false;
+    bool        atelier_test_done = false;
+    // ---- 1.0.91 : Atelier partition (fenêtre WebView2 + abcjs). abc = partition ; name = nom de fichier proposé ; dir = dossier
+    // proposé pour les exports (dossier du morceau, sinon vide).
+    fs::path atelier_dir;
+    double   atelier_ready_at = 0;  // page de l'atelier prête (essai PDF)
+    bool     atelier_pdf_done = false;
+    void open_atelier(const std::string & abc, const std::string & title, const std::string & subtitle, const std::string & name, const fs::path & dir) {
+        if (atelier_runtime_version().empty()) {
+            notify(tr("L'Atelier partition a besoin du moteur Microsoft Edge WebView2 (fourni avec Windows 10 et 11). Installez « WebView2 Runtime » depuis le site de Microsoft."));
+            return;
+        }
+        atelier_dir = dir;
+        const ScoreInfo  sc  = parse_score(abc);
+        yyjson_mut_doc * doc = yyjson_mut_doc_new(nullptr);
+        yyjson_mut_val * o   = yyjson_mut_obj(doc);
+        yyjson_mut_doc_set_root(doc, o);
+        const std::string shown = abc_for_display(abc, title, subtitle);
+        const std::string info  = trf("Tonalité : %s (%s)", key_name(sc.key).c_str(), sc.key.c_str()) + "   ·   " + trf("Tempo : %d BPM", sc.tempo) + "   ·   " +
+                                 trf("Mesure : %s", sc.meter.c_str());
+        yyjson_mut_obj_add_str(doc, o, "type", "load");
+        yyjson_mut_obj_add_strcpy(doc, o, "abc", shown.c_str());
+        yyjson_mut_obj_add_strcpy(doc, o, "title", title.c_str());
+        yyjson_mut_obj_add_strcpy(doc, o, "subtitle", subtitle.c_str());
+        yyjson_mut_obj_add_strcpy(doc, o, "info", info.c_str());
+        yyjson_mut_obj_add_strcpy(doc, o, "name", name.c_str());
+        yyjson_mut_val * t = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, t, "print", tr("Imprimer…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "pdf", tr("Exporter en PDF…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "zoom_in", tr("Agrandir"));
+        yyjson_mut_obj_add_strcpy(doc, t, "zoom_out", tr("Réduire"));
+        yyjson_mut_obj_add_strcpy(doc, t, "warnings", tr("Remarques de lecture de la partition :"));
+        yyjson_mut_obj_add_val(doc, o, "t", t);
+        size_t      len  = 0;
+        char *      json = yyjson_mut_write(doc, 0, &len);
+        std::string msg(json ? json : "{}", len);
+        free(json);
+        yyjson_mut_doc_free(doc);
+        AtelierCallbacks cb;
+        cb.on_message = [this](const std::string & m) {
+            if (m.find("\"type\":\"pdf\"") != std::string::npos) {  // export PDF demandé par la page
+                std::string name = "partition";
+                const size_t p = m.find("\"name\":\"");
+                if (p != std::string::npos) name = m.substr(p + 8, m.find('"', p + 8) - p - 8);
+                const fs::path path = ask_pdf_path(name);
+                if (path.empty()) atelier_post("{\"type\":\"pdf_done\"}");  // annulé : la page reprend l'affichage normal
+                else if (!atelier_print_pdf(path.wstring())) notify(tr("Export PDF impossible."));
+            }
+        };
+        cb.on_pdf = [this](bool ok, const std::wstring & path) {
+            notify(ok ? trf("Partition enregistrée en PDF : %s", narrow(path).c_str()) : std::string(tr("Export PDF impossible.")));
+            atelier_post("{\"type\":\"pdf_done\"}");  // la page reprend l'affichage normal
+        };
+        cb.on_ready = [this](const std::string &) { atelier_ready_at = ImGui::GetTime(); };
+        if (!atelier_open(hwnd, widen(tr("Atelier partition") + std::string(" — ") + title), app_resource_dir(L"partition").wstring(),
+                          (studio->paths().cache / L"webview2").wstring(), msg, cb))
+            notify(tr("Impossible d'ouvrir l'Atelier partition."));
+    }
+    fs::path ask_pdf_path(const std::string & name) {
+        std::wstring  def            = widen(safe_filename(name) + ".pdf");
+        wchar_t       file[MAX_PATH] = {};
+        wcsncpy_s(file, def.c_str(), _TRUNCATE);
+        std::wstring  filter = std::wstring(L"PDF (*.pdf)") + L'\0' + L"*.pdf" + L'\0' + L'\0';
+        std::wstring  title  = wtr("Exporter la partition en PDF");
+        std::wstring  dir    = atelier_dir.wstring();
+        OPENFILENAMEW ofn{ sizeof(ofn) };
+        ofn.hwndOwner       = nullptr;
+        ofn.lpstrFilter     = filter.c_str();
+        ofn.lpstrFile       = file;
+        ofn.nMaxFile        = MAX_PATH;
+        ofn.lpstrDefExt     = L"pdf";
+        ofn.lpstrTitle      = title.c_str();
+        ofn.lpstrInitialDir = dir.empty() ? nullptr : dir.c_str();
+        ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        return GetSaveFileNameW(&ofn) ? fs::path(file) : fs::path();
+    }
+
     void draw_score_view() {
         if (open_score_view) {
             ImGui::OpenPopup(tr("Partition"));
@@ -9441,6 +9521,12 @@ struct App {
             muted_wrapped(tr("La partition est le plan que le modèle a écrit avant de composer le son ; le morceau la suit (tonalité, tempo, accords)."));
         }
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (sc.present && accent_button(tr("Voir en notes…"), ImVec2(0, 0), &P.violet)) {  // 1.0.91
+            open_atelier(sc.text, display_title(target.title), target.artist + (target.album.empty() ? std::string() : " — " + target.album),
+                         display_title(target.title), song_folder(target.id));
+            ImGui::CloseCurrentPopup();
+        }
+        if (sc.present) ImGui::SameLine();
         if (sc.present && soft_button(tr("Ouvrir le fichier"), P.teal)) {
             std::wstring arg = L"/select,\"" + (song_folder(target.id) / "score.abc").wstring() + L"\"";
             ShellExecuteW(nullptr, L"open", L"explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
@@ -12570,6 +12656,22 @@ struct App {
             return v != nullptr;
         }();
         (void) recognize_test;
+        if (const char * pdf = getenv("STUDIO_TEST_ATELIER_PDF"))  // essai 1.0.91 : PDF écrit 4 s après le chargement de la page
+            if (!atelier_pdf_done && atelier_ready_at > 0 && ImGui::GetTime() - atelier_ready_at > 4) {
+                atelier_pdf_done = true;
+                atelier_post("{\"type\":\"print_layout\"}");
+                atelier_print_pdf(widen(pdf));
+            }
+        if (!atelier_test_done) {  // 1.0.91 : STUDIO_TEST_ATELIER=<titre> ouvre l'Atelier partition sur la partition de ce morceau
+            const char * v = getenv("STUDIO_TEST_ATELIER");
+            if (!v) atelier_test_done = true;
+            else
+                for (const Song & s : studio->snapshot())
+                    if (s.title == v && score_info(s).present) {
+                        atelier_test_done = true;
+                        open_atelier(score_info(s).text, display_title(s.title), s.artist, display_title(s.title), song_folder(s.id));
+                    }
+        }
         if (!score_test_done) {  // 1.0.87 : STUDIO_TEST_SCORE=<titre> ouvre « Partition » sur ce morceau (dès que la bibliothèque est lue)
             const char * v = getenv("STUDIO_TEST_SCORE");
             if (!v) score_test_done = true;

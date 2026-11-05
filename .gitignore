@@ -22,6 +22,8 @@
 # Fabriqué ou trop lourd
 /_developpement/native/build/
 /_developpement/native/third_party/ffmpeg_essentials/
+# 11 Mo : WebView2LoaderStatic.lib (NuGet Microsoft.Web.WebView2 1.0.4258.31), à retélécharger pour compiler
+/_developpement/native/third_party/webview2/x64/
 /_developpement/native/distribution_fichiers/Audios/
 
 # Jamais, où que ce soit

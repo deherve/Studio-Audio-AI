@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Atelier partition</title>
+<!-- Studio Audio AI 1.0.91 : page de l'« Atelier partition », affichée dans le Studio (WebView2). abcjs : licence MIT. -->
+<link rel="stylesheet" href="abcjs-audio.css">
+<link rel="stylesheet" href="atelier.css">
+<script src="abcjs-basic-min.js"></script>
+</head>
+<body>
+<header id="barre">
+  <div id="titres"><div id="titre">…</div><div id="soustitre"></div></div>
+  <div id="lecteur"></div>
+  <div class="groupe">
+    <button id="zoom_moins" title="">−</button><span id="zoom_val">100 %</span><button id="zoom_plus" title="">+</button>
+  </div>
+  <div class="groupe">
+    <button id="imprimer"></button>
+    <button id="pdf"></button>
+  </div>
+</header>
+<main>
+  <div id="infos"></div>
+  <div id="partition"></div>
+  <pre id="erreurs"></pre>
+</main>
+<script src="atelier.js"></script>
+</body>
+</html>

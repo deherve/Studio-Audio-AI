@@ -236,3 +236,57 @@ int key_distance(const std::string & from, const std::string & to) {
     int d = ((rb - ra) % 12 + 12) % 12;
     return d > 6 ? d - 12 : d;
 }
+
+std::string abc_for_display(const std::string & abc, const std::string & title, const std::string & composer) {
+    // 1. voix grave ? (plus de la moitié des notes sous le do du milieu : lettre majuscule suivie de « , ») -> clé de fa
+    std::map<std::string, std::pair<int, int>> low;  // nom de voix -> (notes graves, notes)
+    {
+        std::istringstream in(abc);
+        std::string        line, voice;
+        while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.rfind("V:", 0) == 0) {
+                std::istringstream v(line.substr(2));
+                v >> voice;
+                continue;
+            }
+            if (voice.empty() || line.empty() || line[0] == '%' || (line.size() > 1 && isalpha((unsigned char) line[0]) && line[1] == ':')) continue;
+            bool in_chord = false;
+            for (size_t i = 0; i < line.size(); i++) {
+                const char c = line[i];
+                if (c == '"') { in_chord = !in_chord; continue; }
+                if (in_chord || !strchr("ABCDEFGabcdefg", c)) continue;
+                low[voice].second++;
+                if (isupper((unsigned char) c) && i + 1 < line.size() && line[i + 1] == ',') low[voice].first++;
+            }
+        }
+    }
+    std::istringstream in(abc);
+    std::string        out, line;
+    bool               has_title = false, has_composer = false;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("T:", 0) == 0 && !has_title) {
+            line      = "T:" + (title.empty() ? trim(line.substr(2)) : title);
+            has_title = true;
+        } else if (line.rfind("C:", 0) == 0) {
+            has_composer = true;
+        } else if (line.rfind("V:", 0) == 0) {
+            std::istringstream v(line.substr(2));
+            std::string        voice;
+            v >> voice;
+            const auto it = low.find(voice);
+            if (it != low.end() && it->second.second > 0 && it->second.first * 2 > it->second.second) {
+                const size_t c = line.find("clef=treble");
+                if (c != std::string::npos) line.replace(c, 11, "clef=bass");
+                else if (line.find("clef=") == std::string::npos && line.find("name=") != std::string::npos) line += " clef=bass";
+            }
+        } else if (line.rfind("K:", 0) == 0 && !has_composer && !composer.empty()) {
+            out += "C:" + composer + "\n";  // avant K: (fin de l'en-tête)
+            has_composer = true;
+        }
+        out += line + "\n";
+    }
+    if (!has_title && !title.empty()) out = "T:" + title + "\n" + out;
+    return out;
+}

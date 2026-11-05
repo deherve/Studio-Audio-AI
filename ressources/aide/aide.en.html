@@ -61,7 +61,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <div class="layout">
 <nav id="nav">
   <h1>Studio Audio AI</h1>
-  <p class="sub">Help and overview · version 1.0.90 · updated 5 November 2026</p>
+  <p class="sub">Help and overview · version 1.0.91 · updated 5 November 2026</p>
   <input id="q" type="search" placeholder="Search the help…" aria-label="Search the help">
   <ol id="toc"></ol>
 </nav>
@@ -664,6 +664,7 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">This help is updated with every added or modified feature. The French version (aide.html) is the reference; this English version follows it.</p>
 <table>
 <tr><th>Date</th><th>Change</th></tr>
+<tr><td>5 Nov 2026 (1.0.91)</td><td>Score workshop: “View as notes…” (in the “View the score…” window and the “Score” tab) opens a Studio window showing the score as real notes (abcjs library, in the WebView2 engine included with Windows): sung voice and instrument (automatic bass clef for a low instrument), chords, title, key, tempo; offline piano playback with the playing note highlighted, zoom, printing and A4 PDF export.</td></tr>
 <tr><td>5 Nov 2026 (1.0.90)</td><td>Consistent long tracks: when part 1 has a score, parts 2 and 3 keep its key and tempo. Each continuation's score is prepared from its lyrics, transposed to the previous part's key and set to its tempo, then the engine continues the track following it (≈ 20 to 60 s more per part). Test on 3 parts: the same key (D♯ minor) heard in every part, tempo 126 to 128.</td></tr>
 <tr><td>5 Nov 2026 (1.0.89)</td><td>Recognised score: in the “Score” tab, “Recognise the score of an audio file…” has SheetSage2 listen to a track (≈ 1 min for 3 min of music); its score (key, tempo, sections, chords, melody) comes into the tab, where you transpose or edit it, then generate with your own lyrics and style: like a cover, but the score is visible and editable. Also: “Open a score (.abc)…”, and Actions › “Recognise its score…” for a library track that has none.</td></tr>
 <tr><td>5 Nov 2026 (1.0.88)</td><td>“Score” tab (next to “New track” and “Compose with AI”): “Prepare the score” has the model write the score alone (≈ 1 min) from the title, style and lyrics of “New track”; you check it (key, tempo, time signature, chords per section), transpose it (± 1 semitone, notes and chords), change its tempo (the style's “BPM” follows) or its text, then “Generate with this score”. Actions › “Use this score…” takes a track and its score to replay it, transpose it or redo it in another style.</td></tr>
