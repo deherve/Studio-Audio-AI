@@ -1,4 +1,5 @@
 #include "clip.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 #include "i18n.hpp"
 
 #include <windows.h>
@@ -8,11 +9,6 @@
 #include <cstdio>
 
 #include "yyjson.h"
-
-static std::string trim(const std::string & s) {
-    size_t b = s.find_first_not_of(" \t\r\n"), e = s.find_last_not_of(" \t\r\n");
-    return b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
-}
 
 // Mot comparable : minuscules ASCII, lettres et chiffres seulement ; les octets ≥ 0x80 (accents) sont gardés.
 static std::string norm_word(const std::string & w) {

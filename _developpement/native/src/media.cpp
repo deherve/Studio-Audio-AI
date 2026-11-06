@@ -1,6 +1,7 @@
 #include <map>
 #include <set>
 #include "media.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
 #include <shlobj.h>
@@ -271,11 +272,8 @@ void start_videos(const std::shared_ptr<Job> & job, const Paths & paths, std::ve
 // groupe) ; la réponse (histoire + scènes + descriptions d'images) est gardée dans <morceau>\clip_scenes pour pouvoir
 // être relue, corrigée et réutilisée par les trois formats. Les images viennent ensuite du modèle d'images local, l'une
 // après l'autre (la carte graphique est libérée entre l'IA de texte et celle d'images).
-static std::string read_text(const fs::path & file, size_t max = 100000) {
-    std::ifstream f(file, std::ios::binary);
-    if (!f) return {};
-    std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    return s.size() > max ? s.substr(0, max) : s;
+static std::string read_head(const fs::path & file, size_t max = 100000) {  // début d'un fichier (fiches lues pour le clip)
+    return read_text(file).substr(0, max);
 }
 
 // un dossier par type de rendu et par moteur d'images (FLUX klein, le moteur d'origine, garde le nom simple)
@@ -299,7 +297,7 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
 
     // 1. scénario (gardé : même scénario pour YouTube, TikTok et Instagram, et à la reprise)
     fs::path    answer_file = dir / L"scenario_ia.txt";
-    std::string answer      = read_text(answer_file);
+    std::string answer      = read_head(answer_file);
     // Le scénario gardé n'est valable que pour les mêmes paroles (nombre de lignes et texte) : sinon on le refait, et les
     // images de l'ancien scénario sont retirées (morceau long : les paroles ont pu passer de la partie 2 aux deux parties).
     std::string sig;
@@ -328,8 +326,8 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
         eng.images->server.reset();  // l'IA de texte a besoin de la mémoire vidéo : le modèle d'images sera rechargé après
         say(trf("Scénario : « %s »…", s.title.c_str()));
         fs::path parent = song_folder(s.id).parent_path();
-        std::string context = read_text(parent / L"fiche_groupe.txt", 700) + "\n" + read_text(parent / L"fiche_album.txt", 700) + "\n" +
-                              read_text(parent.parent_path() / L"fiche_groupe.txt", 700) + "\n" + read_text(song_folder(s.id) / L"fiche.txt", 900);
+        std::string context = read_head(parent / L"fiche_groupe.txt", 700) + "\n" + read_head(parent / L"fiche_album.txt", 700) + "\n" +
+                              read_head(parent.parent_path() / L"fiche_groupe.txt", 700) + "\n" + read_head(song_folder(s.id) / L"fiche.txt", 900);
         std::string user = clip_story_user(display_title(s.title), s.style, context, lines, eng.style_prompt, want);
         std::atomic<int> stage{ 0 };
         if (want <= 12) {  // 12 scènes ou moins : une seule demande

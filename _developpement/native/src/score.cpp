@@ -1,5 +1,6 @@
 // 1.0.89 : voir score.hpp.
 #include "score.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <algorithm>
 #include <array>
@@ -8,11 +9,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
-
-static std::string trim(const std::string & s) {
-    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
-}
 
 ScoreInfo parse_score(const std::string & abc) {
     ScoreInfo info;

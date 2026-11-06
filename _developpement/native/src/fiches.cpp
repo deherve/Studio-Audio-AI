@@ -1,4 +1,5 @@
 #include "fiches.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <algorithm>
 #include <cstdio>
@@ -9,11 +10,6 @@ static std::string mmss(double s) {
     char buf[32];
     snprintf(buf, sizeof(buf), "%d:%02d", (int) s / 60, (int) s % 60);
     return buf;
-}
-
-static void write_text(const fs::path & file, const std::string & text) {
-    std::ofstream f(file, std::ios::binary | std::ios::trunc);
-    f << text;
 }
 
 // Valeur d'une ligne « Clé : valeur » d'une fiche de morceau.

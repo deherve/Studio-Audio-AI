@@ -1,4 +1,5 @@
 #include "suno.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include "i18n.hpp"
 
@@ -145,11 +146,6 @@ std::string fold(const std::string & s) {
         }
     }
     return out;
-}
-
-static std::string trim(const std::string & s) {
-    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
 }
 
 static bool word_char(unsigned char c) {

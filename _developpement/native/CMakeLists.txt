@@ -40,6 +40,7 @@ add_executable(StudioYuE2 WIN32
     src/ai_writer.cpp
     src/i18n.cpp
     src/analysis.cpp
+    src/util.cpp
     src/app.rc
     ${IMGUI}/imgui.cpp
     ${IMGUI}/imgui_draw.cpp
@@ -76,6 +77,7 @@ add_custom_command(TARGET StudioYuE2 POST_BUILD
 add_executable(CreateurStyles WIN32
     createur/createur_styles.cpp
     src/analysis.cpp
+    src/util.cpp
     src/lyrics_web.cpp
     src/net.cpp
     src/studio.cpp

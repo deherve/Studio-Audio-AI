@@ -1,4 +1,5 @@
 #include "i18n.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
 
@@ -28,13 +29,6 @@ std::unordered_map<std::string, std::string>  g_fallback;   // anglais, quand la
 std::unordered_map<std::string_view, const std::string *> g_view;  // recherche sans allocation (clés = celles de g_strings / g_fallback)
 std::u32string                                g_glyphs;
 
-std::string read_file(const fs::path & p) {
-    std::ifstream in(p, std::ios::binary);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
-
 std::u32string to_u32(const std::string & s) {
     std::u32string out;
     size_t         i = 0;
@@ -56,7 +50,7 @@ std::u32string to_u32(const std::string & s) {
 
 // Lit « strings » d'un fichier de langue ; renvoie faux si le fichier est illisible.
 bool load_strings(const fs::path & file, std::unordered_map<std::string, std::string> & out) {
-    std::string data = read_file(file);
+    std::string data = read_text(file);
     if (data.empty()) return false;
     yyjson_doc * doc = yyjson_read(data.data(), data.size(), 0);
     if (!doc) return false;
@@ -88,7 +82,7 @@ void init(const fs::path & dir) {
         if (!e.is_regular_file() || e.path().extension() != ".json") continue;
         std::string stem = e.path().stem().string();
         if (stem.empty() || stem[0] == '_') continue;  // « _modele » : gabarit pour de nouvelles langues
-        std::string data = read_file(e.path());
+        std::string data = read_text(e.path());
         yyjson_doc * doc = yyjson_read(data.data(), data.size(), 0);
         if (!doc) continue;
         yyjson_val * meta = yyjson_obj_get(yyjson_doc_get_root(doc), "meta");

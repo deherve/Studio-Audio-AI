@@ -1,4 +1,5 @@
 #include "studio.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
 #include <shellapi.h>
@@ -115,11 +116,6 @@ static std::wstring quote(const std::wstring & arg) {
     }
     out.append(slashes * 2, L'\\');
     return out + L"\"";
-}
-
-static std::string read_file(const fs::path & path) {
-    std::ifstream in(path, std::ios::binary);
-    return std::string(std::istreambuf_iterator<char>(in), {});
 }
 
 static void write_file_atomic(const fs::path & path, const char * data, size_t size) {
@@ -391,7 +387,7 @@ static void timing_from_log(const fs::path & log, Song & s) {
 static void place_song(const Song & s, bool force = false);  // 1.0.43 : dossier du morceau sous Audios (plus bas)
 
 static bool load_song(const fs::path & meta, Song & song) {
-    std::string  text = read_file(meta);
+    std::string  text = read_text(meta);
     yyjson_doc * doc  = yyjson_read(text.data(), text.size(), 0);
     if (!doc) {
         return false;
@@ -709,7 +705,7 @@ static bool drop_missing_adapters(yyjson_mut_doc * doc, const fs::path & dir) {
 
 // Requête de rejeu écrite par yue-synth à côté de l'audio : codes sémantiques, partition, graines.
 static yyjson_mut_doc * read_replay(const fs::path & file) {
-    std::string  text = read_file(file);
+    std::string  text = read_text(file);
     yyjson_doc * doc  = yyjson_read(text.data(), text.size(), 0);
     if (!doc) {
         return nullptr;
@@ -1960,7 +1956,7 @@ void Studio::launch_long_part(const std::string & id) {
     n.auto_duration     = true;
     n.lm_seed = n.seed  = -1;
     {  // 1.0.90 : même tonalité et même tempo que la partie précédente (si elle a une partition)
-        const ScoreInfo prev = parse_score(read_file(song_folder(p.id) / "score.abc"));
+        const ScoreInfo prev = parse_score(read_text(song_folder(p.id) / "score.abc"));
         if (prev.present && !prev.key.empty()) {
             n.score_key   = prev.key;
             n.score_tempo = prev.tempo;
@@ -2152,7 +2148,7 @@ void Studio::generate(const std::string & id) {
                 finish_stopped(id, wav);
                 return;
             }
-            std::string abc = read_file(abc_file);
+            std::string abc = read_text(abc_file);
             if (code != 0 || abc.empty()) {
                 yyjson_mut_doc_free(doc);
                 throw std::runtime_error(fatal.empty() ? std::string(tr("La transcription de la mélodie a échoué."))
@@ -2529,7 +2525,7 @@ void Studio::run_health_check() {
             finish(4, tr("Test interrompu par la fermeture de l'application."), 0);
             return;
         }
-        std::string raw = read_file(latent);
+        std::string raw = read_text(latent);
         if (code != 0 || raw.size() < 4096) {
             finish(4, fatal.empty() ? std::string(tr("Le rendu d'essai a échoué.")) : trf("Le rendu d'essai a échoué : %s", fatal.c_str()), 0);
             return;
@@ -2588,7 +2584,7 @@ std::string Studio::plan_score(const Song & song, std::string & error) {
     std::string log;
     const int   code = run_process(cmd, [&](const std::string & l) { log += l + "\n"; }, nullptr);
     write_file_atomic(dir / "plan.log", log.data(), log.size());
-    std::string abc = read_file(out);
+    std::string abc = read_text(out);
     if (code != 0 || abc.empty()) error = trf("La préparation de la partition a échoué (code %d, journal : %s).", code, narrow((dir / "plan.log").wstring()).c_str());
     return abc;
 }
@@ -2620,7 +2616,7 @@ std::string Studio::transcribe_score(const fs::path & audio, bool melody_only, s
     std::string log;
     const int   code = run_process(cmd, [&](const std::string & l) { log += l + "\n"; }, nullptr);
     write_file_atomic(dir / "transcription.log", log.data(), log.size());
-    std::string abc = read_file(out);
+    std::string abc = read_text(out);
     if (code != 0 || abc.empty()) error = trf("La reconnaissance de la partition a échoué (code %d, journal : %s).", code, narrow((dir / "transcription.log").wstring()).c_str());
     return abc;
 }

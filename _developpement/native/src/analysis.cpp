@@ -1,5 +1,6 @@
 #define _USE_MATH_DEFINES
 #include "analysis.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 #include "lyrics_web.hpp"  // is_whisper_hallucination
 
 #include <windows.h>
@@ -37,13 +38,6 @@ const HeadDef HEADS[] = {
 };
 
 constexpr int SR = 16000, FRAME = 512, HOP = 256, BANDS = 96, PATCH = 128, PATCH_HOP = 62, EMB = 1280, STYLES = 400;
-
-std::string read_text(const fs::path & p) {
-    std::ifstream in(p, std::ios::binary);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
 
 // Noms de classes d'un fichier « *-discogs-effnet-1.json »
 std::vector<std::string> read_classes(const fs::path & json) {
@@ -634,12 +628,6 @@ void detect_audio_vocals(const fs::path & audio, const fs::path & whisper_exe, c
 // ------------------------------------------------------------------ suggestions de balises YuE2
 
 namespace {
-
-std::string lower(const std::string & s) {
-    std::string o = s;
-    for (char & c : o) c = (char) tolower((unsigned char) c);
-    return o;
-}
 
 // « Rock---Goth Rock » -> « gothic rock » ; vide = style sans intérêt pour une balise
 std::string style_tag(const std::string & cls) {

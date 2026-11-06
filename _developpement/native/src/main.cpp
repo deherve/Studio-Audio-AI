@@ -33,6 +33,7 @@ using std::min;
 #include "imgui_impl_win32.h"
 #include "misc/cpp/imgui_stdlib.h"
 #include "player.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 #include "studio.hpp"
 #include "analysis.hpp"
 #include "suno.hpp"
@@ -703,25 +704,6 @@ static void set_mode(Form & f, bool instrumental) {
     f.dirty        = true;
 }
 
-static std::string read_text(const fs::path & path) {
-    std::FILE * file = _wfopen(path.c_str(), L"rb");
-    std::string text;
-    if (file) {
-        char buf[4096];
-        for (size_t n; (n = fread(buf, 1, sizeof(buf), file)) > 0;) text.append(buf, n);
-        fclose(file);
-    }
-    return text;
-}
-
-static void write_text(const fs::path & path, const std::string & text) {
-    std::FILE * file = _wfopen(path.c_str(), L"wb");
-    if (file) {
-        fwrite(text.data(), 1, text.size(), file);
-        fclose(file);
-    }
-}
-
 static std::string write_json(yyjson_mut_doc * doc) {
     size_t      len  = 0;
     char *      json = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, &len);
@@ -1159,7 +1141,6 @@ static bool parse_settings_file(Settings & s, const fs::path & file) {
     return true;
 }
 
-static std::string trim(const std::string & s);  // définie plus bas (aides UI)
 
 // path = config\reglages.json
 static void load_settings(Settings & s, const fs::path & path) {
@@ -1312,7 +1293,6 @@ struct PackFile {
     std::vector<UserStructure> structures;
 };
 
-static std::string trim(const std::string & s);  // définie plus bas (aides UI)
 
 static bool read_pack(const fs::path & path, PackFile & out, std::string & error) {
     std::string  text = read_text(path);
@@ -1395,16 +1375,6 @@ static std::string fmt_clock(int ms) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%d:%02d", s / 60, s % 60);
     return buf;
-}
-
-static std::string trim(const std::string & s) {
-    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
-}
-
-static std::string lower(std::string s) {
-    for (auto & c : s) c = (char) tolower((unsigned char) c);
-    return s;
 }
 
 static void muted_wrapped(const std::string & text) {

@@ -1,5 +1,6 @@
 // Traduction des paroles (voir translate.hpp).
 #include "translate.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
 
@@ -113,20 +114,6 @@ LocalTranslator find_local_translator(const fs::path & app_dir, const fs::path &
 }
 
 // ---------------------------------------------------------------------------- Outils
-
-static std::string url_encode(const std::string & s) {
-    static const char * hex = "0123456789ABCDEF";
-    std::string         out;
-    for (unsigned char c : s) {
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') out += (char) c;
-        else {
-            out += '%';
-            out += hex[c >> 4];
-            out += hex[c & 15];
-        }
-    }
-    return out;
-}
 
 static std::vector<std::string> split_lines(const std::string & text) {
     std::vector<std::string> lines;

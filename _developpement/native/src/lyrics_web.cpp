@@ -1,5 +1,6 @@
 // Paroles d'un morceau de reprise : recherche LRCLIB et filtre des inventions de Whisper (voir lyrics_web.hpp).
 #include "lyrics_web.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
 
@@ -19,11 +20,6 @@
 namespace {
 
 // ------------------------------------------------------------------ texte
-
-std::string trim(const std::string & s) {
-    size_t b = s.find_first_not_of(" \t\r\n"), e = s.find_last_not_of(" \t\r\n");
-    return b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
-}
 
 // Minuscules et ponctuation remplacée par des espaces (les lettres accentuées UTF-8 sont gardées telles quelles).
 std::string normalize(const std::string & s) {
@@ -47,19 +43,6 @@ std::vector<std::string> words(const std::string & s) {
 }
 
 // Encodage d'un paramètre d'adresse web (UTF-8, %XX).
-std::string url_encode(const std::string & s) {
-    std::string out;
-    char        buf[4];
-    for (unsigned char c : s) {
-        if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') out += (char) c;
-        else {
-            snprintf(buf, sizeof(buf), "%%%02X", c);
-            out += buf;
-        }
-    }
-    return out;
-}
-
 // Retire un préfixe du type « 08 », « 08 - », « 08. » (numéro de piste) ou « 1990. » (année d'un dossier d'album).
 std::string strip_number_prefix(const std::string & s, bool year) {
     size_t i = 0;

@@ -1,5 +1,6 @@
 // Composer avec l'IA (voir ai_writer.hpp).
 #include "ai_writer.hpp"
+#include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
 #include <wincrypt.h>
@@ -558,16 +559,6 @@ std::string ai_retry_prompt() {
 
 // ---------------------------------------------------------------------------- Lecture et nettoyage
 
-static std::string trim(const std::string & s) {
-    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-    return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
-}
-
-static std::string lower_ascii(std::string s) {
-    for (char & c : s) c = (char) tolower((unsigned char) c);
-    return s;
-}
-
 static std::vector<std::string> lines_of(const std::string & text) {
     std::vector<std::string> out;
     size_t                   pos = 0;
@@ -584,7 +575,7 @@ static std::vector<std::string> lines_of(const std::string & text) {
 
 // Section YuE2 correspondant à un nom donné par l'IA (« Verse 2 », « Guitar Solo - fast », « Refrain »…) ; "" si inconnu.
 static std::string canon_section(const std::string & raw) {
-    std::string t = lower_ascii(raw);
+    std::string t = lower(raw);
     // On regarde d'abord le début (avant « : », « - », « | », « ( »…), puis tout le texte.
     size_t      cut  = t.find_first_of(":|(,[{");
     size_t      dash = t.find(" - ");
@@ -640,7 +631,7 @@ static std::string clean_sung_line(const std::string & raw, int & removed) {
     std::string s = trim(raw);
     if (s.empty()) return "";
     if (s.rfind("- ", 0) == 0 || s.rfind("• ", 0) == 0) s = trim(s.substr(s[0] == '-' ? 2 : 4));
-    std::string low = lower_ascii(s);
+    std::string low = lower(s);
     for (const char * w : { "note:", "notes:", "n.b.", "(note", "explanation", "here is", "here's", "voici" }) {
         if (low.rfind(w, 0) == 0) {
             removed++;
@@ -669,7 +660,7 @@ static std::string clean_sung_line(const std::string & raw, int & removed) {
     // Répétitions notées « (x2) », « (×2) », « (repeat) » en fin de ligne.
     size_t p = s.rfind('(');
     if (p != std::string::npos && s.back() == ')') {
-        std::string in = lower_ascii(s.substr(p + 1, s.size() - p - 2));
+        std::string in = lower(s.substr(p + 1, s.size() - p - 2));
         if (in.rfind("x", 0) == 0 || in.rfind("\xc3\x97", 0) == 0 || in.find("repeat") != std::string::npos || in.find("bis") == 0) {
             s.erase(p);
             removed++;
@@ -699,7 +690,7 @@ static std::string instrumental_structure(const std::string & text, int & remove
             removed++;
             return;
         }
-        std::string tag = lower_ascii(sec);
+        std::string tag = lower(sec);
         if (tag == "interlude") tag = "bridge";  // la LoRA instrumentale ne connaît pas [interlude]
         out += "[" + tag + "]\n";
     };
@@ -753,7 +744,7 @@ std::string ai_clean_lyrics(const std::string & lyrics, bool instrumental, int &
     std::string out;
     for (const Section & s : sections) {
         if (instrumental) {
-            std::string tag = lower_ascii(s.name);
+            std::string tag = lower(s.name);
             if (tag == "interlude") tag = "bridge";  // la LoRA instrumentale ne connaît pas [interlude]
             out += "[" + tag + "]\n";
         } else {
@@ -780,12 +771,12 @@ std::string ai_clean_style(const std::string & style, int & removed) {
             removed++;
             return;
         }
-        std::string low = lower_ascii(t);
+        std::string low = lower(t);
         // « 120 bpm » → « 120 BPM » (forme attendue par le curseur de tempo du Studio)
         size_t b = low.find(" bpm");
         if (b != std::string::npos && b > 0 && isdigit((unsigned char) low[0])) low = low.substr(0, b) + " BPM";
         for (const std::string & o : out) {
-            if (lower_ascii(o) == lower_ascii(low)) return;
+            if (lower(o) == lower(low)) return;
         }
         out.push_back(low);
     };
@@ -860,7 +851,7 @@ AiSong ai_parse_song(const std::string & raw, bool instrumental) {
     if (song.lyrics.empty()) {  // pas de JSON lisible : réponse en texte (« Title: … », « Style: … », puis les sections)
         bool in_lyrics = false;
         for (const std::string & l : lines_of(text)) {
-            std::string t = trim(l), low = lower_ascii(t);
+            std::string t = trim(l), low = lower(t);
             while (!low.empty() && (low[0] == '*' || low[0] == '#')) {
                 low.erase(0, 1);
                 t.erase(0, 1);
@@ -1256,7 +1247,7 @@ AiAlbumPlan ai_parse_album_plan(const std::string & raw, const AiAlbumRequest & 
                     if (yyjson_is_num(bpm)) tp.bpm = (int) yyjson_get_num(bpm);
                     else if (yyjson_is_str(bpm)) tp.bpm = atoi(yyjson_get_str(bpm));
                     yyjson_val * inst = yyjson_obj_get(t, "instrumental");
-                    tp.instrumental = yyjson_is_true(inst) || (yyjson_is_str(inst) && lower_ascii(yyjson_get_str(inst)) == "true");
+                    tp.instrumental = yyjson_is_true(inst) || (yyjson_is_str(inst) && lower(yyjson_get_str(inst)) == "true");
                 }
                 for (char q : { '"', '*' }) tp.title.erase(std::remove(tp.title.begin(), tp.title.end(), q), tp.title.end());
                 tp.title = trim(tp.title);
@@ -1327,7 +1318,7 @@ std::string ai_strip_negative(const std::string & style, const std::string & neg
     std::set<std::string> bad;
     for (size_t a = 0; a <= negative.size();) {
         size_t      b = negative.find(',', a);
-        std::string t = lower_ascii(trim(negative.substr(a, b == std::string::npos ? std::string::npos : b - a)));
+        std::string t = lower(trim(negative.substr(a, b == std::string::npos ? std::string::npos : b - a)));
         if (!t.empty()) bad.insert(t);
         if (b == std::string::npos) break;
         a = b + 1;
@@ -1337,7 +1328,7 @@ std::string ai_strip_negative(const std::string & style, const std::string & neg
     for (size_t a = 0; a <= style.size();) {
         size_t      b = style.find(',', a);
         std::string t = trim(style.substr(a, b == std::string::npos ? std::string::npos : b - a));
-        if (!t.empty() && !bad.count(lower_ascii(t))) out += (out.empty() ? "" : ", ") + t;
+        if (!t.empty() && !bad.count(lower(t))) out += (out.empty() ? "" : ", ") + t;
         if (b == std::string::npos) break;
         a = b + 1;
     }
@@ -1373,7 +1364,7 @@ std::string ai_parse_title(const std::string & raw) {
         for (const std::string & l : lines_of(text)) {
             std::string t = trim(l);
             if (t.empty()) continue;
-            std::string low = lower_ascii(t);
+            std::string low = lower(t);
             if ((low.rfind("title", 0) == 0 || low.rfind("titre", 0) == 0) && t.find(':') != std::string::npos) t = trim(t.substr(t.find(':') + 1));
             title = t;
             break;
@@ -1385,7 +1376,7 @@ std::string ai_parse_title(const std::string & raw) {
 }
 
 bool ai_is_voice_tag(const std::string & tag) {
-    std::string t = lower_ascii(trim(tag));
+    std::string t = lower(trim(tag));
     if (t.rfind("no ", 0) == 0 || t.rfind("without ", 0) == 0 || t == "instrumental") return false;
     // Parties de mot sûres ; « rap », « vox »… seulement en mot entier (« trap » ou « tenor sax » ne sont pas des voix).
     for (const char * w : { "vocal", "voice", "singer", "singing", "choir", "spoken", "humming", "falsetto", "a cappella", "acapella", "beatbox",
@@ -1416,7 +1407,7 @@ std::string ai_force_instrumental_style(const std::string & style) {
     std::vector<std::string> kept;
     bool                     inst = false, novocal = false;
     for (const std::string & t : style_tags(style)) {
-        std::string low = lower_ascii(t);
+        std::string low = lower(t);
         if (ai_is_voice_tag(t)) continue;
         inst    = inst || low == "instrumental";
         novocal = novocal || low == "no vocals";
@@ -1433,7 +1424,7 @@ std::string ai_instrumental_negative(const std::string & negative) {
     std::vector<std::string> tags = style_tags(negative);
     for (const char * w : { "vocals", "singing", "voice", "choir", "humming", "spoken word", "rap", "lyrics" }) {
         bool have = false;
-        for (const std::string & t : tags) have = have || lower_ascii(t) == w;
+        for (const std::string & t : tags) have = have || lower(t) == w;
         if (!have) tags.push_back(w);
     }
     std::string out;

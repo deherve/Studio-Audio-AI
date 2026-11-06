@@ -1,4 +1,4 @@
-# Studio Audio AI (1.0.100)
+# Studio Audio AI (1.1.001)
 
 Générateur de chansons local basé sur **YuE2-3B** (moteur `yue2.cpp`, Vulkan). Application Windows native : pas de navigateur, pas de serveur, tout reste sur votre PC.
 
@@ -64,6 +64,7 @@ Les versions précédentes rangeaient ces éléments à la racine du dossier : i
 - Clips (1.0.98) : le texte de fin se place au centre ou en bas (à la hauteur des paroles), avec un bandeau sombre facultatif sur toute la largeur ; « Même graine pour toutes les images d'un clip » rend personnage et décor plus réguliers ; « Actions ▾ › Écrire les fiches texte » crée les fiches (paroles, morceau, album, groupe) des anciens morceaux sans faire de clip (un paroles.txt existant n'est jamais remplacé).
 - Fiabilité (1.0.99) : les programmes lancés par le Studio (moteur, ffmpeg, Whisper, IA de texte, images) s'arrêtent avec lui, même après un plantage ; l'IA de texte et le serveur d'images prennent un port libre (deux Studios ouverts ne se gênent plus) ; les réglages FP32 du moteur ne peuvent plus manquer quand une IA démarre au même moment.
 - Jeton carte graphique (1.0.100) : un seul gros travail à la fois sur la carte (génération, IA de texte locale, images locales) ; un morceau en file affiche « En attente de la carte graphique (…) » et démarre tout seul quand elle se libère.
+- Numérotation (1.1.001) : la 1.1.001 suit la 1.0.100 ; le dernier nombre va de 001 à 100, puis le deuxième augmente. Ménage interne sans changement visible.
 
 **Fin des morceaux** : un morceau qui atteint le plafond de durée sans conclure (c'est le cas des instrumentaux, que la LoRA instrumentale ne termine jamais, et de tout morceau à durée fixe) reçoit un fondu de sortie. Sa longueur se règle dans Réglages > Fin des morceaux (5 s par défaut, de 1 à 30 s, courbe linéaire). La case **« Fin en fondu sur la structure »** du bloc Génération remplace ce réglage pour le morceau : le fondu dure comme la dernière section de la structure (outro : 20 s en instrumental, 15 s en chanson) avec une courbe douce en demi-sinus. Aucun lien avec le solveur : AB2 et Midpoint donnent exactement la même fin.
 
