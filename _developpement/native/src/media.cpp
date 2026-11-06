@@ -687,6 +687,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
             fs::remove_all(work, ec);
             j.progress = (float) (i + 1) / tasks.size();
         }
+        tasks.clear();  // 1.0.100 : arrête le serveur d'images (gardé d'un morceau à l'autre) et rend la carte avant d'annoncer la fin
         if (j.cancel) {
             finish_job(j, false, trf("Création des clips annulée (%d terminé(s)).", (int) made), folder);
         } else if (made == 0) {

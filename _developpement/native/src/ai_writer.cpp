@@ -361,6 +361,12 @@ AiCallResult ai_local_session(const LocalLlm & llm, const fs::path & model, int 
         return r;
     }
     if (stage) *stage = 0;
+    // 1.0.100 : la carte à un seul travail à la fois ; on attend la fin d'une génération ou d'images en cours.
+    GpuToken gpu(N_("IA de texte locale"), cancel);
+    if (!gpu.ok) {
+        r.error = N_("Demande annulée.");
+        return r;
+    }
     // 1.0.99 : port libre donné par Windows (avant : 8089 fixe, partagé par deux IA ou deux Studios ouverts en même temps).
     const int    port = free_local_port(8089);
     fs::path     log = app_temp_dir() / L"studio_yue2_ia.log";  // 1.0.30 : dans le dossier du programme
@@ -1568,6 +1574,11 @@ AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_roo
         r.error = N_("Modèle d'images absent : téléchargez-le dans Réglages › IA › Pochettes.");
         return r;
     }
+    GpuToken gpu(N_("images locales"), cancel);  // 1.0.100 : attend que la carte soit libre
+    if (!gpu.ok) {
+        r.error = N_("Demande annulée.");
+        return r;
+    }
     const auto &   f   = m.files;
     const fs::path dir = local_image_dir(images_root, m);
     std::string    p   = prompt;
@@ -1636,16 +1647,20 @@ LocalImageServer::LocalImageServer(const fs::path & sd_cli, const fs::path & ima
     : sd_cli_(sd_cli), root_(images_root), model_(model), offload_(offload) {}
 
 LocalImageServer::~LocalImageServer() {
-    if (!process_) return;
-    TerminateProcess((HANDLE) process_, 0);
-    WaitForSingleObject((HANDLE) process_, 5000);
-    CloseHandle((HANDLE) process_);
+    if (process_) {
+        TerminateProcess((HANDLE) process_, 0);
+        WaitForSingleObject((HANDLE) process_, 5000);
+        CloseHandle((HANDLE) process_);
+    }
+    if (has_gpu_) gpu_release();  // 1.0.100 : mémoire vidéo rendue, la carte est libre
 }
 
 bool LocalImageServer::start(std::atomic<bool> * cancel) {
     std::error_code ec;
     fs::path        exe = sd_cli_.parent_path() / L"sd-server.exe";
     if (!fs::exists(exe, ec) || !image_model_ready(root_, model_)) return false;
+    // 1.0.100 : le serveur garde le modèle en mémoire vidéo : il tient la carte jusqu'à sa destruction.
+    if (!has_gpu_ && !(has_gpu_ = gpu_acquire(N_("images locales"), cancel))) return false;
     fs::path     log = app_temp_dir() / L"studio_yue2_image.log";
     port_            = free_local_port(8091);
     std::wstring cmd = L"\"" + exe.wstring() + L"\"" + image_weights(local_image_dir(root_, model_), model_.files) + (offload_ ? L" --offload-to-cpu" : L"") +

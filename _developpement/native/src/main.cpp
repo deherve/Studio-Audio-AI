@@ -15574,6 +15574,50 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             return 0;
         }
         // Essais (1.0.98), sans interface : --help-test "question" sortie | --disk-test sortie | --key-test sortie | --update-test zip sha256 sortie
+        // Essai (1.0.100), sans interface : --gpu-test "question" sortie : une question à l'aide (IA locale) prend la carte, puis un
+        // morceau de 20 s est mis en file aussitôt : il doit attendre son tour (jeton carte graphique) et ne démarrer qu'après la réponse.
+        if (argv && argc >= 4 && std::wstring(argv[1]) == L"--gpu-test") {
+            const auto t0   = std::chrono::steady_clock::now();
+            auto       secs = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(); };
+            app.help_q = narrow(argv[2]);
+            app.start_help_question();
+            while (gpu_holder().empty() && app.help_job && !app.help_job->finished) Sleep(20);
+            const std::string first_holder = gpu_holder();
+            Song s;
+            s.title = "Essai jeton carte";
+            s.artist = "Essai";
+            s.album = "Jeton";
+            s.track = "1";
+            s.style = "instrumental, synthwave, analog synth, driving bass, 100 BPM";
+            s.lyrics = "[intro]\n[interlude]\n[outro]";
+            s.instrumental = true;
+            s.cot = "off";
+            s.duration = 20;
+            s.kind = "new";
+            const std::string id = studio.submit(s, false);
+            std::string waited;
+            double      help_done = -1, started = -1;
+            Song        done;
+            while (secs() < 900) {
+                Sleep(100);
+                if (help_done < 0 && app.help_job && app.help_job->finished) help_done = secs();
+                for (const Song & x : studio.snapshot())
+                    if (x.id == id) done = x;
+                if (done.status != "running" && waited.empty() && !done.stage.empty()) waited = done.stage;
+                if (done.status == "running" && started < 0) started = secs();
+                if (done.status == "done" || done.status == "error") break;
+            }
+            app.poll_help();
+            if (FILE * f = _wfopen(argv[3], L"wb")) {
+                fprintf(f, "carte prise d'abord par : %s\nmessage du morceau en attente : %s\naide finie a %.1f s (reponse %d caracteres, erreur=%s)\n"
+                           "morceau lance a %.1f s, statut=%s a %.1f s\nordre correct : %s\n",
+                        first_holder.c_str(), waited.c_str(), help_done, (int) app.help_answer.size(), app.help_error.c_str(), started,
+                        done.status.c_str(), secs(), help_done >= 0 && started >= help_done - 0.5 ? "oui" : "NON");  // 0,5 s : la carte est rendue juste avant que l'aide se dise finie
+                fclose(f);
+            }
+            studio.shutdown();
+            return 0;
+        }
         if (argv && argc >= 4 && std::wstring(argv[1]) == L"--help-test") {
             app.help_q = narrow(argv[2]);
             app.start_help_question();

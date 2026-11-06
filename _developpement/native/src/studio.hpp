@@ -227,6 +227,22 @@ int          run_command(std::wstring command, const std::function<void(const st
 // process : reçoit le handle du processus (à fermer par l'appelant) ; nullptr : fermé ici. Faux si le lancement échoue.
 bool         launch_process(std::wstring command, void * out, void * err, const wchar_t * cwd, unsigned long flags, bool plain_gpu,
                             void ** process);
+// 1.0.100 : jeton carte graphique. Un seul gros travail à la fois sur la carte : génération de musique, IA de texte
+// locale, images locales (pochettes, clips ; la traduction locale tourne sur le processeur). Les autres attendent leur tour au lieu de se partager
+// les 12 Go (avant, chaque écran devait penser à vérifier « une génération est en cours ? » : 45 vérifications).
+// Le même fil peut le reprendre sans attendre (pas de blocage s'il est déjà à lui). who : N_("…"), affiché par gpu_holder().
+// L'attente s'arrête (faux) si *cancel devient vrai ou si keep_waiting() rend faux.
+bool        gpu_acquire(const char * who, const std::atomic<bool> * cancel = nullptr, const std::function<bool()> & keep_waiting = nullptr);
+void        gpu_release();     // peut être appelé depuis un autre fil que celui qui a pris le jeton
+std::string gpu_holder();      // travail qui tient la carte (texte à passer à tr()), vide si elle est libre
+struct GpuToken {               // prend le jeton à la construction, le rend à la destruction
+    explicit GpuToken(const char * who, const std::atomic<bool> * cancel = nullptr, const std::function<bool()> & keep_waiting = nullptr)
+        : ok(gpu_acquire(who, cancel, keep_waiting)) {}
+    ~GpuToken() { if (ok) gpu_release(); }
+    GpuToken(const GpuToken &)             = delete;
+    GpuToken & operator=(const GpuToken &) = delete;
+    const bool ok;              // faux : attente abandonnée, le travail ne doit pas utiliser la carte
+};
 std::wstring quote_arg(const std::wstring & arg);
 std::wstring widen(const std::string & s);
 std::string  narrow(const std::wstring & s);

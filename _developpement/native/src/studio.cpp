@@ -207,6 +207,42 @@ bool launch_process(std::wstring command, void * out, void * err, const wchar_t 
     return true;
 }
 
+// ---------------------------------------------------------------------------- jeton carte graphique (1.0.100, voir studio.hpp)
+
+static std::mutex              g_gpu_m;
+static std::condition_variable g_gpu_cv;
+static std::thread::id         g_gpu_owner;
+static int                     g_gpu_depth = 0;  // prises par le fil propriétaire (imbrication)
+static const char *            g_gpu_who   = nullptr;
+
+bool gpu_acquire(const char * who, const std::atomic<bool> * cancel, const std::function<bool()> & keep_waiting) {
+    std::unique_lock<std::mutex> lock(g_gpu_m);
+    const std::thread::id        me = std::this_thread::get_id();
+    while (g_gpu_depth > 0 && g_gpu_owner != me) {
+        if ((cancel && *cancel) || (keep_waiting && !keep_waiting())) return false;
+        g_gpu_cv.wait_for(lock, std::chrono::milliseconds(500));  // réveillé à la libération, ou pour revoir l'annulation
+    }
+    if (g_gpu_depth++ == 0) {
+        g_gpu_owner = me;
+        g_gpu_who   = who;
+    }
+    return true;
+}
+
+void gpu_release() {
+    std::lock_guard<std::mutex> lock(g_gpu_m);
+    if (g_gpu_depth > 0 && --g_gpu_depth == 0) {
+        g_gpu_owner = std::thread::id();
+        g_gpu_who   = nullptr;
+        g_gpu_cv.notify_all();
+    }
+}
+
+std::string gpu_holder() {
+    std::lock_guard<std::mutex> lock(g_gpu_m);
+    return g_gpu_depth > 0 && g_gpu_who ? g_gpu_who : "";
+}
+
 // Lance une commande et transmet chaque ligne de stderr (ou de stdout) ('\r' et '\n' séparent les lignes).
 static int run_process(std::wstring command, const std::function<void(const std::string &)> & on_line,
                        const std::function<void(HANDLE)> & on_start, bool read_stdout = false) {
@@ -1853,6 +1889,16 @@ void Studio::worker() {
             if (stop_ || !songs_[id].waiting()) {
                 continue;
             }
+        }
+        // 1.0.100 : la carte est à un autre travail (IA de texte, images…) : le morceau attend son tour.
+        const std::string holder = gpu_holder();
+        if (!holder.empty()) update(id, [&](Song & s) { s.stage = trf("En attente de la carte graphique (%s)", tr(holder.c_str())); });
+        GpuToken gpu(N_("génération de musique"), nullptr, [&] {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return !stop_ && songs_[id].waiting();  // morceau mis en pause, annulé ou Studio fermé : on n'attend plus
+        });
+        if (!gpu.ok) {
+            continue;
         }
         try {
             generate(id);
