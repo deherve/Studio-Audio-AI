@@ -6,6 +6,13 @@
 
 ---
 
+## Soutenir le projet / Support the project
+
+**Français** : Studio Audio AI est gratuit et sous licence MIT. Je le développe seul, et mon abonnement actuel à l'assistant de développement m'impose des quotas qui limitent le rythme des évolutions. Si le Studio vous est utile, vous pouvez m'aider à prendre un abonnement plus poussé, pour avancer sans être freiné par ces limites. Le don est entièrement libre : il ne donne aucun avantage, aucune licence, et ne change ni les conditions d'utilisation du Studio, ni les licences des modèles utilisés. Merci pour votre soutien !
+
+**English**: Studio Audio AI is free and MIT-licensed. I develop it on my own, and the usage quota of my current AI-assistant plan limits how fast I can move. If the Studio is useful to you, you can help me move to a higher plan so I can keep developing without hitting those limits. Donations are entirely voluntary: they give no perks and no licence, and do not change the Studio's terms of use or the licences of the models it uses. Thank you for your support!
+
+[**Faire un don via PayPal / Donate via PayPal**](https://www.paypal.com/donate/?hosted_button_id=CASVBK5K77DHC)
 ## English
 
 **Studio Audio AI** is a native Windows application that composes complete songs **locally**, on your own graphics card, with the **YuE2-3B** music model. It writes lyrics, generates vocals and instruments, organises your tracks into bands and albums, draws the covers and makes animated music videos with synchronised lyrics. Nothing is sent to a server: models, tracks and settings all stay in the program folder.
