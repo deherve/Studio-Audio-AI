@@ -132,6 +132,81 @@ static void write_file_atomic(const fs::path & path, const char * data, size_t s
     MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
 }
 
+// ---------------------------------------------------------------------------- lanceur commun (1.0.99, voir studio.hpp)
+
+// Groupe Windows (Job Object) des programmes lancés : fermé par Windows à la sortie du Studio, même après un plantage,
+// ce qui arrête tous ses programmes (serveurs d'IA compris).
+static HANDLE studio_job() {
+    static HANDLE job = [] {
+        HANDLE j = CreateJobObjectW(nullptr, nullptr);
+        if (j) {
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION info{};
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(j, JobObjectExtendedLimitInformation, &info, sizeof(info));
+        }
+        return j;
+    }();
+    return job;
+}
+
+// Copie de l'environnement du Studio sans les variables « mode stable » de yue2 (calculs FP32).
+static std::vector<wchar_t> env_without_fp32() {
+    static const wchar_t * names[] = { L"GGML_VK_DISABLE_F16=", L"GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=", L"GGML_VK_DISABLE_MMVQ=" };
+    std::vector<wchar_t>   block;
+    wchar_t *              env = GetEnvironmentStringsW();
+    for (const wchar_t * p = env; p && *p; p += wcslen(p) + 1) {
+        bool skip = false;
+        for (const wchar_t * n : names) skip = skip || _wcsnicmp(p, n, wcslen(n)) == 0;
+        if (!skip) block.insert(block.end(), p, p + wcslen(p) + 1);
+    }
+    if (env) FreeEnvironmentStringsW(env);
+    if (block.empty()) block.push_back(L'\0');
+    block.push_back(L'\0');  // fin du bloc : deux zéros
+    return block;
+}
+
+bool launch_process(std::wstring command, void * out, void * err, const wchar_t * cwd, unsigned long flags, bool plain_gpu,
+                    void ** process) {
+    HANDLE handles[2];
+    DWORD  n = 0;
+    for (void * h : { out, err }) {
+        if (h && h != INVALID_HANDLE_VALUE && (n == 0 || handles[0] != h)) handles[n++] = (HANDLE) h;
+    }
+    STARTUPINFOEXW    si{};
+    std::vector<char> attrs;
+    si.StartupInfo.cb = n ? sizeof(si) : sizeof(STARTUPINFOW);
+    if (n) {
+        si.StartupInfo.dwFlags    = STARTF_USESTDHANDLES;
+        si.StartupInfo.hStdOutput = (HANDLE) out;
+        si.StartupInfo.hStdError  = (HANDLE) err;
+        SIZE_T size = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &size);
+        attrs.resize(size);
+        si.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST) attrs.data();
+        if (!InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &size)) return false;
+        if (!UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, n * sizeof(HANDLE), nullptr, nullptr)) {
+            DeleteProcThreadAttributeList(si.lpAttributeList);
+            return false;
+        }
+    }
+    std::vector<wchar_t> env;
+    if (plain_gpu) env = env_without_fp32();
+    else apply_gpu_env();  // variables GGML_VK_* selon la carte (AMD : noyaux FP32 ; Nvidia : noyaux rapides), héritées par le programme
+    PROCESS_INFORMATION pi{};
+    DWORD               f = flags | CREATE_SUSPENDED | (n ? EXTENDED_STARTUPINFO_PRESENT : 0) | (plain_gpu ? CREATE_UNICODE_ENVIRONMENT : 0);
+    BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, n > 0, f, plain_gpu ? env.data() : nullptr, cwd, &si.StartupInfo, &pi);
+    if (n) DeleteProcThreadAttributeList(si.lpAttributeList);
+    if (!ok) return false;
+    // Rattaché avant de démarrer (lancé suspendu) : ses propres sous-programmes seront aussi dans le groupe.
+    // Un échec ici n'empêche pas le programme de marcher : il ne serait simplement pas arrêté avec le Studio.
+    if (HANDLE job = studio_job()) AssignProcessToJobObject(job, pi.hProcess);
+    ResumeThread(pi.hThread);
+    CloseHandle(pi.hThread);
+    if (process) *process = pi.hProcess;
+    else CloseHandle(pi.hProcess);
+    return true;
+}
+
 // Lance une commande et transmet chaque ligne de stderr (ou de stdout) ('\r' et '\n' séparent les lignes).
 static int run_process(std::wstring command, const std::function<void(const std::string &)> & on_line,
                        const std::function<void(HANDLE)> & on_start, bool read_stdout = false) {
@@ -143,14 +218,11 @@ static int run_process(std::wstring command, const std::function<void(const std:
     SetHandleInformation(read_end, HANDLE_FLAG_INHERIT, 0);
     HANDLE nul = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
 
-    STARTUPINFOW si{ sizeof(si) };
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdOutput = read_stdout ? write_end : nul;
-    si.hStdError  = read_stdout ? nul : write_end;
     PROCESS_INFORMATION pi{};
-    apply_gpu_env();  // variables GGML_VK_* selon la carte (AMD : noyaux FP32 ; Nvidia : noyaux rapides), héritées par le programme
-    BOOL ok = CreateProcessW(nullptr, command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, nullptr,
-                             &si, &pi);
+    void *              proc = nullptr;
+    bool ok = launch_process(command, read_stdout ? write_end : nul, read_stdout ? nul : write_end, nullptr, CREATE_NO_WINDOW,
+                             false, &proc);
+    pi.hProcess = (HANDLE) proc;
     CloseHandle(write_end);
     CloseHandle(nul);
     if (!ok) {
@@ -220,7 +292,6 @@ static int run_process(std::wstring command, const std::function<void(const std:
         on_start(nullptr);
     }
     CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
     return (int) code;
 }
 
@@ -788,10 +859,6 @@ static void place_song(const Song & s, bool force) {
 
 fs::path app_data_dir() {
     return g_app_data;
-}
-
-fs::path app_config_dir() {
-    return g_app_config;
 }
 
 fs::path app_temp_dir() {
@@ -2451,7 +2518,7 @@ void Studio::run_health_check() {
         finish(3, buf, rel);
     }
 }
-
+
 // 1.0.88 : partition seule (yue-plan) pour l'onglet « Partition ». Même requête que la génération (style, paroles, mode, graine) ;
 // yue-plan ne prend pas les LoRA : la partition est écrite par le modèle de base, le morceau est ensuite généré avec les LoRA.
 std::string Studio::plan_score(const Song & song, std::string & error) {
@@ -2479,7 +2546,7 @@ std::string Studio::plan_score(const Song & song, std::string & error) {
     if (code != 0 || abc.empty()) error = trf("La préparation de la partition a échoué (code %d, journal : %s).", code, narrow((dir / "plan.log").wstring()).c_str());
     return abc;
 }
-
+
 // 1.0.89 : partition reconnue (onglet « Partition ») ; même chemin que la transcription d'une reprise.
 std::string Studio::transcribe_score(const fs::path & audio, bool melody_only, std::string & error) {
     std::error_code ec;

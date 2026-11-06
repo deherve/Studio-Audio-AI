@@ -18,3 +18,8 @@ int https_get_url(const std::string & url, std::string & body);
 // timeout_ms : délai d'attente de la réponse. Renvoie le code HTTP, 0 si le serveur est injoignable.
 int http_request(const std::string & method, const std::string & url, const std::vector<std::pair<std::string, std::string>> & headers,
                  const std::string & body, std::string & out, int timeout_ms);
+
+// 1.0.99 : port TCP libre sur 127.0.0.1, donné par Windows, pour les serveurs locaux (IA de texte, images).
+// Avant : ports fixes 8089 et 8091, partagés par deux Studios ouverts ou deux IA lancées en même temps.
+// fallback : port rendu si Windows n'en donne pas.
+int free_local_port(int fallback);

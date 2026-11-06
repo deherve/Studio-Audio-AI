@@ -2244,10 +2244,6 @@ struct AnalysisJob {
     WebLyrics          web;                  // paroles trouvées sur Internet (LRCLIB)
     std::string        web_text;             // paroles Internet au format YuE2 (vide si non retenues)
     std::vector<Suggestion> sugg;
-    std::string        get_stage() {
-        std::lock_guard<std::mutex> lock(mutex);
-        return stage;
-    }
 };
 
 static void check_remote_sizes(std::shared_ptr<RemoteSizes> rs, std::vector<std::pair<std::string, std::string>> items) {
@@ -3477,7 +3473,6 @@ struct App {
         for (const Song & s : studio->snapshot()) if (s.status == "running" || s.waiting()) return tr("une génération est en cours ou en attente");
         return std::string();
     }
-    bool app_busy() { return !busy_reason().empty(); }
     int language_check_pending() {
         int n = 0;
         for (const Song & s : studio->snapshot()) {

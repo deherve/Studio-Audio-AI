@@ -225,16 +225,12 @@ static int run_capture(const std::wstring & command, std::string & output, std::
     HANDLE              rd = nullptr, wr = nullptr;
     if (!CreatePipe(&rd, &wr, &sa, 0)) return -1;
     SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
-    HANDLE       nul = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
-    STARTUPINFOW si{ sizeof(si) };
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdOutput = wr;
-    si.hStdError  = nul;  // journal de chargement de llama.cpp : ignoré
-    si.hStdInput  = nullptr;
+    HANDLE              nul = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, nullptr);
     PROCESS_INFORMATION pi{};
-    std::wstring        cmd = command;
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
-                             nullptr, &si, &pi);
+    void *              proc = nullptr;
+    // stderr (journal de chargement de llama.cpp) : ignoré. 1.0.99 : lanceur commun, réglages de carte inchangés.
+    bool ok     = launch_process(command, wr, nul, nullptr, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, false, &proc);
+    pi.hProcess = (HANDLE) proc;
     CloseHandle(wr);
     CloseHandle(nul);
     if (!ok) {
@@ -268,7 +264,6 @@ static int run_capture(const std::wstring & command, std::string & output, std::
     DWORD code = 0;
     GetExitCodeProcess(pi.hProcess, &code);
     CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
     return (int) code;
 }
 

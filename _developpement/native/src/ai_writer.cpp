@@ -316,15 +316,13 @@ const LlamaPackage & llama_vulkan_package() {
 
 // Lance une commande sans fenêtre et attend sa fin. Renvoie le code de sortie, -1 si le lancement échoue.
 static int run_wait(const std::wstring & command, DWORD timeout_ms) {
-    STARTUPINFOW        si{ sizeof(si) };
-    PROCESS_INFORMATION pi{};
-    std::wstring        cmd = command;
-    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) return -1;
-    DWORD code = (DWORD) -1;
-    if (WaitForSingleObject(pi.hProcess, timeout_ms) == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &code);
-    else TerminateProcess(pi.hProcess, 1);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    void * proc = nullptr;
+    if (!launch_process(command, nullptr, nullptr, nullptr, CREATE_NO_WINDOW, false, &proc)) return -1;
+    HANDLE process = (HANDLE) proc;
+    DWORD  code    = (DWORD) -1;
+    if (WaitForSingleObject(process, timeout_ms) == WAIT_OBJECT_0) GetExitCodeProcess(process, &code);
+    else TerminateProcess(process, 1);
+    CloseHandle(process);
     return (int) code;
 }
 
@@ -363,7 +361,8 @@ AiCallResult ai_local_session(const LocalLlm & llm, const fs::path & model, int 
         return r;
     }
     if (stage) *stage = 0;
-    const int    port = 8089;  // port réservé au Studio, différent de ceux des serveurs courants
+    // 1.0.99 : port libre donné par Windows (avant : 8089 fixe, partagé par deux IA ou deux Studios ouverts en même temps).
+    const int    port = free_local_port(8089);
     fs::path     log = app_temp_dir() / L"studio_yue2_ia.log";  // 1.0.30 : dans le dossier du programme
     int          threads = std::max(4, (int) std::thread::hardware_concurrency() / 2);
     // -ngl : couches sur la carte graphique (99 = tout le modèle, version Vulkan) ; 0 : processeur seul.
@@ -372,28 +371,12 @@ AiCallResult ai_local_session(const LocalLlm & llm, const fs::path & model, int 
 
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE              out = CreateFileW(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, CREATE_ALWAYS, 0, nullptr);
-    STARTUPINFOW        si{ sizeof(si) };
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdOutput = out;
-    si.hStdError  = out;
     PROCESS_INFORMATION pi{};
-    // Réglages « mode stable » de yue2.cpp (calculs en FP32) : inutiles pour llama.cpp, qui les hériterait et
-    // tournerait plus lentement (1.0.28). Retirés le temps du lancement, puis remis.
-    static const wchar_t * stable_vars[] = { L"GGML_VK_DISABLE_F16", L"GGML_VK_DISABLE_INTEGER_DOT_PRODUCT", L"GGML_VK_DISABLE_MMVQ" };
-    std::wstring           saved[3];
-    bool                   had[3] = {};
-    for (int i = 0; i < 3; i++) {
-        wchar_t buf[64];
-        DWORD   n = GetEnvironmentVariableW(stable_vars[i], buf, 64);
-        had[i]    = n > 0 && n < 64;
-        if (had[i]) saved[i] = buf;
-        SetEnvironmentVariableW(stable_vars[i], nullptr);
-    }
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
-                             llm.server.parent_path().c_str(), &si, &pi);
-    for (int i = 0; i < 3; i++) {
-        if (had[i]) SetEnvironmentVariableW(stable_vars[i], saved[i].c_str());
-    }
+    void *              proc = nullptr;
+    // Réglages « mode stable » de yue2.cpp (calculs en FP32) : inutiles pour llama.cpp, qui tournerait plus lentement (1.0.28).
+    // 1.0.99 : retirés pour llama.cpp seulement (plain_gpu), plus pour tout le Studio.
+    bool ok = launch_process(cmd, out, out, llm.server.parent_path().c_str(), CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, true, &proc);
+    pi.hProcess = (HANDLE) proc;
     if (out != INVALID_HANDLE_VALUE) CloseHandle(out);
     if (!ok) {
         r.error = N_("Le moteur IA local n'a pas pu démarrer.");
@@ -403,7 +386,6 @@ AiCallResult ai_local_session(const LocalLlm & llm, const fs::path & model, int 
         TerminateProcess(pi.hProcess, 0);
         WaitForSingleObject(pi.hProcess, 5000);
         CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
     };
     // Chargement du modèle : on attend que /health réponde 200 (jusqu'à 5 minutes depuis un disque lent).
     std::string base = "http://127.0.0.1:" + std::to_string(port);
@@ -1603,27 +1585,11 @@ AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_roo
     fs::path            log = app_temp_dir() / L"studio_yue2_image.log";
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE              out = CreateFileW(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, CREATE_ALWAYS, 0, nullptr);
-    STARTUPINFOW        si{ sizeof(si) };
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdOutput = out;
-    si.hStdError  = out;
     PROCESS_INFORMATION pi{};
-    // Comme pour llama.cpp : pas de réglages « mode stable » de yue2.cpp (calculs FP32) pour ce moteur.
-    static const wchar_t * stable_vars[] = { L"GGML_VK_DISABLE_F16", L"GGML_VK_DISABLE_INTEGER_DOT_PRODUCT", L"GGML_VK_DISABLE_MMVQ" };
-    std::wstring           saved[3];
-    bool                   had[3] = {};
-    for (int i = 0; i < 3; i++) {
-        wchar_t buf[64];
-        DWORD   n = GetEnvironmentVariableW(stable_vars[i], buf, 64);
-        had[i]    = n > 0 && n < 64;
-        if (had[i]) saved[i] = buf;
-        SetEnvironmentVariableW(stable_vars[i], nullptr);
-    }
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
-                             sd_cli.parent_path().c_str(), &si, &pi);
-    for (int i = 0; i < 3; i++) {
-        if (had[i]) SetEnvironmentVariableW(stable_vars[i], saved[i].c_str());
-    }
+    void *              proc = nullptr;
+    // Comme pour llama.cpp : pas de réglages « mode stable » de yue2.cpp (calculs FP32) pour ce moteur (1.0.99 : plain_gpu).
+    bool ok = launch_process(cmd, out, out, sd_cli.parent_path().c_str(), CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, true, &proc);
+    pi.hProcess = (HANDLE) proc;
     if (out != INVALID_HANDLE_VALUE) CloseHandle(out);
     if (!ok) {
         r.error = N_("Le moteur d'images n'a pas pu démarrer.");
@@ -1639,7 +1605,6 @@ AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_roo
     }
     WaitForSingleObject(pi.hProcess, 5000);
     CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
     if (cancelled) {
         r.error = N_("Demande annulée.");
         return r;
@@ -1665,7 +1630,7 @@ static std::string base64_bytes(const std::string & b64) {
 }
 
 // ---- 1.0.61 : modèle d'images gardé chargé
-static const int SD_SERVER_PORT = 8091;  // port réservé au Studio, à côté de celui de l'IA de texte
+// 1.0.99 : port libre choisi au démarrage du serveur (port_), 8091 seulement si Windows n'en donne pas.
 
 LocalImageServer::LocalImageServer(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & model, bool offload)
     : sd_cli_(sd_cli), root_(images_root), model_(model), offload_(offload) {}
@@ -1682,38 +1647,18 @@ bool LocalImageServer::start(std::atomic<bool> * cancel) {
     fs::path        exe = sd_cli_.parent_path() / L"sd-server.exe";
     if (!fs::exists(exe, ec) || !image_model_ready(root_, model_)) return false;
     fs::path     log = app_temp_dir() / L"studio_yue2_image.log";
+    port_            = free_local_port(8091);
     std::wstring cmd = L"\"" + exe.wstring() + L"\"" + image_weights(local_image_dir(root_, model_), model_.files) + (offload_ ? L" --offload-to-cpu" : L"") +
-                       L" --listen-port " + std::to_wstring(SD_SERVER_PORT);
+                       L" --listen-port " + std::to_wstring(port_);
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE              out = CreateFileW(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, CREATE_ALWAYS, 0, nullptr);
-    STARTUPINFOW        si{ sizeof(si) };
-    si.dwFlags    = STARTF_USESTDHANDLES;
-    si.hStdOutput = out;
-    si.hStdError  = out;
-    PROCESS_INFORMATION pi{};
-    // Comme pour sd-cli : pas de réglages « mode stable » de yue2.cpp pour ce moteur.
-    static const wchar_t * stable_vars[] = { L"GGML_VK_DISABLE_F16", L"GGML_VK_DISABLE_INTEGER_DOT_PRODUCT", L"GGML_VK_DISABLE_MMVQ" };
-    std::wstring           saved[3];
-    bool                   had[3] = {};
-    for (int i = 0; i < 3; i++) {
-        wchar_t buf[64];
-        DWORD   n = GetEnvironmentVariableW(stable_vars[i], buf, 64);
-        had[i]    = n > 0 && n < 64;
-        if (had[i]) saved[i] = buf;
-        SetEnvironmentVariableW(stable_vars[i], nullptr);
-    }
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, nullptr,
-                             sd_cli_.parent_path().c_str(), &si, &pi);
-    for (int i = 0; i < 3; i++) {
-        if (had[i]) SetEnvironmentVariableW(stable_vars[i], saved[i].c_str());
-    }
+    // Comme pour sd-cli : pas de réglages « mode stable » de yue2.cpp pour ce moteur (1.0.99 : plain_gpu).
+    bool ok = launch_process(cmd, out, out, sd_cli_.parent_path().c_str(), CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, true, &process_);
     if (out != INVALID_HANDLE_VALUE) CloseHandle(out);
     if (!ok) return false;
-    CloseHandle(pi.hThread);
-    process_ = pi.hProcess;
-    std::string base = "http://127.0.0.1:" + std::to_string(SD_SERVER_PORT);
+    std::string base = "http://127.0.0.1:" + std::to_string(port_);
     for (int i = 0; i < 240; i++) {  // 2 minutes au plus pour charger le modèle
-        if ((cancel && *cancel) || WaitForSingleObject(pi.hProcess, 0) == WAIT_OBJECT_0) return false;
+        if ((cancel && *cancel) || WaitForSingleObject((HANDLE) process_, 0) == WAIT_OBJECT_0) return false;
         std::string body;
         if (http_request("GET", base + "/v1/models", {}, "", body, 2000) == 200) return true;
         Sleep(500);
@@ -1756,7 +1701,7 @@ AiCallResult LocalImageServer::generate(const std::string & prompt, int width, i
         }
     });
     std::string body;
-    int         code = http_request("POST", "http://127.0.0.1:" + std::to_string(SD_SERVER_PORT) + "/sdapi/v1/txt2img",
+    int         code = http_request("POST", "http://127.0.0.1:" + std::to_string(port_) + "/sdapi/v1/txt2img",
                                     { { "Content-Type", "application/json" } }, payload, body, 300000);
     finished = true;
     watch.join();

@@ -1,8 +1,25 @@
 // Requêtes HTTPS courtes (voir net.hpp).
 #include "net.hpp"
 
+#include <winsock2.h>  // avant windows.h (1.0.99 : free_local_port)
 #include <windows.h>
 #include <winhttp.h>
+#pragma comment(lib, "ws2_32.lib")
+
+int free_local_port(int fallback) {
+    static const bool started = [] { WSADATA d; return WSAStartup(MAKEWORD(2, 2), &d) == 0; }();
+    if (!started) return fallback;
+    SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == INVALID_SOCKET) return fallback;
+    sockaddr_in a{};
+    a.sin_family      = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    a.sin_port        = 0;  // 0 : Windows choisit un port libre
+    int port = fallback, len = sizeof(a);
+    if (bind(s, (sockaddr *) &a, sizeof(a)) == 0 && getsockname(s, (sockaddr *) &a, &len) == 0) port = ntohs(a.sin_port);
+    closesocket(s);  // shortcut: le port est libéré puis repris par le serveur ; un autre programme pourrait le prendre entre-temps (très rare)
+    return port;
+}
 
 #include "studio.hpp"  // widen
 #include "version.hpp"

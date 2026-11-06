@@ -218,6 +218,15 @@ class Studio {
 // processus (nullptr à la fin). Renvoie le code de sortie.
 int          run_command(std::wstring command, const std::function<void(const std::string &)> & on_line,
                          const std::function<void(void *)> & on_start = nullptr, bool read_stdout = false);
+// 1.0.99 : lanceur commun de tous les programmes externes (moteur, ffmpeg, Whisper, llama.cpp, images…).
+// - seules les poignées out/err sont transmises au programme (avant, un programme lancé au même instant qu'un autre
+//   pouvait garder son « tuyau » de sortie ouvert, et la tâche de l'autre ne voyait jamais sa fin) ;
+// - le programme est rattaché au Studio : il s'arrête si le Studio se ferme ou plante (plus de serveur orphelin) ;
+// - plain_gpu : sans les variables FP32 de yue2 (GGML_VK_*), pour llama.cpp et stable-diffusion, sans toucher à
+//   celles du Studio (avant, elles étaient retirées un instant pour tout le programme, au risque de manquer au moteur).
+// process : reçoit le handle du processus (à fermer par l'appelant) ; nullptr : fermé ici. Faux si le lancement échoue.
+bool         launch_process(std::wstring command, void * out, void * err, const wchar_t * cwd, unsigned long flags, bool plain_gpu,
+                            void ** process);
 std::wstring quote_arg(const std::wstring & arg);
 std::wstring widen(const std::string & s);
 std::string  narrow(const std::wstring & s);
@@ -236,7 +245,6 @@ inline const char LONG_PART_MARK[] = "\n[[partie suivante]]\n";
 // aide\, langues\, moteur_cuda\) restent reconnus : le dossier de développement et les installations précédentes marchent.
 fs::path            app_data_dir();                         // <app>\donnees (vide avant Paths::locate)
 fs::path            app_temp_dir();                         // <app>\cache\temp (créé, 1.0.41), sinon le dossier temporaire de Windows
-fs::path            app_config_dir();                       // <app>\config (1.0.41 ; vide avant Paths::locate)
 // 1.0.43 : morceaux rangés dans Audios\<Groupe>\<Album>\<NN. Titre>\ (sans album : Audios\<Groupe>\<Titre>\).
 fs::path            song_folder(const std::string & id);    // dossier actuel d'un morceau
 fs::path            album_folder(const std::string & artist, const std::string & album);  // album vide : dossier du groupe

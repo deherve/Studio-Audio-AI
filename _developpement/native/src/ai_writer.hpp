@@ -313,6 +313,7 @@ private:
     const LocalImageModel & model_;
     bool                    offload_;
     void *                  process_ = nullptr;
+    int                     port_    = 8091;  // 1.0.99 : port libre choisi par start()
 };
 AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & m, const std::string & prompt,
                             int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload = false,
