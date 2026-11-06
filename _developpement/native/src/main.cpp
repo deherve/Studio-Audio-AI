@@ -9218,6 +9218,8 @@ struct App {
             if (ImGui::SmallButton(tr("Modifier et renvoyer…"))) reuse(s);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                 ImGui::SetTooltip("%s", tr("Recopie tous les réglages de ce morceau dans « Nouveau morceau » pour les modifier avant de l'envoyer."));
+            flow.next(tr("Paroles"));
+            lyrics_button(s);  // 1.0.95
             flow.next(tr("Actions ▾"));
             if (ImGui::SmallButton(tr("Actions ▾"))) ImGui::OpenPopup("##actions");
             draw_song_menu(s);
@@ -9581,6 +9583,94 @@ struct App {
         return GetSaveFileNameW(&ofn) ? fs::path(file) : fs::path();
     }
 
+    // 1.0.95 : fenêtre « Paroles et structure » d'un morceau (texte sélectionnable, Ctrl+C, clic droit, boutons de copie).
+    std::string lyrics_view_id;
+    bool        open_lyrics_view = false;
+    static std::string lyrics_structure(const std::string & lyrics) {  // lignes « [Section] » dans l'ordre
+        std::string out;
+        size_t      i = 0;
+        while (i <= lyrics.size()) {
+            size_t      e = lyrics.find('\n', i);
+            std::string t = trim(lyrics.substr(i, e == std::string::npos ? std::string::npos : e - i));
+            if (t.size() > 2 && t.front() == '[' && t.back() == ']') out += t + "\n";
+            if (e == std::string::npos) break;
+            i = e + 1;
+        }
+        if (!out.empty()) out.pop_back();
+        return out;
+    }
+    void lyrics_box(const char * id, const std::string & text, float h) {  // champ en lecture seule, sélection mémorisée pour le menu
+        static std::map<ImGuiID, std::pair<int, int>> sel;
+        ImGui::InputTextMultiline(id, const_cast<char *>(text.c_str()), text.size() + 1, ImVec2(-FLT_MIN, h), ImGuiInputTextFlags_ReadOnly);
+        const ImGuiID bid = ImGui::GetItemID();
+        if (ImGuiInputTextState * st = ImGui::GetInputTextState(bid); st && ImGui::GetActiveID() == bid)
+            sel[bid] = { std::min(st->GetSelectionStart(), st->GetSelectionEnd()), std::max(st->GetSelectionStart(), st->GetSelectionEnd()) };
+        const std::string menu = std::string("##lvm") + id;
+        if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) ImGui::OpenPopup(menu.c_str());
+        if (ImGui::BeginPopup(menu.c_str())) {
+            int a = std::clamp(sel[bid].first, 0, (int) text.size()), z = std::clamp(sel[bid].second, 0, (int) text.size());
+            if (ImGui::MenuItem(tr("Copier la sélection"), "Ctrl+C", false, a < z)) ImGui::SetClipboardText(text.substr(a, z - a).c_str());
+            if (ImGui::MenuItem(tr("Copier tout"), nullptr, false, !text.empty())) ImGui::SetClipboardText(text.c_str());
+            ImGui::EndPopup();
+        }
+    }
+    void draw_lyrics_view() {
+        if (open_lyrics_view) {
+            ImGui::OpenPopup(tr("Paroles et structure"));
+            open_lyrics_view = false;
+        }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(720 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Paroles et structure"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        const std::vector<Song> all = studio->snapshot();
+        Song                    target;
+        for (const Song & s : all)
+            if (s.id == lyrics_view_id) target = s;
+        const Song        full      = target.long_join > 0 ? with_full_lyrics(target, all) : target;  // morceau long : toutes les parties
+        const std::string structure = lyrics_structure(full.lyrics);
+        const std::string words     = full.instrumental ? std::string() : trim(full.lyrics);
+        ImGui::PushFont(g_bold);
+        ImGui::TextUnformatted(display_title(target.title).c_str());
+        ImGui::PopFont();
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        ImGui::TextColored(P.accent, "%s", tr("Structure"));
+        if (structure.empty()) muted_wrapped(tr("Aucune structure enregistrée pour ce morceau."));
+        else lyrics_box("##lv_structure", structure, std::min(190.0f, 22.0f + 18.0f * (float) std::count(structure.begin(), structure.end(), '\n')) * g_dpi);
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (full.instrumental) {
+            muted_wrapped(tr("Morceau instrumental : pas de paroles, seulement sa structure."));
+        } else {
+            ImGui::TextColored(P.accent, "%s", tr("Paroles"));
+            if (words.empty()) muted_wrapped(tr("Aucune parole enregistrée pour ce morceau."));
+            else lyrics_box("##lv_lyrics", words, 320 * g_dpi);
+        }
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        ImGui::BeginDisabled(words.empty());
+        if (soft_button(tr("Copier les paroles"), P.teal)) ImGui::SetClipboardText(words.c_str());
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(structure.empty());
+        if (soft_button(tr("Copier la structure"), P.teal)) ImGui::SetClipboardText(structure.c_str());
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(structure.empty() && words.empty());
+        if (soft_button(tr("Tout copier"), P.accent)) {
+            std::string all_text = structure;
+            if (!words.empty()) all_text += (all_text.empty() ? "" : "\n\n") + words;
+            ImGui::SetClipboardText(all_text.c_str());
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    // Petit bouton « Paroles » des cartes : ouvre la fenêtre ci-dessus.
+    float lyrics_button_width() const { return ImGui::CalcTextSize(tr("Paroles")).x + 2 * ImGui::GetStyle().FramePadding.x; }
+    void lyrics_button(const Song & s) {
+        if (ImGui::SmallButton(tr("Paroles"))) { lyrics_view_id = s.id; open_lyrics_view = true; }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Affiche les paroles et la structure du morceau, à sélectionner et copier."));
+    }
+
     void draw_score_view() {
         if (open_score_view) {
             ImGui::OpenPopup(tr("Partition"));
@@ -9744,7 +9834,7 @@ struct App {
         float thumb_sz = 22 * g_dpi, arrow_w = 30 * g_dpi, gap = 6 * g_dpi;
         std::string summary = song_summary(s);
         float logos_w = clip_logos_width(s);
-        float right_w = ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + 10 * g_dpi : 0);
+        float right_w = lyrics_button_width() + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + 10 * g_dpi : 0);
         if (accent_button(playing ? "⏸" : "▶", ImVec2(32 * g_dpi, 0), &P.green)) toggle_play(s);
         ImGui::SameLine(0, 10 * g_dpi);
         ImGui::AlignTextToFramePadding();
@@ -9771,6 +9861,8 @@ struct App {
             ImGui::SetCursorPosY(y);
             ImGui::AlignTextToFramePadding();
         }
+        lyrics_button(s);  // 1.0.95
+        ImGui::SameLine(0, gap);
         ImGui::TextColored(P.muted, "%s", summary.c_str());
         ImGui::SameLine(0, gap);
         apply_mark(s, draw_marks(settings.mark_style, s.validated, s.flagged, thumb_sz));
@@ -9842,7 +9934,7 @@ struct App {
         ImGui::SameLine(0, 10 * g_dpi);
         std::string summary = song_summary(s);
         float       logos_w = clip_logos_width(s);
-        float       right_w = play_w + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + gap : 0);
+        float       right_w = lyrics_button_width() + gap + play_w + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + gap : 0);
         float       title_w = ImGui::GetContentRegionAvail().x - right_w - 14 * g_dpi;
         ImGui::BeginGroup();
         ImGui::PushFont(g_bold);
@@ -9869,6 +9961,9 @@ struct App {
             draw_clip_logos(s);
             ImGui::SameLine(0, gap);
         }
+        ImGui::SetCursorPosY(center_y);
+        lyrics_button(s);  // 1.0.95
+        ImGui::SameLine(0, gap);
         ImGui::SetCursorPosY(center_y);
         bool playing = player.id() == s.id && player.playing();
         if (accent_button(playing ? "⏸" : "▶", ImVec2(play_w, 0), &P.green)) toggle_play(s);
@@ -9957,6 +10052,8 @@ struct App {
         ImGui::EndGroup();
         // menu d'actions, sous la pochette et le texte
         if (soft_button(tr("Actions ▾"), P.accent)) ImGui::OpenPopup("##actions");
+        ImGui::SameLine();
+        lyrics_button(s);  // 1.0.95
         ImGui::SameLine();
         ImGui::TextColored(P.muted, tr("export, vidéo, re-rendu, recomposer, prolonger…"));
         draw_song_menu(s);
@@ -12708,6 +12805,7 @@ struct App {
     void draw_modals() {
         draw_startup_issues();  // 1.0.81
         draw_score_view();      // 1.0.87
+        draw_lyrics_view();     // 1.0.95
         // Essai (1.0.51) : STUDIO_TEST_ALBUMS=<clé d'album>[|1] ouvre « Albums » avec cet album déplié (onglet Vidéos si « |1 »)
         static bool test_library = [this] {  // essai (1.0.62) : STUDIO_TEST_LIBRARY=<filtre> : bibliothèque filtrée, cartes dépliées une sur deux
             wchar_t v[256];
@@ -12795,6 +12893,13 @@ struct App {
                         atelier_test_done = true;
                         open_atelier(score_info(s).text, display_title(s.title), s.artist, display_title(s.title), song_folder(s.id), s.lyrics);
                     }
+        }
+        {  // 1.0.95 : STUDIO_TEST_LYRICS=<titre> ouvre « Paroles et structure » sur ce morceau
+            static bool lyrics_test_done = false;
+            const char * v = getenv("STUDIO_TEST_LYRICS");
+            if (!lyrics_test_done && v)
+                for (const Song & s : studio->snapshot())
+                    if (s.title.rfind(v, 0) == 0) { lyrics_test_done = true; lyrics_view_id = s.id; open_lyrics_view = true; }
         }
         if (!score_test_done) {  // 1.0.87 : STUDIO_TEST_SCORE=<titre> ouvre « Partition » sur ce morceau (dès que la bibliothèque est lue)
             const char * v = getenv("STUDIO_TEST_SCORE");
