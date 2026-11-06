@@ -240,6 +240,24 @@ std::string clip_ass(const std::vector<ClipLine> & lines, int width, int height,
     if (!texts.end.empty() && texts.duration > 12) {
         out += "Dialogue: 1," + ass_time(texts.duration - 8) + "," + ass_time(texts.duration - 0.3) + ",End,,0,0,0,,{\\fad(600,600)}" + ass_text(texts.end) + "\n";
     }
+    if (texts.karaoke) {  // 1.0.98 : une fenêtre de 5 lignes qui défile ; la ligne chantée est grande et orangée
+        for (size_t k = 0; k < lines.size(); k++) {
+            double end = k + 1 < lines.size() ? lines[k + 1].start : lines[k].end + 1.0;
+            std::string text;
+            for (int d = -2; d <= 2; d++) {
+                const long i = (long) k + d;
+                if (i < 0 || i >= (long) lines.size()) { text += "\\N"; continue; }
+                std::string t = upper(lines[i].text);
+                for (char & c : t) if (c == '{' || c == '}') c = ' ';
+                char tag[96];
+                if (d == 0) snprintf(tag, sizeof tag, "{\\fs%d\\c&H0066B3FF&\\alpha&H00&}", sy(74));
+                else snprintf(tag, sizeof tag, "{\\fs%d\\c&H00FFFFFF&\\alpha&H%s&}", sy(d == -1 || d == 1 ? 46 : 36), d == -1 || d == 1 ? "70" : "A0");
+                text += std::string(tag) + t + (d < 2 ? "\\N" : "");
+            }
+            out += "Dialogue: 0," + ass_time(lines[k].start) + "," + ass_time(end) + ",Verse,,0,0,0,,{\\fad(120,0)}" + text + "\n";
+        }
+        return out;
+    }
     for (size_t k = 0; k < lines.size(); k++) {
         const ClipLine & l = lines[k];
         std::string text = upper(l.text);

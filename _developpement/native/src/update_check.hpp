@@ -17,6 +17,8 @@ struct UpdateInfo {
     std::string      latest;      // « 1.0.4 » (lu seulement quand state vaut 2 ou 3)
     std::string      url;         // page de téléchargement
     std::string      notes;       // nouveautés (texte court)
+    std::string      zip_url, zip_name, zip_digest;  // 1.0.98 : fichier « StudioAudioAI-x.y.z.zip » de la release et son empreinte (« sha256:… »)
+    unsigned long long zip_size = 0;
 };
 
 // Compare deux numéros « 1.0.12 » : négatif si a < b, 0 si égaux, positif si a > b (un « v » initial est ignoré).

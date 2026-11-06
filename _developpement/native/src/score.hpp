@@ -2,6 +2,7 @@
 // transposition et tempo. Utilisé par l'interface (main.cpp) et par la file de génération (studio.cpp).
 #pragma once
 
+#include <array>
 #include <map>
 #include <string>
 #include <utility>
@@ -25,3 +26,6 @@ std::string abc_set_tempo(const std::string & abc, int bpm);
 // 1.0.91 : partition prête à afficher : titre (T:), auteur (C:), clé de fa pour la voix d'instrument quand elle est grave
 std::string abc_for_display(const std::string & abc, const std::string & title, const std::string & composer);
 int         key_distance(const std::string & from, const std::string & to);  // demi-tons de from à to (-5..+6), 0 si inconnu
+
+// 1.0.97 : plusieurs partitions d'une voix (une par stem : identifiant de voix, nom affiché, partition) -> une partition à plusieurs portées
+std::string abc_combine_stems(const std::string & title, const std::vector<std::array<std::string, 3>> & stems, std::string & notes);

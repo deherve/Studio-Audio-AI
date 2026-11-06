@@ -35,6 +35,10 @@ nav#barre_edition {
 nav#barre_edition button { padding: 3px 9px; min-width: 32px; }
 #durees button { font-family: "Segoe UI Symbol", "Segoe UI", sans-serif; font-size: 17px; line-height: 1; }
 .lib { color: var(--gris); font-size: 12px; }
+nav#barre_sons { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 16px; background: #f6f4fb; border-bottom: 1px solid var(--ligne); }
+nav#barre_sons select { font: inherit; border: 1px solid var(--ligne); border-radius: 5px; padding: 2px 4px; background: #fff; max-width: 190px; }
+nav#barre_sons label { white-space: nowrap; }
+#hq_audio { height: 32px; }
 .code { font-family: Consolas, monospace; background: #fff; border: 1px solid var(--ligne); border-radius: 4px; padding: 2px 6px; min-width: 60px; display: inline-block; }
 #mesures { color: #9a5b00; max-width: 1200px; margin: 0 auto 8px; font-size: 12px; }
 #mesures:empty { display: none; }
@@ -44,7 +48,7 @@ section textarea { width: 100%; font: 13px Consolas, monospace; border: 1px soli
 @media print {
   @page { size: A4 portrait; margin: 10mm; }
   html, body { background: #fff; }
-  header#barre, #erreurs, nav#barre_edition, #mesures, section#panneau_paroles, section#panneau_texte { display: none !important; }
+  header#barre, #erreurs, nav#barre_edition, nav#barre_sons, #mesures, section#panneau_paroles, section#panneau_texte { display: none !important; }
   main { padding: 0; }
   #infos { color: #000; }
   /* abcjs met au conteneur display:inline-block, overflow:hidden et une hauteur fixe : un bloc que l'impression ne coupe pas */

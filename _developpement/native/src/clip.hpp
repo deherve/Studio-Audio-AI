@@ -29,6 +29,7 @@ double clip_align(std::vector<ClipLine> & lines, const std::vector<ClipWord> & h
 struct ClipTexts {
     std::string title, artist, album, start, end;  // start et end : plusieurs lignes possibles (retours à la ligne)
     double      duration = 0;
+    bool        karaoke = false;  // 1.0.98 : paroles défilantes (lignes voisines atténuées, ligne chantée en couleur)
 };
 std::string clip_ass(const std::vector<ClipLine> & lines, int width, int height, const ClipTexts & texts = ClipTexts());
 // Script de filtres ffmpeg (-filter_complex_script) : plans de caméra lents sur les images, fondus, vignette, sous-titres.

@@ -13,6 +13,7 @@
 
 #include "clip.hpp"
 #include "fiches.hpp"
+#include "score.hpp"
 #include "suno.hpp"
 #include "i18n.hpp"
 
@@ -458,6 +459,45 @@ static std::string fmt_seconds(double s) {
 // 1.0.52 — Atelier clip. Pour chaque titre : paroles calées sur l'audio (Whisper, mot par mot, rapprochées du texte connu),
 // sous-titres ASS, puis montage ffmpeg (plans de caméra lents sur l'image, fondus, vignette). Même contrôle final et même
 // écriture « .part » puis renommage que start_videos. Un titre instrumental n'a pas de paroles : seulement les plans.
+
+// 1.0.98 : paroles synchronisées d'un fichier .lrc (« [mm:ss.xx]texte ») ; la fin de chaque ligne est le début de la suivante.
+static std::vector<ClipLine> read_lrc(const fs::path & file, double seconds) {
+    std::vector<ClipLine> out;
+    std::ifstream f(file, std::ios::binary);
+    std::string   line;
+    while (std::getline(f, line)) {
+        if (line.size() >= 3 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) line.erase(0, 3);
+        int m = 0;
+        double sec = 0;
+        if (line.size() > 8 && line[0] == '[' && sscanf(line.c_str(), "[%d:%lf]", &m, &sec) == 2) {
+            size_t close = line.find(']');
+            std::string text = close == std::string::npos ? std::string() : line.substr(close + 1);
+            while (!text.empty() && (text.back() == '\r' || text.back() == ' ')) text.pop_back();
+            if (text.empty()) continue;
+            ClipLine l;
+            l.text = text;
+            l.start = m * 60 + sec;
+            out.push_back(l);
+        }
+    }
+    for (size_t i = 0; i < out.size(); i++) out[i].end = i + 1 < out.size() ? out[i + 1].start : std::min(seconds, out[i].start + 4.0);
+    return out;
+}
+static std::string stamp(double t, bool srt);
+static void write_lyric_files(const Song & s, const std::vector<ClipLine> & lines) {  // paroles.lrc et paroles.srt
+    const fs::path dir = song_folder(s.id);
+    std::ostringstream lrc, srt;
+    lrc << "[ti:" << display_title(s.title) << "]\n[ar:" << s.artist << "]\n[al:" << s.album << "]\n";
+    int n = 0;
+    for (size_t k = 0; k < lines.size(); k++) {
+        const double end = lines[k].end > lines[k].start ? lines[k].end : (k + 1 < lines.size() ? lines[k + 1].start : lines[k].start + 3);
+        lrc << "[" << stamp(lines[k].start, false) << "]" << lines[k].text << "\n";
+        srt << ++n << "\n" << stamp(lines[k].start, true) << " --> " << stamp(end, true) << "\n" << lines[k].text << "\n\n";
+    }
+    std::ofstream(dir / L"paroles.lrc", std::ios::binary | std::ios::trunc) << "\xEF\xBB\xBF" << lrc.str();
+    std::ofstream(dir / L"paroles.srt", std::ios::binary | std::ios::trunc) << "\xEF\xBB\xBF" << srt.str();
+}
+
 void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vector<ClipTask> tasks) {
     (void) paths;
     job->thread = std::thread([=]() mutable {
@@ -479,6 +519,13 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
                 lines = clip_lyrics_lines(text);
             }
             auto known = aligned.find(t.song.id);
+            if (known == aligned.end() && t.karaoke && !lines.empty()) {  // 1.0.98 : karaoké : temps déjà calés dans paroles.lrc
+                std::vector<ClipLine> lrc = read_lrc(song_folder(t.song.id) / L"paroles.lrc", seconds);
+                if (lrc.size() >= std::max<size_t>(3, lines.size() / 2)) {
+                    aligned[t.song.id] = lrc;
+                    known = aligned.find(t.song.id);
+                }
+            }
             if (known != aligned.end()) {
                 lines = known->second;
             } else if (!lines.empty()) {
@@ -498,6 +545,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
                 if (j.cancel) return lines;
                 clip_align(lines, heard, seconds);  // sans Whisper (heard vide) : lignes réparties sur la durée
                 aligned[t.song.id] = lines;
+                if (t.karaoke && !heard.empty()) write_lyric_files(t.song, lines);  // 1.0.98 : paroles.lrc pour les prochains karaokés
             }
             return lines;
         };
@@ -579,6 +627,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
                 texts.start    = t.text_start;
                 texts.end      = t.text_end;
                 texts.duration = seconds;
+                texts.karaoke  = t.karaoke;
                 f << clip_ass(lines, t.width, t.height, texts);
             }
             std::wstring short_ass = ass.wstring();
@@ -882,5 +931,413 @@ void start_quality(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs
         j.progress = 1;
         if (j.cancel) finish_job(j, false, trf("Contrôle qualité arrêté (%d morceau(x) contrôlé(s)).", checked), report);
         else finish_job(j, true, head, report);
+    });
+}
+
+
+// ================================================================== 1.0.97 : outils audio
+static fs::path best_audio(const fs::path & dir) {
+    std::error_code ec;
+    for (const wchar_t * n : { L"audio.wav", L"audio.flac", L"audio.mp3" })
+        if (fs::exists(dir / n, ec)) return dir / n;
+    return {};
+}
+static std::string json_num(const std::string & text, const char * key) {  // valeur de "key" : "…" dans la sortie de loudnorm
+    size_t p = text.find(std::string("\"") + key + "\"");
+    if (p == std::string::npos) return {};
+    p = text.find(':', p);
+    size_t a = text.find('"', p), b = a == std::string::npos ? a : text.find('"', a + 1);
+    return b == std::string::npos ? std::string() : text.substr(a + 1, b - a - 1);
+}
+static std::wstring wfmt(const char * f, double v) {
+    char b[64];
+    snprintf(b, sizeof b, f, v);
+    return widen(b);
+}
+
+void start_master(const std::shared_ptr<Job> & job, std::vector<Song> songs, double lufs, double tp, bool mp3) {
+    job->thread = std::thread([=]() mutable {
+        Job & j = *job;
+        std::error_code ec;
+        int done = 0;
+        std::string errors;
+        fs::path last;
+        for (size_t i = 0; i < songs.size() && !j.cancel; i++) {
+            const Song & s = songs[i];
+            j.total = (int) songs.size(); j.item = (int) i + 1; j.progress = (float) i / songs.size();
+            { std::lock_guard<std::mutex> lock(j.mutex); j.message = display_title(s.title); }
+            const fs::path dir = song_folder(s.id), src = best_audio(dir);
+            if (src.empty()) { errors += display_title(s.title) + " : " + tr("audio introuvable") + "\n"; continue; }
+            const fs::path out_dir = dir / L"master";
+            fs::create_directories(out_dir, ec);
+            const std::wstring base = widen(safe_filename(display_title(s.title))) + L"_master";
+            const std::wstring target = L"I=" + wfmt("%.1f", lufs) + L":TP=" + wfmt("%.1f", tp) + L":LRA=11";
+            std::string info;  // passe 1 : mesure
+            run_command(ffmpeg_exe() + L" -hide_banner -nostats -i " + quote_arg(src.wstring()) + L" -af loudnorm=" + target + L":print_format=json -f null -",
+                        [&](const std::string & l) { info += l + "\n"; }, [&j](void * h) { j.proc = h; });
+            const std::string mi = json_num(info, "input_i"), mtp = json_num(info, "input_tp"), mlra = json_num(info, "input_lra"),
+                              mth = json_num(info, "input_thresh"), off = json_num(info, "target_offset");
+            if (mi.empty() || mth.empty() || off.empty()) { errors += display_title(s.title) + " : " + tr("mesure du volume impossible") + "\n"; continue; }
+            const std::wstring pass2 = L"loudnorm=" + target + L":measured_I=" + widen(mi) + L":measured_TP=" + widen(mtp) + L":measured_LRA=" + widen(mlra) +
+                                       L":measured_thresh=" + widen(mth) + L":offset=" + widen(off) + L":linear=true,aresample=44100,alimiter=limit=0.89:level=0";
+            const fs::path wav = out_dir / (base + L".wav");
+            if (ffmpeg(j, L"-i " + quote_arg(src.wstring()) + L" -af " + pass2 + L" -ar 44100 -c:a pcm_s24le " + quote_arg(wav.wstring())) != 0) {
+                errors += display_title(s.title) + " : " + tr("échec ffmpeg") + "\n";
+                continue;
+            }
+            if (mp3) ffmpeg(j, L"-i " + quote_arg(wav.wstring()) + L" -c:a libmp3lame -b:a 320k " + quote_arg((out_dir / (base + L".mp3")).wstring()));
+            last = out_dir;
+            done++;
+        }
+        j.progress = 1;
+        std::string msg = trf("%d morceau(x) masterisé(s) à %.1f LUFS (dossier « master » de chaque morceau).", done, lufs);
+        if (!errors.empty()) msg += "\n" + errors;
+        if (j.cancel) finish_job(j, false, tr("Mastering arrêté."), last);
+        else finish_job(j, done > 0, msg, last);
+    });
+}
+
+static std::string stamp(double t, bool srt) {
+    if (t < 0) t = 0;
+    int ms = (int) (t * 1000 + 0.5), h = ms / 3600000, m = ms / 60000 % 60, s = ms / 1000 % 60, c = ms % 1000;
+    char b[40];
+    if (srt) snprintf(b, sizeof b, "%02d:%02d:%02d,%03d", h, m, s, c);
+    else snprintf(b, sizeof b, "%02d:%02d.%02d", ms / 60000, s, c / 10);
+    return b;
+}
+
+void start_lrc(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path whisper_exe, fs::path whisper_model) {
+    job->thread = std::thread([=]() mutable {
+        Job & j = *job;
+        std::error_code ec;
+        std::string errors;
+        int done = 0;
+        if (whisper_exe.empty() || !fs::exists(whisper_exe, ec) || !fs::exists(whisper_model, ec)) {
+            finish_job(j, false, tr("Whisper (transcription) absent : installez-le dans Réglages › Transcription des paroles."), {});
+            return;
+        }
+        const fs::path work = fs::temp_directory_path() / L"studio_lrc";
+        fs::create_directories(work, ec);
+        for (size_t i = 0; i < songs.size() && !j.cancel; i++) {
+            const Song & s = songs[i];
+            j.total = (int) songs.size(); j.item = (int) i + 1; j.progress = (float) i / songs.size();
+            { std::lock_guard<std::mutex> lock(j.mutex); j.message = display_title(s.title); }
+            if (s.instrumental) continue;
+            const fs::path dir = song_folder(s.id), audio = best_audio(dir);
+            std::string text = s.lyrics;
+            std::ifstream pf(dir / L"paroles.txt", std::ios::binary);
+            if (pf) text.assign((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+            std::vector<ClipLine> lines = clip_lyrics_lines(text);
+            if (audio.empty() || lines.empty()) continue;
+            const double seconds = media_duration(audio);
+            const fs::path wav = work / L"voix.wav", base = work / L"mots";
+            fs::remove(base.wstring() + L".json", ec);
+            if (ffmpeg(j, L"-i " + quote_arg(audio.wstring()) + L" -vn -ac 1 -ar 16000 " + quote_arg(wav.wstring())) != 0 || j.cancel) continue;
+            const std::wstring lang = s.lyrics_lang.empty() ? L"auto" : widen(s.lyrics_lang);
+            run_command(quote_arg(whisper_exe.wstring()) + L" -m " + quote_arg(whisper_model.wstring()) + L" -f " + quote_arg(wav.wstring()) + L" -l " + lang +
+                            L" -ml 1 -sow -mc 0 -oj -np -of " + quote_arg(base.wstring()), nullptr, [&j](void * h) { j.proc = h; });
+            std::ifstream wf(base.wstring() + L".json", std::ios::binary);
+            const std::string json((std::istreambuf_iterator<char>(wf)), std::istreambuf_iterator<char>());
+            if (json.empty()) { errors += display_title(s.title) + " : " + tr("aucun mot reconnu") + "\n"; continue; }
+            clip_align(lines, clip_parse_words(json), seconds);
+            std::ostringstream lrc, srt;
+            lrc << "[ti:" << display_title(s.title) << "]\n[ar:" << s.artist << "]\n[al:" << s.album << "]\n";
+            int n = 0;
+            for (size_t k = 0; k < lines.size(); k++) {
+                const double end = lines[k].end > lines[k].start ? lines[k].end : (k + 1 < lines.size() ? lines[k + 1].start : lines[k].start + 3);
+                lrc << "[" << stamp(lines[k].start, false) << "]" << lines[k].text << "\n";
+                srt << ++n << "\n" << stamp(lines[k].start, true) << " --> " << stamp(end, true) << "\n" << lines[k].text << "\n\n";
+            }
+            std::ofstream(dir / L"paroles.lrc", std::ios::binary | std::ios::trunc) << "\xEF\xBB\xBF" << lrc.str();
+            std::ofstream(dir / L"paroles.srt", std::ios::binary | std::ios::trunc) << "\xEF\xBB\xBF" << srt.str();
+            done++;
+        }
+        fs::remove_all(work, ec);
+        j.progress = 1;
+        std::string msg = trf("%d morceau(x) : fichiers « paroles.lrc » et « paroles.srt » écrits dans le dossier du morceau.", done);
+        if (!errors.empty()) msg += "\n" + errors;
+        if (j.cancel) finish_job(j, false, tr("Paroles synchronisées arrêtées."), {});
+        else finish_job(j, done > 0, msg, songs.empty() ? fs::path() : song_folder(songs[0].id));
+    });
+}
+
+static std::string html_escape(const std::string & s) {
+    std::string o;
+    for (char c : s) o += c == '&' ? "&amp;" : c == '<' ? "&lt;" : c == '>' ? "&gt;" : std::string(1, c);
+    return o;
+}
+static std::string file_url(const fs::path & p) {
+    std::string u = "file:///";
+    for (unsigned char c : narrow(p.wstring())) {
+        if (c == '\\') u += '/';
+        else if (isalnum(c) || strchr("-_.~/:", c)) u += (char) c;
+        else { char b[8]; snprintf(b, sizeof b, "%%%02X", c); u += b; }
+    }
+    return u;
+}
+
+void start_booklet(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::string artist, std::string album, fs::path cover, fs::path dest) {
+    job->thread = std::thread([=]() mutable {
+        Job & j = *job;
+        std::error_code ec;
+        fs::create_directories(dest, ec);
+        std::ostringstream h;
+        h << "<!doctype html><html><head><meta charset=\"utf-8\"><title>" << html_escape(album) << "</title><style>"
+             "@page{size:A5;margin:14mm}body{font-family:'Segoe UI',sans-serif;color:#222}"
+             ".cover{page-break-after:always;text-align:center}.cover img{width:100%;max-height:150mm;object-fit:cover}"
+             "h1{font-size:26pt;margin:8mm 0 2mm}h2{font-size:15pt;margin:0 0 4mm}.band{font-size:13pt;color:#555}"
+             "ol{font-size:12pt;line-height:1.7}.track{page-break-before:always}"
+             "pre{font-family:inherit;font-size:11pt;line-height:1.5;white-space:pre-wrap}.tag{color:#7b5cd6;font-weight:600}"
+             "</style></head><body><div class=\"cover\">";
+        if (!cover.empty() && fs::exists(cover, ec)) h << "<img src=\"" << file_url(cover) << "\">";
+        h << "<h1>" << html_escape(album) << "</h1><div class=\"band\">" << html_escape(artist) << "</div></div><div><h2>" << tr("Liste des morceaux") << "</h2><ol>";
+        for (const Song & s : songs) h << "<li>" << html_escape(clean_title(display_title(s.title))) << "</li>";
+        h << "</ol></div>";
+        for (size_t i = 0; i < songs.size(); i++) {
+            const Song & s = songs[i];
+            h << "<div class=\"track\"><h2>" << (i + 1) << ". " << html_escape(clean_title(display_title(s.title))) << "</h2><pre>";
+            if (s.instrumental) h << "<i>" << tr("Morceau instrumental") << "</i>";
+            else {
+                std::istringstream in(s.lyrics);
+                std::string line;
+                while (std::getline(in, line)) {
+                    size_t b = line.find_first_not_of(" \t\r");
+                    if (b != std::string::npos && line[b] == '[') h << "<span class=\"tag\">" << html_escape(line) << "</span>\n";
+                    else h << html_escape(line) << "\n";
+                }
+            }
+            h << "</pre></div>";
+        }
+        h << "</body></html>";
+        const fs::path html = dest / L"livret.html", pdf = dest / L"livret.pdf";
+        std::ofstream(html, std::ios::binary | std::ios::trunc) << h.str();
+        std::wstring edge;
+        for (const wchar_t * p : { L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", L"C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe" })
+            if (fs::exists(p, ec)) { edge = p; break; }
+        if (edge.empty()) { finish_job(j, false, tr("Microsoft Edge introuvable : le livret HTML est écrit, ouvrez-le et imprimez-le en PDF."), html); return; }
+        fs::remove(pdf, ec);
+        const fs::path profile = fs::temp_directory_path() / L"studio_livret_edge";
+        run_command(quote_arg(edge) + L" --headless=new --disable-gpu --no-pdf-header-footer --user-data-dir=" + quote_arg(profile.wstring()) +
+                        L" --print-to-pdf=" + quote_arg(pdf.wstring()) + L" " + quote_arg(widen(file_url(html))),
+                    nullptr, [&j](void * hh) { j.proc = hh; });
+        fs::remove_all(profile, ec);
+        j.progress = 1;
+        if (fs::exists(pdf, ec) && fs::file_size(pdf, ec) > 1000) finish_job(j, true, trf("Livret de %d morceau(x) écrit : %s", (int) songs.size(), narrow(pdf.wstring()).c_str()), pdf);
+        else finish_job(j, false, tr("Le PDF n'a pas pu être créé : le livret HTML est dans le dossier de l'album."), html);
+    });
+}
+
+void start_daw_export(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path dest) {
+    job->thread = std::thread([=]() mutable {
+        Job & j = *job;
+        std::error_code ec;
+        int n = 0;
+        for (size_t i = 0; i < songs.size() && !j.cancel; i++) {
+            const Song & s = songs[i];
+            j.total = (int) songs.size(); j.item = (int) i + 1; j.progress = (float) i / songs.size();
+            const fs::path dir = song_folder(s.id);
+            std::string tag;
+            std::ifstream sf(dir / L"score.abc", std::ios::binary);
+            std::string abc((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>());
+            if (!abc.empty()) {
+                ScoreInfo sc = parse_score(abc);
+                if (sc.tempo > 0) tag += " - " + std::to_string(sc.tempo) + " BPM";
+                if (!sc.key.empty()) tag += " - " + sc.key;
+            }
+            const std::wstring name = widen(safe_filename(clean_title(display_title(s.title)) + tag));
+            const fs::path out = dest / widen(safe_filename(display_title(s.title)));
+            fs::create_directories(out, ec);
+            fs::path audio = best_audio(dir);
+            const fs::path mdir = dir / L"master";
+            if (fs::exists(mdir, ec)) for (const auto & e : fs::directory_iterator(mdir, ec)) if (e.path().extension() == L".wav") audio = e.path();
+            if (!audio.empty()) fs::copy_file(audio, out / (name + audio.extension().wstring()), fs::copy_options::overwrite_existing, ec);
+            for (const wchar_t * f : { L"score.abc", L"paroles.txt", L"paroles.lrc", L"paroles.srt" })
+                if (fs::exists(dir / f, ec)) fs::copy_file(dir / f, out / f, fs::copy_options::overwrite_existing, ec);
+            if (fs::exists(dir / L"stems", ec)) fs::copy(dir / L"stems", out / L"stems", fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+            n++;
+        }
+        j.progress = 1;
+        finish_job(j, n > 0, trf("%d morceau(x) exporté(s) : audio, partition ABC, paroles et stems.", n), dest);
+    });
+}
+
+void write_publication(const std::vector<Song> & songs, const std::string & lang, const AiAsk & ask, const std::function<void(const std::string &)> & say,
+                       std::atomic<bool> & cancel, std::atomic<int> & written, std::string & error) {
+    const std::string sys = "You write publication texts for music videos (YouTube, TikTok, Instagram). Use only the facts given. Invent nothing: no dates, awards, sales or biography. "
+                            "Never name any real artist, band or person other than the names given. Keep song, album and group names exactly as given.";
+    const std::string tail = std::string(" Write only in ") + language_name(lang) + ".";
+    for (const Song & s : songs) {
+        if (cancel || !error.empty()) return;
+        const std::string title = clean_title(display_title(s.title));
+        say(title);
+        const fs::path file = song_folder(s.id) / L"publication.txt";
+        std::error_code ec;
+        if (fs::exists(file, ec)) continue;
+        std::vector<std::string> names;
+        const std::string genres = safe_style(s.style, &names);
+        std::string user = "Song \"" + title + "\" by \"" + s.artist + "\"" + (s.album.empty() ? "" : " from the album \"" + s.album + "\"") + ". Genres: " + genres + ". ";
+        user += s.instrumental ? std::string("It is an instrumental. ") : "What it talks about (do not quote the lyrics):\n" + s.lyrics.substr(0, 1200) + "\n";
+        user += "Answer with exactly three parts, each on its own line: 'TITLE:' a catchy video title (max 70 characters, include the song name), "
+                "'DESCRIPTION:' 3 to 4 sentences for the video description, 'HASHTAGS:' 8 to 12 hashtags separated by spaces." + tail;
+        std::string text;
+        for (int attempt = 0; attempt < 2 && !cancel && text.empty(); attempt++) {
+            AiCallResult r = ask(sys, user + (attempt ? " Do not name any real musician." : ""));
+            if (!r.ok) { if (!cancel) error = r.error; return; }
+            text = clean_answer(r.text);
+            for (const std::string & n : names) if (text.find(n) != std::string::npos) text.clear();
+            if (text.find("TITLE:") == std::string::npos) text.clear();
+        }
+        if (text.empty()) continue;
+        std::ofstream(file, std::ios::binary | std::ios::trunc) << text << "\n";
+        written++;
+    }
+}
+
+static std::vector<uint64_t> token_grams(const fs::path & audio_json) {
+    std::ifstream f(audio_json, std::ios::binary);
+    std::string t((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    size_t p = t.find("\"semantic_tokens\"");
+    std::vector<uint64_t> out;
+    if (p == std::string::npos) return out;
+    p = t.find('"', t.find(':', p));
+    if (p == std::string::npos) return out;
+    std::vector<int> v;
+    for (size_t i = p + 1; i < t.size() && t[i] != '"';) {
+        if (isdigit((unsigned char) t[i])) { int x = 0; while (isdigit((unsigned char) t[i])) x = x * 10 + (t[i++] - '0'); v.push_back(x); }
+        else i++;
+    }
+    for (size_t i = 0; i + 6 <= v.size(); i++) {
+        uint64_t h = 1469598103934665603ull;
+        for (int k = 0; k < 6; k++) h = (h ^ (uint64_t) v[i + k]) * 1099511628211ull;
+        out.push_back(h);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+static double jaccard(const std::vector<uint64_t> & a, const std::vector<uint64_t> & b) {
+    if (a.empty() || b.empty()) return 0;
+    size_t i = 0, k = 0, inter = 0;
+    while (i < a.size() && k < b.size()) { if (a[i] == b[k]) { inter++; i++; k++; } else if (a[i] < b[k]) i++; else k++; }
+    return (double) inter / (double) (a.size() + b.size() - inter);
+}
+static std::vector<uint64_t> lyric_lines(const std::string & lyrics) {
+    std::vector<uint64_t> out;
+    std::istringstream in(lyrics);
+    std::string line;
+    while (std::getline(in, line)) {
+        std::string f;
+        for (unsigned char c : line) if (isalnum(c) || c >= 128) f += (char) tolower(c);
+        if (f.size() < 8 || line.find('[') != std::string::npos) continue;
+        out.push_back(std::hash<std::string>{}(f));
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+void start_duplicates(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::shared_ptr<std::vector<DupPair>> found, fs::path report) {
+    job->thread = std::thread([=]() mutable {
+        Job & j = *job;
+        std::vector<Song> done;
+        for (const Song & s : songs) if (s.status == "done" && s.long_rest.empty()) done.push_back(s);
+        std::vector<std::vector<uint64_t>> grams(done.size()), lines(done.size());
+        for (size_t i = 0; i < done.size() && !j.cancel; i++) {
+            j.progress = 0.5f * i / std::max<size_t>(1, done.size());
+            grams[i] = token_grams(song_folder(done[i].id) / L"audio.json");
+            lines[i] = done[i].instrumental ? std::vector<uint64_t>() : lyric_lines(done[i].lyrics);
+        }
+        std::vector<DupPair> out;
+        for (size_t a = 0; a < done.size() && !j.cancel; a++) {
+            j.progress = 0.5f + 0.5f * a / std::max<size_t>(1, done.size());
+            for (size_t b = a + 1; b < done.size(); b++) {
+                const double t = jaccard(grams[a], grams[b]);
+                const double l = lines[a].size() >= 6 && lines[b].size() >= 6 ? jaccard(lines[a], lines[b]) : 0;
+                const bool same_family = done[a].parent == done[b].id || done[b].parent == done[a].id || (!done[a].parent.empty() && done[a].parent == done[b].parent);
+                if (t < 0.35 && l < 0.6) continue;
+                DupPair d{ done[a].id, done[b].id, display_title(done[a].title), display_title(done[b].title), {}, t, l };
+                d.why = same_family ? tr("même famille (suite, re-rendu ou nouvelle version)") : t >= 0.35 && l >= 0.6 ? tr("composition et paroles très proches")
+                        : t >= 0.35 ? tr("composition très proche") : tr("paroles très proches");
+                out.push_back(d);
+            }
+        }
+        std::sort(out.begin(), out.end(), [](const DupPair & x, const DupPair & y) { return std::max(x.tokens, x.lyrics) > std::max(y.tokens, y.lyrics); });
+        std::error_code ec;
+        fs::create_directories(report.parent_path(), ec);
+        {
+            std::ofstream r(report, std::ios::binary | std::ios::trunc);
+            r << "\xEF\xBB\xBF";
+            for (const DupPair & d : out)
+                r << d.label_a << "  <->  " << d.label_b << "  (" << (int) (d.tokens * 100) << " % composition, " << (int) (d.lyrics * 100) << " % paroles) : " << d.why << "\n";
+        }
+        { std::lock_guard<std::mutex> lock(j.mutex); *found = out; }
+        j.progress = 1;
+        finish_job(j, true, trf("%d couple(s) de morceaux proches sur %d morceau(x).", (int) out.size(), (int) done.size()), report);
+    });
+}
+
+int best_trial(const std::vector<Song> & trials, std::vector<std::string> & problems) {
+    problems.assign(trials.size(), std::string());
+    int best = 0;
+    double best_score = -1e9;
+    for (size_t i = 0; i < trials.size(); i++) {
+        const Song & s = trials[i];
+        const fs::path audio = best_audio(song_folder(s.id));
+        double score = 0;
+        const double seconds = audio.empty() ? 0 : media_duration(audio);
+        if (seconds <= 0) { problems[i] = tr("audio illisible"); score = -1000; }
+        else {
+            const double target = s.auto_duration ? s.expected_seconds : s.duration;
+            if (target > 0) {
+                const double r = seconds / target;
+                score -= std::fabs(1 - r) * 100;  // écart à la durée visée
+                if (r < (s.auto_duration ? 0.6 : 0.75)) problems[i] += trf("durée %s pour %s attendues", fmt_seconds(seconds).c_str(), fmt_seconds(target).c_str()) + "; ";
+            }
+            int gaps = 0;
+            double start = -1;
+            run_command(ffmpeg_exe() + L" -hide_banner -nostats -i " + quote_arg(audio.wstring()) + L" -af silencedetect=noise=-45dB:d=5 -f null -", [&](const std::string & line) {
+                size_t a = line.find("silence_start: "), b = line.find("silence_end: ");
+                if (a != std::string::npos) start = atof(line.c_str() + a + 15);
+                if (b != std::string::npos && start >= 0) { const double end = atof(line.c_str() + b + 13); if (end > 2 && start < seconds - 10) gaps++; start = -1; }
+            });
+            if (gaps) { score -= 50.0 * gaps; problems[i] += trf("%d silence(s) anormal(aux)", gaps); }
+        }
+        if (score > best_score) { best_score = score; best = (int) i; }
+    }
+    return best;
+}
+
+void start_stems(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path demucs_exe, fs::path demucs_model) {
+    job->thread = std::thread([=]() mutable {
+        Job & j = *job;
+        std::error_code ec;
+        int done = 0;
+        std::string errors;
+        for (size_t i = 0; i < songs.size() && !j.cancel; i++) {
+            const Song & s = songs[i];
+            j.total = (int) songs.size(); j.item = (int) i + 1; j.progress = (float) i / songs.size();
+            { std::lock_guard<std::mutex> lock(j.mutex); j.message = display_title(s.title); }
+            const fs::path dir = song_folder(s.id), src = best_audio(dir), out = dir / L"stems";
+            if (src.empty()) continue;
+            fs::create_directories(out, ec);
+            const fs::path wav44 = fs::temp_directory_path() / L"studio_stems_in.wav";
+            if (ffmpeg(j, L"-i " + quote_arg(src.wstring()) + L" -ar 44100 -ac 2 -c:a pcm_s16le " + quote_arg(wav44.wstring())) != 0) continue;
+            // demucs_mt (demucs.cpp) : <exe> <modèle> <entrée.wav> <dossier de sortie> <fils> ; target_0_drums.wav, target_1_bass.wav, target_2_other.wav, target_3_vocals.wav
+            run_command(quote_arg(demucs_exe.wstring()) + L" " + quote_arg(demucs_model.wstring()) + L" " + quote_arg(wav44.wstring()) + L" " + quote_arg(out.wstring()) + L" 8",
+                        nullptr, [&j](void * h) { j.proc = h; });
+            fs::remove(wav44, ec);
+            int found = 0;
+            const std::pair<const wchar_t *, const wchar_t *> names[] = { { L"target_0_drums.wav", L"batterie.wav" }, { L"target_1_bass.wav", L"basse.wav" },
+                                                                         { L"target_2_other.wav", L"autres.wav" }, { L"target_3_vocals.wav", L"voix.wav" } };
+            for (const auto & [from, to] : names)
+                if (fs::exists(out / from, ec)) { fs::rename(out / from, out / to, ec); found++; }
+            if (found == 4) done++;
+            else errors += display_title(s.title) + " : " + tr("séparation incomplète") + "\n";
+        }
+        j.progress = 1;
+        std::string msg = trf("%d morceau(x) séparé(s) en voix, batterie, basse et autres (dossier « stems »).", done);
+        if (!errors.empty()) msg += "\n" + errors;
+        if (j.cancel) finish_job(j, false, tr("Séparation arrêtée."), {});
+        else finish_job(j, done > 0, msg, songs.empty() ? fs::path() : song_folder(songs[0].id) / L"stems");
     });
 }

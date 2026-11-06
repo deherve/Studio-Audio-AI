@@ -93,6 +93,13 @@ bool http_get_text(const std::wstring & url, std::string & body) {
 
 bool http_fetch(const std::wstring & url, const fs::path & dest, unsigned long long expected,
                 std::atomic<unsigned long long> & done, std::atomic<bool> & cancel, std::wstring & error) {
+    if (url.rfind(L"file:///", 0) == 0 && _wgetenv(L"STUDIO_TEST_UPDATE")) {  // 1.0.98 : essai de la mise à jour sans réseau : copie d'un fichier local
+        std::error_code ec;
+        fs::copy_file(fs::path(url.substr(8)), dest, fs::copy_options::overwrite_existing, ec);
+        if (ec) { error = L"copie impossible"; return false; }
+        done = fs::file_size(dest, ec);
+        return true;
+    }
     fs::path part = dest;
     part += L".part";
     std::error_code ec;

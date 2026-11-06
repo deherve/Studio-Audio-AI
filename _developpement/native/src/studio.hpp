@@ -242,6 +242,7 @@ fs::path            song_folder(const std::string & id);    // dossier actuel d'
 fs::path            album_folder(const std::string & artist, const std::string & album);  // album vide : dossier du groupe
 void                merge_folder(const fs::path & from, const fs::path & to);             // sans écraser, avec journal
 fs::path            app_resource_dir(const wchar_t * name);  // <app>\ressources\<name> s'il existe, sinon <app>\<name>
+bool                recycle_to_bin(const std::vector<fs::path> & paths, std::string & error);  // 1.0.98 : Corbeille de Windows, jamais hors du dossier du programme
 bool                inside_app_dir(const fs::path & p);     // vrai si p est dans le dossier du programme (1.0.32 : seules
                                                             // les suppressions de fichiers situés dedans sont permises)
 const std::wstring & ffmpeg_exe();                          // chemin complet entre guillemets, ou « ffmpeg » (recherche de Windows)

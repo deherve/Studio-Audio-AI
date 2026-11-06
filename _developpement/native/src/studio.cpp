@@ -1441,6 +1441,9 @@ void Studio::finish_stopped(const std::string & id, const fs::path & wav) {
     });
 }
 
+static bool send_to_recycle_bin(const std::vector<fs::path> & paths, std::string & error);
+bool recycle_to_bin(const std::vector<fs::path> & paths, std::string & error) { return send_to_recycle_bin(paths, error); }
+
 // Envoie des dossiers à la corbeille de Windows (récupérables). Les chemins absents sont ignorés.
 static bool send_to_recycle_bin(const std::vector<fs::path> & paths, std::string & error) {
     std::wstring list;

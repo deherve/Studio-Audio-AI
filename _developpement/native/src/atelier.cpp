@@ -14,6 +14,7 @@ using Microsoft::WRL::ComPtr;
 namespace {
 const wchar_t * kClass    = L"StudioAudioAIAtelierPartition";
 const wchar_t * kHost     = L"atelier.studio";
+std::wstring    g_audio_dir;  // 1.0.97 : dossier des sons rendus
 HWND            g_wnd     = nullptr;
 bool            g_ready   = false;  // page chargée : les messages peuvent partir
 std::vector<std::string> g_pending;  // messages envoyés avant que la page soit prête
@@ -94,7 +95,10 @@ void create_webview(const std::wstring & pages_dir, const std::wstring & user_da
                            // pages et sons servis depuis ressources\partition, sous une adresse locale
                            ComPtr<ICoreWebView2_3> v3;
                            if (SUCCEEDED(g_view.As(&v3)))
+                           {
                                v3->SetVirtualHostNameToFolderMapping(kHost, pages_dir.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+                               if (!g_audio_dir.empty()) v3->SetVirtualHostNameToFolderMapping(L"rendu.atelier.studio", g_audio_dir.c_str(), COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_ALLOW);
+                           }
                            g_view->add_WebMessageReceived(
                                Callback<ICoreWebView2WebMessageReceivedEventHandler>([](ICoreWebView2 *, ICoreWebView2WebMessageReceivedEventArgs * a) -> HRESULT {
                                    LPWSTR json = nullptr;
@@ -128,6 +132,8 @@ std::wstring atelier_runtime_version() {
     CoTaskMemFree(v);
     return out;
 }
+
+void atelier_set_audio_dir(const std::wstring & dir) { g_audio_dir = dir; }
 
 bool atelier_is_open() { return g_wnd != nullptr; }
 

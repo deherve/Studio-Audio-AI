@@ -49,7 +49,7 @@ function New-Zip($parent, $folder, $zip) {
 # ---- 1. Dossier cible vidé puis recréé
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 $dirs = 'outils\moteur','outils\ffmpeg','outils\whisper','outils\llama','outils\llama-vulkan','ressources','LICENSES','Audios',
-        'modeles\musique','modeles\lora','modeles\analyse','modeles\voix','modeles\traduction','modeles\ia','modeles\images','outils\sd-vulkan'
+        'modeles\musique','modeles\lora','modeles\analyse','modeles\voix','modeles\traduction','modeles\ia','modeles\images','outils\sd-vulkan','outils\demucs','modeles\stems'
 foreach ($d in $dirs) { New-Item -ItemType Directory -Force (Join-Path $dist $d) | Out-Null }
 
 # ---- 2. Application : l'exécutable le plus récent (celui de la racine, ou celui qui vient d'être compilé si
@@ -85,6 +85,8 @@ Copy-Runtime "$dist\outils\llama"
 # Pochettes (1.0.36) : stable-diffusion.cpp Vulkan (sd-cli + bibliothèques ; sans sd-server ni textes de licence, rangés dans LICENSES)
 Get-ChildItem "$root\outils\sd-vulkan" -File | Where-Object { $_.Extension -in '.exe','.dll' } | ForEach-Object { Copy-Item $_.FullName "$dist\outils\sd-vulkan" -Force }
 Copy-Runtime "$dist\outils\sd-vulkan"
+# 1.0.97 : separation des pistes (demucs.cpp, MIT) ; le modele (84 Mo) est telecharge par le Studio au clic
+if (Test-Path "$root\outils\demucs\demucs_mt.exe") { Copy-Item "$root\outils\demucs\*" "$dist\outils\demucs" -Force; Copy-Item "$root\outils\demucs\LICENSE-demucs.cpp.txt" "$dist\LICENSES\demucs.cpp-MIT.txt" -Force }
 Set-Content -Encoding UTF8 "$dist\outils\llama-vulkan\TELECHARGE_PAR_LE_STUDIO.txt" @(
     "llama.cpp pour la carte graphique (Vulkan, ~37 Mo) : telecharge ici par Studio Audio AI, onglet Composer avec l'IA.",
     "llama.cpp for the graphics card (Vulkan): downloaded here by Studio Audio AI, Compose with AI tab.")
@@ -94,6 +96,9 @@ Copy-Item "$root\ressources\aide" "$dist\ressources\aide" -Recurse -Force
 foreach ($old in 'import_ia.jpg') { Remove-Item "$dist\ressources\aide\img\$old" -Force -ErrorAction SilentlyContinue }
 Copy-Item "$root\ressources\langues" "$dist\ressources\langues" -Recurse -Force
 Copy-Item "$root\ressources\partition" "$dist\ressources\partition" -Recurse -Force  # 1.0.91 : Atelier partition (pages, abcjs, sons de piano)
+# 1.0.97 : seuls les sons de piano sont livrés ; les autres instruments (et les banques SoundFont) sont téléchargés par le Studio au clic de l'utilisateur
+Get-ChildItem "$dist\ressources\partition\sons" -Directory | Where-Object { $_.Name -ne 'acoustic_grand_piano-mp3' } | Remove-Item -Recurse -Force
+Copy-Item "$dev\native\third_party\tsf\LICENSE-TinySoundFont.txt" "$dist\LICENSES\TinySoundFont-MIT.txt" -Force
 
 # ---- 6. Modèles (dossiers vides avec leurs notes), démos, licences
 Copy-Item "$fixed\modeles\*" "$dist\modeles" -Recurse -Force

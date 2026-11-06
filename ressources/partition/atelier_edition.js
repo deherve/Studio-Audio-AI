@@ -214,14 +214,14 @@ function apresEdition() {
 // Surlignage de la note choisie après un redessin
 function surligner() {
   if (!etat.visuel || !edition.choix) return;
-  try { etat.visuel.engraver.rangeHighlight(edition.choix.debut, edition.choix.fin); } catch (e) { /* abcjs : pas de surlignage */ }
+  try { etat.visuel.engraver.rangeHighlight(versAffiche(edition.choix.debut), versAffiche(edition.choix.fin)); } catch (e) { /* abcjs : pas de surlignage */ }
   const c = noteChoisie();
   el("note_choisie").textContent = c ? c.t.trim() : "";
 }
 
 function clicNote(abcElem) {
   if (!abcElem || abcElem.el_type !== "note" || abcElem.startChar === undefined) { edition.choix = null; el("note_choisie").textContent = ""; return; }
-  edition.choix = { debut: abcElem.startChar, fin: abcElem.endChar };
+  edition.choix = { debut: versOriginal(abcElem.startChar), fin: versOriginal(abcElem.endChar) };
   const c = noteChoisie();
   el("note_choisie").textContent = c ? c.t.trim() : tx("not_editable", "(non modifiable ici : utilisez le texte ABC)");
 }
@@ -233,8 +233,9 @@ function voisine(sens) {
   for (const l of etat.visuel.lines) if (l.staff) for (const st of l.staff) for (const v of st.voices) for (const e of v) if (e.el_type === "note") notes.push(e);
   notes.sort((a, b) => a.startChar - b.startChar);
   if (!notes.length) return;
-  let i = edition.choix ? notes.findIndex((e) => e.startChar >= edition.choix.debut) : -1;
-  i = sens > 0 ? (i < 0 ? 0 : Math.min(notes.length - 1, edition.choix && notes[i].startChar === edition.choix.debut ? i + 1 : i)) : Math.max(0, (i < 0 ? notes.length : i) - 1);
+  const orig = (e) => versOriginal(e.startChar);
+  let i = edition.choix ? notes.findIndex((e) => orig(e) >= edition.choix.debut) : -1;
+  i = sens > 0 ? (i < 0 ? 0 : Math.min(notes.length - 1, edition.choix && orig(notes[i]) === edition.choix.debut ? i + 1 : i)) : Math.max(0, (i < 0 ? notes.length : i) - 1);
   clicNote(notes[i]);
   surligner();
 }

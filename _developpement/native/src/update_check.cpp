@@ -67,6 +67,24 @@ void check_for_update(std::shared_ptr<UpdateInfo> info, std::string manifest_url
         url    = str("url");
         notes  = str("notes");
     }
+    std::string zip_url, zip_name, zip_digest;
+    unsigned long long zip_size = 0;
+    if (yyjson_val * assets = yyjson_obj_get(root, "assets"); yyjson_is_arr(assets)) {  // 1.0.98 : le zip public (pas le zip Admin)
+        size_t idx, max;
+        yyjson_val * a;
+        yyjson_arr_foreach(assets, idx, max, a) {
+            auto field = [&](const char * k) -> std::string { yyjson_val * v = yyjson_obj_get(a, k); return yyjson_is_str(v) ? yyjson_get_str(v) : std::string(); };
+            const std::string name = field("name");
+            if (name.rfind("StudioAudioAI-", 0) == 0 && name.find("Admin") == std::string::npos && name.size() > 4 && name.compare(name.size() - 4, 4, ".zip") == 0) {
+                zip_name   = name;
+                zip_url    = field("browser_download_url");
+                zip_digest = field("digest");
+                yyjson_val * sz = yyjson_obj_get(a, "size");
+                zip_size = yyjson_is_int(sz) ? (unsigned long long) yyjson_get_uint(sz) : 0;
+                break;
+            }
+        }
+    }
     yyjson_doc_free(doc);
     if (latest.empty()) {
         info->state = 4;
@@ -77,6 +95,7 @@ void check_for_update(std::shared_ptr<UpdateInfo> info, std::string manifest_url
     info->latest = latest;
     info->url    = url;
     info->notes  = notes;
+    info->zip_url = zip_url; info->zip_name = zip_name; info->zip_digest = zip_digest; info->zip_size = zip_size;
     // essai (1.0.77) : STUDIO_TEST_VERSION=1.0.0 fait comme si la version installée était plus ancienne
     const char * installed = getenv("STUDIO_TEST_VERSION") ? getenv("STUDIO_TEST_VERSION") : STUDIO_VERSION;
     info->state  = compare_versions(latest, installed) > 0 ? 3 : 2;  // écrit en dernier : les champs sont prêts

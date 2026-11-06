@@ -2,6 +2,8 @@
 #include "score.hpp"
 
 #include <algorithm>
+#include <array>
+#include <map>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -288,5 +290,148 @@ std::string abc_for_display(const std::string & abc, const std::string & title, 
         out += line + "\n";
     }
     if (!has_title && !title.empty()) out = "T:" + title + "\n" + out;
+    return out;
+}
+
+
+// ======================================================= 1.0.97 : partition de tous les instruments (stems)
+namespace {
+struct StemParse {
+    std::string                                   meter, unit, tempo, key;
+    std::vector<std::pair<std::string, std::string>> voices;  // identifiant, texte de la voix (lignes de notes jointes)
+};
+std::string field_value(const std::string & line) {
+    std::string v = line.size() > 2 ? line.substr(2) : std::string();
+    while (!v.empty() && (v.front() == ' ' || v.front() == '\t')) v.erase(v.begin());
+    while (!v.empty() && (v.back() == ' ' || v.back() == '\r')) v.pop_back();
+    return v;
+}
+StemParse parse_stem(const std::string & abc) {
+    StemParse           r;
+    std::istringstream  in(abc);
+    std::string         line, current;
+    bool                body = false;
+    std::map<std::string, std::string> text;
+    std::vector<std::string>           order;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!body) {
+            if (line.rfind("M:", 0) == 0) r.meter = field_value(line);
+            else if (line.rfind("L:", 0) == 0) r.unit = field_value(line);
+            else if (line.rfind("Q:", 0) == 0) r.tempo = field_value(line);
+            else if (line.rfind("K:", 0) == 0) { r.key = field_value(line); body = true; }
+            continue;
+        }
+        if (line.rfind("V:", 0) == 0) {
+            std::istringstream v(line.substr(2));
+            v >> current;
+            if (!text.count(current)) order.push_back(current);
+            continue;
+        }
+        if (line.empty() || line[0] == '%') continue;
+        if (line.size() > 1 && line[1] == ':' && isalpha((unsigned char) line[0])) continue;  // champs au milieu du corps (M:, K:, Q:…) : ignorés
+        text[current] += line + "|";
+    }
+    for (const std::string & id : order) r.voices.push_back({ id, text[id] });
+    return r;
+}
+int note_count(const std::string & s) {
+    int  n = 0;
+    bool quote = false;
+    for (char c : s) {
+        if (c == '"') quote = !quote;
+        else if (!quote && ((c >= 'A' && c <= 'G') || (c >= 'a' && c <= 'g'))) n++;
+    }
+    return n;
+}
+int measure_units(const std::string & meter, const std::string & unit) {  // durée d'une mesure en unités L:
+    int num = 4, den = 4;
+    if (meter == "C|") { num = 2; den = 2; }
+    else if (meter != "C" && sscanf(meter.c_str(), "%d/%d", &num, &den) != 2) { num = 4; den = 4; }
+    int u = 8;
+    if (sscanf(unit.c_str(), "1/%d", &u) != 1) u = (double) num / den < 0.75 ? 16 : 8;
+    const double v = (double) num / den * u;
+    return v > 0 && v == (int) v ? (int) v : 0;
+}
+std::vector<std::string> measures_of(const std::string & text, int mes) {  // mesures séparées ; « Z3 » devient 3 silences de mesure
+    std::vector<std::string> out;
+    std::string              cur;
+    auto flush = [&] {
+        size_t b = cur.find_first_not_of(" \t");
+        std::string t = b == std::string::npos ? std::string() : cur.substr(b);
+        while (!t.empty() && (t.back() == ' ' || t.back() == '\t')) t.pop_back();
+        cur.clear();
+        if (t.empty()) return;
+        if (t[0] == 'Z') {
+            const int k = t.size() > 1 ? std::max(1, atoi(t.c_str() + 1)) : 1;
+            for (int i = 0; i < k; i++) out.push_back("z" + std::to_string(mes ? mes : 8));
+        } else out.push_back(t);
+    };
+    for (char c : text) {
+        if (c == '|') flush();
+        else cur += c;
+    }
+    flush();
+    return out;
+}
+}  // namespace
+
+// Plusieurs partitions d'une voix (une par stem) -> une partition à plusieurs portées. stems : identifiant de voix (Vocal, Other, Bass), nom
+// affiché, partition. La première fixe la mesure, l'unité, le tempo ; les autres sont rangées mesure par mesure (décalage possible si leur
+// tempo diffère : signalé dans notes) ; une portée dont la mesure ou l'unité diffère est écartée.
+std::string abc_combine_stems(const std::string & title, const std::vector<std::array<std::string, 3>> & stems, std::string & notes) {
+    std::vector<StemParse> parsed;
+    for (const auto & s : stems) parsed.push_back(parse_stem(s[2]));
+    if (parsed.empty()) return std::string();
+    const StemParse & master = parsed[0];
+    const int         mes    = measure_units(master.meter, master.unit);
+    struct Line { std::string id, name, key, unit; int mes = 0; std::vector<std::string> bars; };
+    std::vector<Line> lines;
+    size_t            longest = 0;
+    for (size_t i = 0; i < parsed.size(); i++) {
+        const StemParse & p = parsed[i];
+        if (i > 0 && p.meter != master.meter) {
+            notes += stems[i][1] + " : mesure " + p.meter + " différente de la première portée (" + master.meter + "), portée écartée. ";
+            continue;
+        }
+        const std::pair<std::string, std::string> * best = nullptr;
+        int best_n = 0;
+        for (const auto & v : p.voices) {
+            const int n = note_count(v.second);
+            if (n > best_n) { best_n = n; best = &v; }
+        }
+        if (!best) { notes += stems[i][1] + " : aucune note reconnue. "; continue; }
+        Line l;
+        l.id   = stems[i][0];
+        l.name = stems[i][1];
+        l.key  = p.key != master.key ? p.key : std::string();
+        l.unit = p.unit != master.unit ? p.unit : std::string();  // unité de note propre à cette portée (L: au début de sa voix)
+        l.mes  = l.unit.empty() ? mes : measure_units(p.meter, p.unit);
+        l.bars = measures_of(best->second, l.mes);
+        longest = std::max(longest, l.bars.size());
+        if (i > 0) {
+            int a = 0, b = 0;
+            if (sscanf(p.tempo.c_str(), "%*[^=]=%d", &a) == 1 && sscanf(master.tempo.c_str(), "%*[^=]=%d", &b) == 1 && a > 0 && b > 0 &&
+                std::abs(a - b) * 100 > 4 * b)
+                notes += stems[i][1] + " : tempo " + std::to_string(a) + " BPM contre " + std::to_string(b) + " : décalage possible vers la fin. ";
+        }
+        lines.push_back(l);
+    }
+    if (lines.empty()) return std::string();
+    std::string out = "X:1\nT:" + title + "\nM:" + master.meter + "\nL:" + master.unit + "\n" + (master.tempo.empty() ? std::string() : "Q:" + master.tempo + "\n") + "%%score";
+    for (const Line & l : lines) out += " " + l.id;
+    out += "\n";
+    for (const Line & l : lines) out += "V:" + l.id + " clef=treble name=\"" + l.name + "\" snm=\"" + l.name.substr(0, 4) + ".\"\n";
+    out += "K:" + master.key + "\n";
+    for (const Line & l : lines) {
+        out += "V:" + l.id + "\n";
+        if (!l.key.empty()) out += "K:" + l.key + "\n";
+        if (!l.unit.empty()) out += "L:" + l.unit + "\n";
+        for (size_t k = 0; k < longest; k++) {
+            out += k < l.bars.size() ? l.bars[k] : "z" + std::to_string(l.mes ? l.mes : 8);
+            out += "|";
+            if (k % 4 == 3 || k + 1 == longest) out += "\n";
+        }
+    }
     return out;
 }

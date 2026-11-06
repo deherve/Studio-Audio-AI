@@ -37,7 +37,8 @@ using std::min;
 #include "analysis.hpp"
 #include "suno.hpp"
 #include "fiches.hpp"
-#include "score.hpp"  // 1.0.89
+#include "score.hpp"
+#include "soundfont.hpp"  // 1.0.89
 #include "atelier.hpp"  // 1.0.91
 #include "media.hpp"
 #include "setup.hpp"
@@ -849,6 +850,9 @@ struct Settings {
     std::string                        ai_local_model;       // fichier GGUF de modeles\ia utilisé par l'IA locale
     // Atelier clip (1.0.54) : textes affichés au début et à la fin des clips (« Rock Ballads Fr », « Abonnez-vous »…) et type de rendu
     std::string                        clip_text_start, clip_text_end, clip_style_id = "auto", clip_image_model = "klein", clip_image_count = "0", clip_image_mode = "rec";
+    std::string                        clip_karaoke = "0", key_check_auto = "0";  // 1.0.98
+    std::string                        soundfont_bank;  // 1.0.97 : fichier .sf2 choisi (modeles\sons\banques)
+    std::string                        night_action = "0";  // 1.0.97 : à la fin de la file : 0 rien, 1 veille, 2 extinction
     std::string                        clip_short_seconds = "30";  // 1.0.75 : durée des Shorts (15, 30, 45, 60 ou 90 s)
     bool                               ai_gpu = true;        // IA locale sur la carte graphique (version Vulkan de llama.cpp)
     std::string                        ai_server_url, ai_server_name, ai_server_model;  // serveur local connecté
@@ -1060,7 +1064,7 @@ static void parse_settings(Settings & s, yyjson_val * r) {
     const std::pair<const char *, std::string *> ai_texts[] = {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
-        { "clip_short_seconds", &s.clip_short_seconds },
+        { "clip_short_seconds", &s.clip_short_seconds }, { "night_action", &s.night_action }, { "soundfont_bank", &s.soundfont_bank }, { "clip_karaoke", &s.clip_karaoke }, { "key_check_auto", &s.key_check_auto },
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -1216,7 +1220,7 @@ static void save_settings(const Settings & s, const fs::path & path) {
     const std::pair<const char *, const std::string *> ai_texts[] = {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
-        { "clip_short_seconds", &s.clip_short_seconds },
+        { "clip_short_seconds", &s.clip_short_seconds }, { "night_action", &s.night_action }, { "soundfont_bank", &s.soundfont_bank }, { "clip_karaoke", &s.clip_karaoke }, { "key_check_auto", &s.key_check_auto },
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -4406,6 +4410,9 @@ struct App {
                                                               : trf("Sauvegarde automatique : %s (%d gardées)", last_backup.c_str(), backup_count).c_str());
         ImGui::SameLine(0, 12 * g_dpi);
         if (ImGui::SmallButton(tr("Ouvrir les sauvegardes"))) ShellExecuteW(nullptr, L"open", backups_dir().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        draw_update_panel();  // 1.0.98
+        draw_disk_panel();
+        draw_sound_panel();   // 1.0.97
         if (startup_issues.empty()) ImGui::TextColored(P.ok, "%s", tr("● Vérification au démarrage : aucun fichier manquant."));
         for (const std::string & s : startup_issues) colored_wrapped(P.amber, "• " + s);
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
@@ -4704,6 +4711,7 @@ struct App {
             }
         }
         double estimate = estimate_seconds(words, f.instrumental);
+        std::vector<std::string> trial_ids;
         for (int v = 1; v <= f.versions; v++) {
             Song s;
             s.title             = trim(f.title) + (f.versions > 1 ? " (v" + std::to_string(v) + ")" : "");
@@ -4744,8 +4752,9 @@ struct App {
                 s.duration      = s.instrumental ? std::min(360.0, estimate) : 360;
             }
             s.seed = s.lm_seed = f.seed < 0 ? -1 : f.seed + v - 1;
-            studio->submit(s, held);
+            trial_ids.push_back(studio->submit(s, held));
         }
+        if (trial_ids.size() > 1) trial_groups.push_back(trial_ids);  // 1.0.97 : meilleur essai
         const std::string quoted = trim(f.title);
         if (submit_quiet) return;  // album IA : un seul message pour tout l'album
         if (f.versions > 1) {
@@ -9305,6 +9314,9 @@ struct App {
             if (ImGui::Selectable(tr("Clip animé…"))) {
                 open_video_dialog({ s }, s.title, s.album.empty() ? std::string() : album_key(s.artist, s.album), true);
             }
+            ImGui::Separator();
+            draw_tools_menu({ s }, display_title(s.title), false);  // 1.0.97
+            ImGui::Separator();
             if (ImGui::Selectable(tr("Modifier le titre, le groupe, l'album…"))) {
                 edit_id     = s.id;
                 edit_title  = s.title;
@@ -9498,7 +9510,27 @@ struct App {
         yyjson_mut_obj_add_strcpy(doc, t, "quarter", tr("Noire"));
         yyjson_mut_obj_add_strcpy(doc, t, "eighth", tr("Croche"));
         yyjson_mut_obj_add_strcpy(doc, t, "sixteenth", tr("Double croche"));
+        yyjson_mut_obj_add_strcpy(doc, t, "instruments", tr("Instruments :"));
+        yyjson_mut_obj_add_strcpy(doc, t, "hq_play", tr("Écouter (banque SoundFont)"));
+        yyjson_mut_obj_add_strcpy(doc, t, "hq_wav", tr("Exporter en audio…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "sons_manage", tr("Gérer les sons…"));
+        yyjson_mut_obj_add_strcpy(doc, t, "hq_play_tip", tr("Lecture avec la banque SoundFont choisie dans Réglages › Système › Sons de l'Atelier partition : rendu plus réaliste que l'écoute rapide, avec l'instrument de chaque portée."));
+        yyjson_mut_obj_add_strcpy(doc, t, "sons_manage_tip", tr("Ouvre Réglages › Système pour télécharger des instruments (↓ = à télécharger) et des banques de sons."));
         yyjson_mut_obj_add_val(doc, o, "t", t);
+        {  // 1.0.97 : instruments disponibles et banque SoundFont
+            yyjson_mut_val * arr = yyjson_mut_arr(doc);
+            for (const SoundInst & si : sound_instruments()) {
+                yyjson_mut_val * x = yyjson_mut_obj(doc);
+                yyjson_mut_obj_add_str(doc, x, "id", si.id);
+                yyjson_mut_obj_add_strcpy(doc, x, "label", tr(si.label));
+                yyjson_mut_obj_add_int(doc, x, "program", si.program);
+                yyjson_mut_obj_add_bool(doc, x, "installed", instrument_installed(si.id));
+                yyjson_mut_arr_add_val(arr, x);
+            }
+            yyjson_mut_obj_add_val(doc, o, "sons", arr);
+            const fs::path bank = current_bank();
+            yyjson_mut_obj_add_strcpy(doc, o, "banque", bank.empty() ? "" : narrow(bank.filename().wstring()).c_str());
+        }
         size_t      len  = 0;
         char *      json = yyjson_mut_write(doc, 0, &len);
         std::string msg(json ? json : "{}", len);
@@ -9512,6 +9544,9 @@ struct App {
         };
         cb.on_ready = [this](const std::string &) { atelier_ready_at = ImGui::GetTime(); };
         const std::string wtitle = title.empty() || title == tr("Atelier partition") ? std::string(tr("Atelier partition")) : tr("Atelier partition") + std::string(" — ") + title;
+        atelier_set_audio_dir((studio->paths().cache / L"partition").wstring());  // 1.0.97 : sons rendus
+        std::error_code ec_audio;
+        fs::create_directories(studio->paths().cache / L"partition", ec_audio);
         if (!atelier_open(hwnd, widen(wtitle), app_resource_dir(L"partition").wstring(),
                           (studio->paths().cache / L"webview2").wstring(), msg, cb))
             notify(tr("Impossible d'ouvrir l'Atelier partition."));
@@ -9539,6 +9574,13 @@ struct App {
                 SetForegroundWindow(hwnd);
                 notify(trf("Partition « %s » placée dans l'onglet « Partition » : choisissez le style et les paroles dans « Nouveau morceau », puis « Générer avec cette partition ».", name.c_str()));
             }
+        } else if (type == "sons_settings") {  // 1.0.97 : « Gérer les sons… » : Réglages › Système
+            open_settings_cat = 4;
+            open_settings     = true;
+            if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+            SetForegroundWindow(hwnd);
+        } else if (type == "render") {  // 1.0.97 : lecture ou export WAV avec la banque SoundFont
+            start_render(str("midi"), yyjson_get_bool(yyjson_obj_get(root, "play")), name);
         } else if (type == "save") {
             const std::string ext = str("ext"), data = str("data");
             const bool        b64 = yyjson_get_bool(yyjson_obj_get(root, "base64"));
@@ -9567,7 +9609,7 @@ struct App {
         std::wstring  def            = widen(safe_filename(name) + "." + ext);
         wchar_t       file[MAX_PATH] = {};
         wcsncpy_s(file, def.c_str(), _TRUNCATE);
-        const std::string label = ext == "pdf" ? "PDF" : ext == "mid" ? "MIDI" : ext == "musicxml" ? "MusicXML" : "ABC";
+        const std::string label = ext == "pdf" ? "PDF" : ext == "mid" ? "MIDI" : ext == "wav" ? "WAV" : ext == "musicxml" ? "MusicXML" : "ABC";
         std::wstring  filter = widen(label) + L" (*." + wext + L")" + L'\0' + L"*." + wext + L'\0' + L'\0';
         std::wstring  title  = ext == "pdf" ? wtr("Exporter la partition en PDF") : wtr("Exporter la partition");
         std::wstring  dir    = atelier_dir.wstring();
@@ -9581,6 +9623,1124 @@ struct App {
         ofn.lpstrInitialDir = dir.empty() ? nullptr : dir.c_str();
         ofn.Flags           = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
         return GetSaveFileNameW(&ofn) ? fs::path(file) : fs::path();
+    }
+
+    // ====================================================================== 1.0.97 : outils audio
+    std::vector<Song>    tool_songs;        // morceaux visés par la fenêtre « Mastering »
+    std::string          tool_label;
+    bool                 open_master = false, master_mp3 = true;
+    int                  master_preset = 0;
+    std::shared_ptr<DescJob> pub_job;       // fiches de publication en cours (IA locale)
+    std::vector<std::string> pub_ids;       // morceaux de la dernière série de fiches
+    bool                 open_pub = false;
+    int                  pub_sel = 0;
+    std::string          pub_text;
+    std::shared_ptr<Job> dup_job;
+    std::shared_ptr<std::vector<DupPair>> dup_found;
+    bool                 open_dup = false, dup_shown = true;
+    struct TrialJob {
+        std::vector<Song>        songs;
+        std::vector<std::string> problems;
+        int                      best = 0;
+        std::atomic<bool>        finished{ false };
+    };
+    std::vector<std::vector<std::string>> trial_groups;   // versions d'un même envoi (essais), en attente de leur fin
+    std::vector<std::shared_ptr<TrialJob>> trial_jobs;
+    bool                 night_busy = false;  // la file a travaillé depuis le dernier arrêt automatique
+    double               night_deadline = 0;  // heure ImGui de l'arrêt programmé ; 0 = aucun
+    int                  night_done = 0, night_failed = 0;
+    double               night_start = 0;
+
+    std::vector<Song> done_songs_of(const std::vector<Song> & all, const std::string & key) {
+        std::vector<Song> out;
+        for (const Song & s : all) {
+            if (s.status != "done" || !s.long_rest.empty()) continue;
+            if (!key.empty() && (s.album.empty() || album_key(s.artist, s.album) != key)) continue;
+            out.push_back(s.long_join > 0 ? with_full_lyrics(s, all) : s);
+        }
+        return out;
+    }
+    bool stems_engine(fs::path & exe, fs::path & model) const {
+        std::error_code ec;
+        exe.clear();
+        model.clear();
+        const fs::path d = app_dir() / L"outils" / L"demucs";
+        if (fs::exists(d, ec)) for (const auto & e : fs::directory_iterator(d, ec)) if (e.path().extension() == L".exe") { exe = e.path(); break; }
+        const fs::path m = app_dir() / L"modeles" / L"stems";
+        if (fs::exists(m, ec)) for (const auto & e : fs::directory_iterator(m, ec)) if (e.path().extension() == L".bin") { model = e.path(); break; }
+        return !exe.empty() && !model.empty();
+    }
+    void tool_started(const std::string & what) { notify(what); }
+    bool stems_dl_wait = false;
+    void poll_stems_download() {
+        if (!stems_dl_wait) return;
+        auto j = downloader.find("stems");
+        if (!j || j->state == 0) return;
+        stems_dl_wait = false;
+        notify(j->state == 1 ? tr("Modèle de séparation téléchargé.") : tr("Échec du téléchargement du modèle de séparation."));
+    }
+
+    // Entrées de menu communes : un morceau (label = son titre) ou tout un album (label = album, key = clé de l'album).
+    void draw_tools_menu(const std::vector<Song> & songs, const std::string & label, bool album) {
+        if (songs.empty()) return;
+        const bool busy_gpu = studio->local_active() || ai_local_busy();
+        if (ImGui::MenuItem(tr("Masteriser (volume normalisé)…"))) {
+            tool_songs = songs; tool_label = label; open_master = true;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Volume et crête adaptés à YouTube, TikTok ou aux plateformes de streaming. Les fichiers sont écrits dans le dossier « master » de chaque morceau ; l'original n'est pas modifié."));
+        if (ImGui::MenuItem(tr("Paroles synchronisées (.lrc, .srt)"), nullptr, false, !busy_gpu)) {
+            auto j = new_job(tr("Paroles synchronisées — ") + label);
+            start_lrc(j, songs, studio->paths().whisper, studio->paths().models_dir / "voix" / whisper_file().name);
+            tool_started(tr("Calage des paroles lancé."));
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", busy_gpu ? tr("Le calage se fait au repos : attendez la fin de la génération en cours.") : tr("Whisper cale chaque ligne sur le chant : fichiers « paroles.lrc » (karaoké des lecteurs) et « paroles.srt » (sous-titres) dans le dossier du morceau."));
+        fs::path dx, dm;
+        const bool stems_ok = stems_engine(dx, dm);
+        if (!stems_ok && !dx.empty() && dm.empty()) {  // moteur présent, modèle absent : téléchargement au clic (84 Mo)
+            if (ImGui::MenuItem(tr("Télécharger le modèle de séparation (84 Mo)…"))) {
+                downloader.start("stems", tr("Modèle de séparation des pistes"), studio->paths().models_dir / "stems",
+                                 { DlFile{ "https://huggingface.co/datasets/Retrobear/demucs.cpp/resolve/main/ggml-model-htdemucs-4s-f16.bin", "ggml-model-htdemucs-4s-f16.bin", 83994361ull } });
+                stems_dl_wait = true;
+                notify(tr("Téléchargement du modèle de séparation lancé (84 Mo)."));
+            }
+        }
+        if (ImGui::MenuItem(tr("Séparer les pistes (voix, batterie, basse, autres)"), nullptr, false, stems_ok && !busy_gpu)) {
+            auto j = new_job(tr("Séparation des pistes — ") + label);
+            start_stems(j, songs, dx, dm);
+            tool_started(tr("Séparation des pistes lancée (quelques minutes par morceau)."));
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", stems_ok ? tr("Quatre fichiers WAV (voix, batterie, basse, autres) dans le dossier « stems » du morceau.") : tr("Moteur de séparation absent (dossiers « outils\\demucs » et « modeles\\stems »)."));
+        if (!album && songs.size() == 1) {  // 1.0.97 : partition de tous les instruments
+            const bool st_ok = song_has_stems(songs[0]);
+            if (ImGui::MenuItem(tr("Partition de tous les instruments (stems)…"), nullptr, false, st_ok && !busy_gpu)) start_stem_score(songs[0]);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", !st_ok ? tr("Séparez d'abord les pistes (voix, batterie, basse, autres) de ce morceau.") : tr("SheetSage2 transcrit chaque instrument séparé (voix, basse, autres ; la batterie est ignorée) et l'Atelier partition les affiche sur des portées distinctes, toutes modifiables. Environ 1 minute par instrument ; l'alignement est indicatif."));
+        }
+        if (ImGui::MenuItem(album ? tr("Contrôle tonalité et tempo de l'album (SheetSage2)") : tr("Contrôle tonalité et tempo de ce morceau (SheetSage2)"), nullptr, false, !busy_gpu)) start_key_check(songs, label);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", busy_gpu ? tr("Le contrôle se fait au repos : attendez la fin de la génération en cours.") : tr("SheetSage2 réécoute le morceau et compare sa tonalité et son tempo à la partition (ou au BPM du style) : les morceaux qui dérivent reçoivent un pouce rouge. Environ 1 minute pour 3 minutes de musique."));
+        if (ImGui::MenuItem(tr("Exporter pour un logiciel de musique…"))) {
+            fs::path dest = pick_folder(hwnd, L"Dossier de destination");
+            if (!dest.empty()) {
+                auto j = new_job(tr("Export logiciel de musique — ") + label);
+                start_daw_export(j, songs, dest);
+            }
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Copie l'audio (version masterisée si elle existe), la partition ABC, les paroles et les stems, avec le tempo et la tonalité dans le nom du fichier."));
+        if (ImGui::MenuItem(tr("Fiche de publication (IA locale)"), nullptr, false, !busy_gpu)) start_publication(songs);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", tr("Titre, description et hashtags pour YouTube, TikTok ou Instagram, écrits par l'IA locale dans « publication.txt ». Un fichier déjà présent n'est jamais remplacé. Rien n'est publié : vous copiez et publiez vous-même."));
+        if (album && ImGui::MenuItem(tr("Livret PDF de l'album"))) {
+            std::vector<Song> ordered = songs;
+            std::stable_sort(ordered.begin(), ordered.end(), [](const Song & a, const Song & b) { return track_number(a) < track_number(b); });
+            const std::string key = album_key(ordered[0].artist, ordered[0].album);
+            std::string cover = cover_for(key);
+            if (cover.empty()) cover = cover_for(slot_youtube(key));
+            auto j = new_job(tr("Livret — ") + label);
+            start_booklet(j, ordered, ordered[0].artist, ordered[0].album, cover.empty() ? fs::path() : fs::path(widen(cover)), album_folder(ordered[0].artist, ordered[0].album));
+        }
+        if (album && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Pochette, liste des morceaux et paroles, au format A5 : « livret.pdf » dans le dossier de l'album."));
+    }
+
+    void start_publication(const std::vector<Song> & songs) {
+        LocalLlm llm;
+        fs::path model;
+        int      layers = 0;
+        if (pub_job && !pub_job->finished) { notify(tr("Des fiches de publication sont déjà en cours.")); return; }
+        if (!local_text_ready(llm, model, layers)) { notify(tr("IA locale de texte non prête (Réglages › IA).")); return; }
+        auto job   = std::make_shared<DescJob>();
+        job->total = (int) songs.size();
+        pub_job    = job;
+        pub_ids.clear();
+        for (const Song & s : songs) pub_ids.push_back(s.id);
+        const std::string lang = i18n::current();
+        std::thread([job, songs, lang, llm, model, layers] {
+            std::atomic<int> stage{ 0 };
+            std::string      err;
+            AiCallResult     r = ai_local_session(llm, model, layers, &stage, &job->cancel, [&](const AiAsk & ask) {
+                write_publication(songs, lang, ask, [&](const std::string & what) {
+                    std::lock_guard<std::mutex> lock(job->mutex);
+                    job->current = what;
+                    job->done++;
+                }, job->cancel, job->written, err);
+            });
+            std::lock_guard<std::mutex> lock(job->mutex);
+            job->error    = !err.empty() ? err : r.ok ? std::string() : r.error;
+            job->finished = true;
+        }).detach();
+        notify(tr("Fiches de publication lancées (IA locale)."));
+    }
+    void load_pub_text() {
+        pub_text.clear();
+        if (pub_sel < 0 || pub_sel >= (int) pub_ids.size()) return;
+        std::ifstream f(song_folder(pub_ids[pub_sel]) / L"publication.txt", std::ios::binary);
+        if (f) pub_text.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    }
+    void poll_publication() {
+        if (!pub_job || !pub_job->finished) return;
+        auto job = pub_job;
+        pub_job.reset();
+        if (!job->error.empty()) { notify(trf("Fiches de publication : %s", job->error.c_str())); return; }
+        notify(trf("%d fiche(s) de publication écrite(s) (fichiers « publication.txt »).", job->written.load()));
+        pub_sel = 0;
+        load_pub_text();
+        open_pub = !pub_ids.empty();
+    }
+    void draw_pub_modal() {
+        if (open_pub) { ImGui::OpenPopup(tr("Fiche de publication")); open_pub = false; }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(680 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Fiche de publication"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        const std::vector<Song> all = studio->snapshot();
+        auto name_of = [&](const std::string & id) { for (const Song & s : all) if (s.id == id) return clean_title(display_title(s.title)); return id; };
+        if (pub_ids.size() > 1) {
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::BeginCombo("##pubsong", name_of(pub_ids[std::clamp(pub_sel, 0, (int) pub_ids.size() - 1)]).c_str())) {
+                for (int i = 0; i < (int) pub_ids.size(); i++)
+                    if (ImGui::Selectable(name_of(pub_ids[i]).c_str(), i == pub_sel)) { pub_sel = i; load_pub_text(); }
+                ImGui::EndCombo();
+            }
+        } else if (!pub_ids.empty()) {
+            ImGui::PushFont(g_bold);
+            ImGui::TextUnformatted(name_of(pub_ids[0]).c_str());
+            ImGui::PopFont();
+        }
+        if (pub_text.empty()) muted_wrapped(tr("Aucune fiche pour ce morceau (le texte de l'IA n'a pas pu être utilisé : relancez la fiche)."));
+        else lyrics_box("##pubtext", pub_text, 240 * g_dpi);
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        ImGui::BeginDisabled(pub_text.empty());
+        if (soft_button(tr("Tout copier"), P.accent)) ImGui::SetClipboardText(pub_text.c_str());
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (soft_button(tr("Ouvrir YouTube Studio"), P.teal)) ShellExecuteW(nullptr, L"open", L"https://studio.youtube.com", nullptr, nullptr, SW_SHOWNORMAL);
+        ImGui::SameLine();
+        if (soft_button(tr("Ouvrir TikTok"), P.teal)) ShellExecuteW(nullptr, L"open", L"https://www.tiktok.com/upload", nullptr, nullptr, SW_SHOWNORMAL);
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    void draw_master_modal() {
+        if (open_master) { ImGui::OpenPopup(tr("Mastering")); open_master = false; }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(560 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Mastering"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        ImGui::PushFont(g_bold);
+        ImGui::TextUnformatted(tool_label.c_str());
+        ImGui::PopFont();
+        muted_wrapped(trf("%d morceau(x). Volume normalisé en deux passes (loudnorm) avec limiteur de crête ; les fichiers sont écrits dans le dossier « master » de chaque morceau, l'original reste intact.", (int) tool_songs.size()));
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        ImGui::RadioButton(tr("Streaming et YouTube : −14 LUFS"), &master_preset, 0);
+        ImGui::RadioButton(tr("Réseaux courts (TikTok, Instagram) : −11 LUFS"), &master_preset, 1);
+        ImGui::RadioButton(tr("Doux, dynamique préservée : −16 LUFS"), &master_preset, 2);
+        ImGui::Checkbox(tr("Écrire aussi un MP3 320 kb/s"), &master_mp3);
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (accent_button(tr("Masteriser"), ImVec2(0, 0), &P.green)) {
+            static const double lufs[] = { -14, -11, -16 };
+            auto j = new_job(tr("Mastering — ") + tool_label);
+            start_master(j, tool_songs, lufs[std::clamp(master_preset, 0, 2)], -1.0, master_mp3);
+            notify(tr("Mastering lancé."));
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Annuler"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    void start_dups(const std::vector<Song> & all) {
+        if (dup_job && dup_job->state == 0) { notify(tr("La recherche de doublons est déjà en cours.")); return; }
+        dup_found = std::make_shared<std::vector<DupPair>>();
+        dup_shown = false;
+        dup_job   = new_job(tr("Doublons — toute la bibliothèque"));
+        start_duplicates(dup_job, all, dup_found, studio->paths().library / L"doublons.txt");
+        notify(tr("Recherche de doublons lancée."));
+    }
+    void draw_dup_modal() {
+        if (dup_job && dup_job->state != 0 && dup_found && !dup_shown) { dup_shown = true; open_dup = true; }
+        if (open_dup) { ImGui::OpenPopup(tr("Doublons")); open_dup = false; }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(820 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Doublons"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        std::vector<DupPair> found;
+        if (dup_found && dup_job) { std::lock_guard<std::mutex> lock(dup_job->mutex); found = *dup_found; }
+        if (found.empty()) muted_wrapped(tr("Aucun couple de morceaux trop proches : les compositions et les paroles sont toutes différentes."));
+        else {
+            muted_wrapped(tr("Couples dont la composition (jetons du modèle) ou les paroles se ressemblent beaucoup. Un clic sur un titre le cherche dans la bibliothèque ; rapport complet : « doublons.txt »."));
+            if (ImGui::BeginChild("##dups", ImVec2(0, 340 * g_dpi), ImGuiChildFlags_Borders)) {
+                int n = 0;
+                for (const DupPair & d : found) {
+                    ImGui::PushID(n++);
+                    if (ImGui::Selectable(d.label_a.c_str(), false, 0, ImVec2(ImGui::GetContentRegionAvail().x * 0.45f, 0))) { filter_text = d.label_a; ImGui::CloseCurrentPopup(); }
+                    ImGui::SameLine();
+                    ImGui::TextUnformatted("↔");
+                    ImGui::SameLine();
+                    if (ImGui::Selectable(d.label_b.c_str(), false, 0, ImVec2(ImGui::GetContentRegionAvail().x * 0.75f, 0))) { filter_text = d.label_b; ImGui::CloseCurrentPopup(); }
+                    ImGui::TextColored(P.muted, "   %s — %d %% %s, %d %% %s", d.why.c_str(), (int) (d.tokens * 100), tr("composition"), (int) (d.lyrics * 100), tr("paroles"));
+                    ImGui::PopID();
+                }
+            }
+            ImGui::EndChild();
+        }
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+
+    // Essais : quand toutes les versions d'un même envoi sont finies, la meilleure est désignée (durée proche de la cible, pas de silence anormal).
+    void poll_trials() {
+        const std::vector<Song> all = studio->snapshot();
+        for (size_t g = 0; g < trial_groups.size();) {
+            std::vector<Song> songs;
+            bool pending = false;
+            for (const std::string & id : trial_groups[g])
+                for (const Song & s : all)
+                    if (s.id == id) { if (s.active()) pending = true; else if (s.status == "done") songs.push_back(s); }
+            if (pending) { g++; continue; }
+            trial_groups.erase(trial_groups.begin() + g);
+            if (songs.size() < 2) continue;
+            auto tj   = std::make_shared<TrialJob>();
+            tj->songs = songs;
+            trial_jobs.push_back(tj);
+            std::thread([tj] { tj->best = best_trial(tj->songs, tj->problems); tj->finished = true; }).detach();
+        }
+        for (size_t i = 0; i < trial_jobs.size();) {
+            if (!trial_jobs[i]->finished) { i++; continue; }
+            auto tj = trial_jobs[i];
+            trial_jobs.erase(trial_jobs.begin() + i);
+            std::string report;
+            for (size_t k = 0; k < tj->songs.size(); k++)
+                report += std::string(k == (size_t) tj->best ? "★ " : "  ") + display_title(tj->songs[k].title) + (tj->problems[k].empty() ? "" : " : " + tj->problems[k]) + "\n";
+            std::ofstream(studio->paths().library / L"meilleurs_essais.txt", std::ios::binary | std::ios::app) << report << "\n";
+            for (size_t k = 0; k < tj->songs.size(); k++)
+                if ((int) k != tj->best && !tj->songs[k].validated && !tj->songs[k].flagged && !tj->problems[k].empty()) studio->set_flagged(tj->songs[k].id, true);
+            notify(trf("Meilleur essai : « %s » (les autres versions sont conservées ; celles qui ont un défaut ont un pouce rouge).", display_title(tj->songs[tj->best].title).c_str()));
+        }
+    }
+
+    // Session de nuit : à la fin du travail de la file, rapport puis veille ou extinction (60 s pour annuler).
+    void poll_night() {
+        const std::vector<Song> all = studio->snapshot();
+        int active = 0;
+        for (const Song & s : all) active += s.active();
+        if (active > 0) {
+            if (!night_busy) { night_busy = true; night_start = (double) time(nullptr); night_done = night_failed = 0; }
+            return;
+        }
+        if (!night_busy) return;
+        night_busy = false;
+        std::ostringstream r;
+        for (const Song & s : all) {
+            if (s.finished < night_start) continue;
+            if (s.status == "done") { night_done++; r << "OK     " << display_title(s.title) << "\n"; }
+            else if (s.status == "error") { night_failed++; r << "ERREUR " << display_title(s.title) << " : " << s.message << "\n"; }
+        }
+        if (night_done + night_failed == 0) return;
+        if (settings.key_check_auto == "1") {  // 1.0.98 : contrôle tonalité et tempo des morceaux de la session
+            std::vector<Song> fresh;
+            for (const Song & s : all) if (s.status == "done" && s.finished >= night_start) fresh.push_back(s);
+            start_key_check(fresh, tr("session"));
+        }
+        std::ofstream(studio->paths().library / L"rapport_nuit.txt", std::ios::binary | std::ios::trunc)
+            << "\xEF\xBB\xBF" << night_done << " terminé(s), " << night_failed << " en erreur.\n\n" << r.str();
+        notify(trf("File terminée : %d morceau(x) fini(s), %d en erreur (rapport « rapport_nuit.txt »).", night_done, night_failed));
+        if (atoi(settings.night_action.c_str()) > 0) night_deadline = ImGui::GetTime() + 60;
+    }
+    void draw_night_modal() {
+        if (night_deadline > 0 && !ImGui::IsPopupOpen(tr("Arrêt automatique"))) ImGui::OpenPopup(tr("Arrêt automatique"));
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(520 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Arrêt automatique"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        const int left = std::max(0, (int) std::ceil(night_deadline - ImGui::GetTime()));
+        const int act  = atoi(settings.night_action.c_str());
+        ImGui::TextWrapped("%s", (act == 1 ? trf("La file est terminée. Mise en veille du PC dans %d s.", left) : trf("La file est terminée. Extinction du PC dans %d s.", left)).c_str());
+        if (accent_button(tr("Annuler"), ImVec2(0, 0), &P.amber)) { night_deadline = 0; ImGui::CloseCurrentPopup(); }
+        if (night_deadline > 0 && left == 0) {
+            night_deadline = 0;
+            ImGui::CloseCurrentPopup();
+            if (act == 1) ShellExecuteW(nullptr, L"open", L"rundll32.exe", L"powrprof.dll,SetSuspendState 0,1,0", nullptr, SW_HIDE);
+            else if (act == 2) ShellExecuteW(nullptr, L"open", L"shutdown.exe", L"/s /t 5", nullptr, SW_HIDE);
+        }
+        ImGui::EndPopup();
+    }
+
+    // ====================================================================== 1.0.98
+    // ---- Aide interrogeable : les rubriques de l'aide intégrée les plus proches de la question sont données à l'IA locale
+    struct HelpSection { std::string title, id, text; };
+    std::vector<HelpSection> help_sections;
+    std::string              help_loaded_lang;
+    bool                     open_helpq = false;
+    std::string              help_q, help_answer, help_error;
+    std::vector<int>         help_hits;
+    struct HelpJob {
+        std::atomic<bool> finished{ false }, cancel{ false };
+        std::atomic<int>  stage{ 0 };
+        std::string       text, error;
+    };
+    std::shared_ptr<HelpJob> help_job;
+
+    static std::string fold_text(const std::string & s) {  // minuscules sans accents (lettres latines accentuées d'UTF-8)
+        static const char map[] = "AAAAAAACEEEEIIIIDNOOOOO*OUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+        std::string out;
+        for (size_t i = 0; i < s.size(); i++) {
+            unsigned char c = (unsigned char) s[i];
+            if (c == 0xC3 && i + 1 < s.size()) {
+                unsigned char d = (unsigned char) s[++i];
+                out += d >= 0x80 && d <= 0xBF ? (char) tolower((unsigned char) map[d - 0x80]) : ' ';
+            } else if (c < 0x80) out += (char) tolower(c);
+            else out += ' ';
+        }
+        return out;
+    }
+    fs::path help_page_path() {
+        fs::path        dir  = app_resource_dir(L"aide");
+        fs::path        page = dir / "aide.html";
+        std::error_code ec;
+        if (i18n::current() != "fr")
+            for (const std::string & code : { i18n::current(), std::string("en") }) {
+                fs::path candidate = dir / ("aide." + code + ".html");
+                if (fs::exists(candidate, ec)) { page = candidate; break; }
+            }
+        return page;
+    }
+    void load_help_sections() {
+        if (help_loaded_lang == i18n::current() && !help_sections.empty()) return;
+        help_sections.clear();
+        help_loaded_lang = i18n::current();
+        std::ifstream f(help_page_path(), std::ios::binary);
+        std::string   html((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        auto strip = [](const std::string & h) {
+            std::string out;
+            bool        tag = false;
+            for (size_t i = 0; i < h.size(); i++) {
+                const char c = h[i];
+                if (c == '<') {
+                    tag = true;
+                    const std::string t = h.substr(i, 5);
+                    if (t.compare(0, 3, "<br") == 0 || t.compare(0, 3, "<p>") == 0 || t.compare(0, 3, "<li") == 0 || t.compare(0, 3, "<tr") == 0 || t.compare(0, 4, "</p>") == 0) out += ' ';
+                } else if (c == '>') tag = false;
+                else if (!tag) out += c;
+            }
+            for (auto & [a, b] : std::vector<std::pair<std::string, std::string>>{ { "&amp;", "&" }, { "&lt;", "<" }, { "&gt;", ">" }, { "&quot;", "\"" }, { "&nbsp;", " " }, { "&#39;", "'" } })
+                for (size_t p; (p = out.find(a)) != std::string::npos;) out.replace(p, a.size(), b);
+            std::string res;
+            bool        space = false;
+            for (char c : out) {
+                if (isspace((unsigned char) c)) { space = true; continue; }
+                if (space && !res.empty()) res += ' ';
+                space = false;
+                res += c;
+            }
+            return res;
+        };
+        std::vector<size_t> heads;
+        for (size_t p = 0; (p = html.find("<h", p)) != std::string::npos; p += 2)
+            if (p + 2 < html.size() && (html[p + 2] == '2' || html[p + 2] == '3') && html[p + 3] != 'r') heads.push_back(p);
+        for (size_t k = 0; k < heads.size(); k++) {
+            const size_t a = heads[k], b = k + 1 < heads.size() ? heads[k + 1] : html.size();
+            const size_t tag_end = html.find('>', a);
+            if (tag_end == std::string::npos || tag_end > b) continue;
+            HelpSection s;
+            const std::string tag = html.substr(a, tag_end - a);
+            size_t            i   = tag.find("id=\"");
+            if (i != std::string::npos) s.id = tag.substr(i + 4, tag.find('"', i + 4) - i - 4);
+            const size_t close = html.find("</h", tag_end);
+            s.title = strip(html.substr(tag_end + 1, (close == std::string::npos || close > b ? b : close) - tag_end - 1));
+            s.text  = strip(html.substr(close == std::string::npos || close > b ? tag_end + 1 : close + 5, b - (close == std::string::npos || close > b ? tag_end + 1 : close + 5)));
+            if (fold_text(s.title).find("journal") != std::string::npos) {  // le journal des évolutions : une rubrique par ligne du tableau
+                const std::string part = html.substr(tag_end, b - tag_end);
+                for (size_t r = 0; (r = part.find("<tr>", r)) != std::string::npos;) {
+                    const size_t e = part.find("</tr>", r);
+                    const std::string row = part.substr(r, e == std::string::npos ? std::string::npos : e - r);
+                    const size_t mid = row.find("</td>");
+                    if (mid != std::string::npos) {
+                        HelpSection h;
+                        h.title = "Nouveautés " + strip(row.substr(0, mid));
+                        h.text  = strip(row.substr(mid));
+                        h.id    = s.id;
+                        if (h.text.size() > 20) help_sections.push_back(h);
+                    }
+                    if (e == std::string::npos) break;
+                    r = e;
+                }
+                continue;
+            }
+            if (!s.title.empty() && s.text.size() > 20) help_sections.push_back(s);
+        }
+    }
+    void start_help_question() {
+        if (help_q.empty() || (help_job && !help_job->finished)) return;
+        LocalLlm llm;
+        fs::path model;
+        int      layers = 0;
+        if (studio->local_active() || ai_local_busy()) { help_error = tr("L'IA locale se lance au repos : attendez la fin de la génération en cours."); return; }
+        if (!local_text_ready(llm, model, layers)) { help_error = tr("IA locale de texte non prête (Réglages › IA)."); return; }
+        load_help_sections();
+        std::set<std::string> words;
+        {
+            static const std::set<std::string> stop = { "les", "des", "une", "que", "qui", "est", "pour", "dans", "sur", "comment", "peut", "puis", "avec", "the", "and", "for", "how", "what", "with", "can", "est-ce", "fait", "faire", "dois", "veux" };
+            std::string cur;
+            for (char c : fold_text(help_q) + " ") {
+                if (isalnum((unsigned char) c)) cur += c;
+                else { if (cur.size() >= 3 && !stop.count(cur)) words.insert(cur); cur.clear(); }
+            }
+        }
+        std::vector<std::pair<int, int>> scored;
+        {  // rareté des mots (IDF) : un mot présent dans toutes les rubriques ne compte presque pas ; le journal des évolutions est écarté
+            std::vector<std::string> bodies, titles;
+            for (const HelpSection & h : help_sections) { bodies.push_back(fold_text(h.text)); titles.push_back(fold_text(h.title)); }
+            std::map<std::string, double> idf;
+            for (const std::string & w : words) {
+                int df = 0;
+                for (size_t i = 0; i < bodies.size(); i++) df += bodies[i].find(w) != std::string::npos || titles[i].find(w) != std::string::npos;
+                idf[w] = df ? std::log(1.0 + (double) bodies.size() / df) : 0;
+            }
+            for (int i = 0; i < (int) help_sections.size(); i++) {
+                double score = 0;
+                for (const std::string & w : words) {
+                    int n = 0;
+                    for (size_t p = 0; (p = bodies[i].find(w, p)) != std::string::npos && n < 6; p += w.size()) n++;
+                    score += idf[w] * (n + (titles[i].find(w) != std::string::npos ? 6 : 0));
+                }
+                if (score > 0) scored.push_back({ (int) (score * 100), i });
+            }
+        }
+        std::sort(scored.begin(), scored.end(), [](auto & a, auto & b) { return a.first > b.first; });
+        help_hits.clear();
+        std::string context;
+        for (size_t k = 0; k < scored.size() && k < 3; k++) {
+            help_hits.push_back(scored[k].second);
+            context += "## " + help_sections[scored[k].second].title + "\n" + help_sections[scored[k].second].text.substr(0, 1700) + "\n\n";
+        }
+        help_error.clear();
+        help_answer.clear();
+        if (context.empty()) { help_answer = tr("Aucune rubrique de l'aide ne parle de cela : reformulez avec d'autres mots, ou parcourez l'aide complète."); return; }
+        auto job = std::make_shared<HelpJob>();
+        help_job = job;
+        const std::string system = "You answer questions about the desktop application Studio Audio AI using ONLY the help excerpts provided. "
+                                   "Answer in the same language as the question, in a few short sentences or steps. Name the buttons and menus exactly as written in the excerpts. "
+                                   "If the excerpts do not contain the answer, say so briefly. Never invent features.";
+        const std::string user   = "Help excerpts:\n" + context + "Question: " + help_q;
+        std::thread([job, llm, model, layers, system, user] {
+            AiCallResult r = ai_local_chat(llm, model, layers, system, user, &job->stage, &job->cancel);
+            job->text      = r.ok ? r.text : std::string();
+            job->error     = r.ok ? std::string() : r.error;
+            job->finished  = true;
+        }).detach();
+    }
+    void poll_help() {
+        if (!help_job || !help_job->finished) return;
+        auto job = help_job;
+        help_job.reset();
+        help_answer = job->text;
+        if (!job->error.empty()) help_error = tr(job->error.c_str());
+    }
+    void draw_help_question() {
+        if (open_helpq) { ImGui::OpenPopup(tr("Aide interrogeable")); open_helpq = false; }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(760 * g_dpi, 0));
+        if (!ImGui::BeginPopupModal(tr("Aide interrogeable"), nullptr, ImGuiWindowFlags_NoResize)) return;
+        muted_wrapped(tr("Posez une question sur le Studio : l'IA locale répond d'après l'aide intégrée (rien n'est envoyé sur Internet)."));
+        const bool busy = help_job && !help_job->finished;
+        ImGui::SetNextItemWidth(-110 * g_dpi);
+        if (tx::InputTextWithHint("##hq", tr("Ex. : comment faire un Short de 30 secondes ?"), &help_q, ImGuiInputTextFlags_EnterReturnsTrue) && !busy) start_help_question();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(busy || help_q.empty());
+        if (accent_button(tr("Demander"), ImVec2(0, 0), &P.green)) start_help_question();
+        ImGui::EndDisabled();
+        if (busy) ImGui::TextColored(P.accent, "%s", help_job->stage == 0 ? tr("Chargement du modèle…") : tr("Réponse en cours…"));
+        if (!help_error.empty()) colored_wrapped(P.amber, help_error);
+        if (!help_answer.empty()) lyrics_box("##ha", help_answer, 200 * g_dpi);
+        if (!help_hits.empty() && !help_sections.empty()) {
+            ImGui::TextColored(P.muted, "%s", tr("Pour en savoir plus (ouvre l'aide à la bonne rubrique) :"));
+            for (int h : help_hits)
+                if (h < (int) help_sections.size() && ImGui::Selectable(("  " + help_sections[h].title).c_str())) {
+                    const std::string url = "file:///" + narrow(help_page_path().wstring()) + (help_sections[h].id.empty() ? "" : "#" + help_sections[h].id);
+                    std::string fixed = url;
+                    for (char & c : fixed) if (c == '\\') c = '/';
+                    ShellExecuteW(nullptr, L"open", widen(fixed).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                }
+        }
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (ImGui::Button(tr("Fermer"))) { if (help_job) help_job->cancel = true; ImGui::CloseCurrentPopup(); }
+        ImGui::EndPopup();
+    }
+
+    // ---- Espace disque et ménage (Réglages › Système) : tailles, puis envoi à la Corbeille sur confirmation
+    struct DiskItem {
+        std::string           label;
+        std::vector<fs::path> paths;
+        unsigned long long    bytes = 0;
+        bool                  deletable = false, checked = false;
+    };
+    struct DiskScan {
+        std::atomic<bool>     finished{ false };
+        std::vector<DiskItem> items;
+    };
+    std::shared_ptr<DiskScan> disk_scan;
+    std::vector<DiskItem>     disk_items;
+    bool                      disk_confirm = false;
+    std::string               disk_msg;
+
+    static unsigned long long tree_bytes(const fs::path & p) {
+        std::error_code ec;
+        unsigned long long n = 0;
+        if (fs::is_regular_file(p, ec)) return fs::file_size(p, ec);
+        for (fs::recursive_directory_iterator it(p, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec))
+            if (it->is_regular_file(ec)) n += it->file_size(ec);
+        return n;
+    }
+    void start_disk_scan() {
+        if (disk_scan && !disk_scan->finished) return;
+        auto               scan = std::make_shared<DiskScan>();
+        disk_scan = scan;
+        disk_msg.clear();
+        const fs::path    root = app_dir(), cache = studio->paths().cache, backups = backups_dir();
+        std::vector<fs::path> folders;
+        for (const Song & s : studio->snapshot()) folders.push_back(song_folder(s.id));
+        std::thread([scan, root, cache, backups, folders] {
+            auto add = [&](const std::string & label, std::vector<fs::path> paths, bool deletable) {
+                DiskItem it;
+                it.label = label;
+                for (const fs::path & p : paths) { std::error_code ec; if (fs::exists(p, ec)) { it.paths.push_back(p); it.bytes += tree_bytes(p); } }
+                it.deletable = deletable && !it.paths.empty();
+                scan->items.push_back(it);
+            };
+            std::vector<fs::path> scenes, masters, stems;
+            for (const fs::path & f : folders) { scenes.push_back(f / L"clip_scenes"); masters.push_back(f / L"master"); stems.push_back(f / L"stems"); }
+            std::vector<fs::path> old_backups;
+            {
+                std::vector<fs::path> all;
+                std::error_code ec;
+                for (const auto & e : fs::directory_iterator(backups, ec)) if (e.is_directory(ec)) all.push_back(e.path());
+                std::sort(all.begin(), all.end());
+                for (size_t i = 0; i + 3 < all.size(); i++) old_backups.push_back(all[i]);
+            }
+            add(tr("Fichiers temporaires (cache)"), { cache / L"temp" }, true);
+            add(tr("Données de l'Atelier partition (WebView2)"), { cache / L"webview2" }, true);
+            add(tr("Anciennes sauvegardes (les 3 dernières sont gardées)"), old_backups, true);
+            add(tr("Images et scénarios des clips (refaits au prochain clip)"), scenes, true);
+            add(tr("Versions masterisées (dossiers « master »)"), masters, true);
+            add(tr("Pistes séparées (dossiers « stems »)"), stems, true);
+            add(tr("Morceaux (Audios), vidéos comprises"), { root / L"Audios" }, false);
+            add(tr("Modèles"), { root / L"modeles" }, false);
+            add(tr("Programmes (outils, ressources)"), { root / L"outils", root / L"ressources" }, false);
+            add(tr("Sauvegardes (total)"), { backups }, false);
+            scan->finished = true;
+        }).detach();
+    }
+    static std::string fmt_bytes(unsigned long long b) {
+        char buf[48];
+        if (b >= (1ull << 30)) snprintf(buf, sizeof buf, "%.2f Go", b / 1073741824.0);
+        else if (b >= (1ull << 20)) snprintf(buf, sizeof buf, "%.0f Mo", b / 1048576.0);
+        else snprintf(buf, sizeof buf, "%.0f Ko", b / 1024.0);
+        return buf;
+    }
+    void draw_disk_panel() {
+        if (disk_scan && disk_scan->finished && disk_items.empty()) disk_items = disk_scan->items;
+        if (getenv("STUDIO_TEST_DISK") && !disk_scan) start_disk_scan();
+        if (getenv("STUDIO_TEST_DISK")) ImGui::SetNextItemOpen(true, ImGuiCond_Once);  // essai : panneau ouvert
+        if (!ImGui::CollapsingHeader(tr("Espace disque et ménage"))) return;
+        const bool scanning = disk_scan && !disk_scan->finished;
+        ImGui::BeginDisabled(scanning);
+        if (ImGui::SmallButton(tr("Analyser l'espace utilisé"))) { disk_items.clear(); disk_confirm = false; start_disk_scan(); }
+        ImGui::EndDisabled();
+        if (scanning) { ImGui::SameLine(); ImGui::TextColored(P.muted, "%s", tr("Analyse en cours…")); }
+        if (!disk_msg.empty()) colored_wrapped(P.ok, disk_msg);
+        unsigned long long sel = 0;
+        for (DiskItem & it : disk_items) {
+            ImGui::PushID(it.label.c_str());
+            if (it.deletable) ImGui::Checkbox("##c", &it.checked);
+            else { ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), 1)); }
+            ImGui::SameLine();
+            ImGui::TextUnformatted(it.label.c_str());
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - 90 * g_dpi);
+            ImGui::TextColored(it.deletable ? P.amber : P.muted, "%s", fmt_bytes(it.bytes).c_str());
+            if (it.deletable && it.checked) sel += it.bytes;
+            ImGui::PopID();
+        }
+        if (!disk_items.empty()) {
+            ImGui::BeginDisabled(sel == 0 || studio->local_active());
+            if (!disk_confirm) {
+                if (soft_button(trf("Mettre à la Corbeille (%s)…", fmt_bytes(sel).c_str()).c_str(), P.amber)) disk_confirm = true;
+            } else {
+                colored_wrapped(P.amber, trf("Envoyer %s à la Corbeille de Windows ? Les fichiers restent récupérables tant que la Corbeille n'est pas vidée.", fmt_bytes(sel).c_str()));
+                if (accent_button(tr("Oui, mettre à la Corbeille"), ImVec2(0, 0), &P.amber)) {
+                    std::vector<fs::path> paths;
+                    for (const DiskItem & it : disk_items) if (it.deletable && it.checked) paths.insert(paths.end(), it.paths.begin(), it.paths.end());
+                    std::string err;
+                    if (recycle_to_bin(paths, err)) { disk_msg = trf("%s envoyés à la Corbeille.", fmt_bytes(sel).c_str()); exists_cache.clear(); }
+                    else disk_msg = err;
+                    disk_confirm = false;
+                    disk_items.clear();
+                    disk_scan.reset();
+                    start_disk_scan();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(tr("Annuler"))) disk_confirm = false;
+            }
+            ImGui::EndDisabled();
+        }
+    }
+
+    // ---- Contrôle tonalité et tempo : SheetSage2 réécoute le morceau et compare à la partition (ou au BPM du style)
+    struct KeyJob {
+        std::atomic<bool>        finished{ false }, cancel{ false };
+        std::atomic<int>         done{ 0 };
+        int                      total = 0;
+        std::mutex               mutex;
+        std::string              report, error, details;
+        std::vector<std::string> flagged;
+    };
+    std::shared_ptr<KeyJob> key_job;
+    static int style_bpm(const std::string & style) {
+        const size_t p = style.find("BPM");
+        if (p == std::string::npos) return 0;
+        size_t e = p;
+        while (e > 0 && style[e - 1] == ' ') e--;
+        size_t b = e;
+        while (b > 0 && isdigit((unsigned char) style[b - 1])) b--;
+        return b < e ? atoi(style.substr(b, e - b).c_str()) : 0;
+    }
+    void start_key_check(const std::vector<Song> & songs, const std::string & label) {
+        if (key_job && !key_job->finished) { notify(tr("Un contrôle de tonalité et de tempo est déjà en cours.")); return; }
+        if (!studio->can_transcribe() || plan_busy() || studio->local_active() || ai_local_busy()) {
+            notify(tr("Le contrôle de tonalité et de tempo se fait au repos (moteur de partition requis) : attendez la fin de la génération en cours."));
+            return;
+        }
+        std::vector<std::pair<Song, fs::path>> work;
+        for (const Song & s : songs)
+            if (s.status == "done" && s.long_rest.empty() && s.long_join <= 0) work.push_back({ s, playable_file(s.id) });
+        if (work.empty()) { notify(tr("Aucun morceau à contrôler.")); return; }
+        auto job   = std::make_shared<KeyJob>();
+        job->total = (int) work.size();
+        key_job    = job;
+        Studio * st = studio;
+        notify(trf("Contrôle de tonalité et de tempo lancé (%d morceau(x)) : %s", (int) work.size(), label.c_str()));
+        std::thread([job, work, st] {
+            std::ostringstream rep, det;
+            for (const auto & [s, audio] : work) {
+                if (job->cancel) break;
+                std::string err;
+                const std::string abc = st->transcribe_score(audio, false, err);
+                job->done++;
+                const ScoreInfo heard = parse_score(abc);
+                if (!heard.present) continue;
+                std::ifstream sf(song_folder(s.id) / L"score.abc", std::ios::binary);
+                const ScoreInfo want = parse_score(std::string((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>()));
+                const int want_bpm = want.present && want.tempo > 0 ? want.tempo : style_bpm(s.style);
+                det << display_title(s.title) << " : entendu " << heard.key << " " << heard.tempo << " BPM ; attendu " << (want.present ? want.key : std::string("?")) << " " << want_bpm << " BPM\n";
+                std::string problems;
+                if (want_bpm > 0 && heard.tempo > 0) {
+                    const double r = (double) heard.tempo / want_bpm;
+                    const bool ok = std::fabs(r - 1) <= 0.08 || std::fabs(r - 2) <= 0.16 || std::fabs(r - 0.5) <= 0.04;  // la moitié ou le double d'un tempo est le même battement
+                    if (!ok) problems += trf("tempo entendu %d BPM pour %d demandés", heard.tempo, want_bpm) + "; ";
+                }
+                if (want.present && !want.key.empty() && !heard.key.empty() && key_distance(want.key, heard.key) != 0)
+                    problems += trf("tonalité entendue %s pour %s écrite", heard.key.c_str(), want.key.c_str()) + "; ";
+                if (!problems.empty()) {
+                    rep << display_title(s.title) << " : " << problems << "\n";
+                    std::lock_guard<std::mutex> lock(job->mutex);
+                    job->flagged.push_back(s.id);
+                }
+            }
+            std::lock_guard<std::mutex> lock(job->mutex);
+            job->report   = rep.str();
+            job->details  = det.str();
+            job->finished = true;
+        }).detach();
+    }
+    void poll_key_check() {
+        if (!key_job || !key_job->finished) return;
+        auto job = key_job;
+        key_job.reset();
+        std::vector<std::string> flagged;
+        std::string              report, details;
+        { std::lock_guard<std::mutex> lock(job->mutex); flagged = job->flagged; report = job->report; details = job->details; }
+        std::ofstream(studio->paths().library / L"controle_tonalite_tempo.txt", std::ios::binary | std::ios::trunc)
+            << "\xEF\xBB\xBF" << (report.empty() ? "Aucune dérive de tonalité ni de tempo.\n" : report) << "\nDétail (entendu / attendu) :\n" << details;
+        for (const Song & s : studio->snapshot())
+            for (const std::string & id : flagged)
+                if (s.id == id && !s.validated && !s.flagged) studio->set_flagged(id, true);
+        notify(flagged.empty() ? tr("Tonalité et tempo : aucun morceau ne dérive.")
+                               : trf("Tonalité et tempo : %d morceau(x) dérivent (pouce rouge, rapport « controle_tonalite_tempo.txt »).", (int) flagged.size()));
+    }
+
+    // ---- Mise à jour en un clic : téléchargement de la release GitHub, empreinte SHA-256, sauvegarde, copie des programmes
+    // sans toucher aux réglages (config), aux morceaux (Audios), aux modèles et aux LoRA (modeles), puis relance.
+    struct UpdateJob {
+        std::atomic<unsigned long long> done{ 0 }, total{ 0 };
+        std::atomic<int>                state{ 0 };  // 0 en cours, 1 prêt à installer, 2 erreur
+        std::atomic<bool>               cancel{ false };
+        std::string                     error, extracted;
+    };
+    std::shared_ptr<UpdateJob> update_job;
+    bool                       update_confirm = false;
+
+    static std::string sha256_file(const fs::path & file) {
+        HCRYPTPROV prov = 0;
+        HCRYPTHASH hash = 0;
+        std::string out;
+        if (!CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) return out;
+        if (CryptCreateHash(prov, CALG_SHA_256, 0, 0, &hash)) {
+            std::ifstream f(file, std::ios::binary);
+            std::vector<char> buf(1 << 20);
+            while (f) {
+                f.read(buf.data(), (std::streamsize) buf.size());
+                if (f.gcount() > 0) CryptHashData(hash, (const BYTE *) buf.data(), (DWORD) f.gcount(), 0);
+            }
+            BYTE  h[32];
+            DWORD n = 32;
+            if (CryptGetHashParam(hash, HP_HASHVAL, h, &n, 0))
+                for (DWORD i = 0; i < n; i++) { char b[4]; snprintf(b, sizeof b, "%02x", h[i]); out += b; }
+            CryptDestroyHash(hash);
+        }
+        CryptReleaseContext(prov, 0);
+        return out;
+    }
+    // Prépare l'installation : téléchargement, vérification, décompression (dans cache\maj). Tout échec arrête là : rien n'est modifié.
+    void start_update_download(const std::shared_ptr<UpdateInfo> & info) {
+        if (update_job && update_job->state == 0) return;
+        auto job = std::make_shared<UpdateJob>();
+        update_job = job;
+        const fs::path work = studio->paths().cache / L"maj";
+        const std::string url = info->zip_url, digest = info->zip_digest, name = info->zip_name;
+        const unsigned long long size = info->zip_size;
+        std::thread([job, work, url, digest, name, size] {
+            std::error_code ec;
+            fs::remove_all(work, ec);
+            fs::create_directories(work, ec);
+            auto fail = [&](const std::string & why) { job->error = why; job->state = 2; };
+            if (url.empty() || name.empty()) return fail(tr("Cette publication n'a pas de fichier à télécharger."));
+            if (digest.rfind("sha256:", 0) != 0) return fail(tr("Cette publication n'indique pas l'empreinte SHA-256 du fichier : installation refusée."));
+            const fs::path zip = work / widen(name);
+            std::wstring   err;
+            job->total = size;
+            if (!http_fetch(widen(url), zip, size, job->done, job->cancel, err)) return fail(job->cancel ? std::string(tr("Téléchargement annulé.")) : trf("Téléchargement impossible : %s", narrow(err).c_str()));
+            if (sha256_file(zip) != digest.substr(7)) return fail(tr("L'empreinte du fichier téléchargé ne correspond pas : installation refusée (fichier supprimé)."));
+            const fs::path out = work / L"extrait";
+            fs::create_directories(out, ec);
+            std::wstring cmd = L"tar.exe -xf " + quote_arg(zip.wstring()) + L" -C " + quote_arg(out.wstring());
+            if (run_command(cmd, nullptr) != 0) return fail(tr("Décompression impossible."));
+            fs::path root;
+            for (const auto & e : fs::recursive_directory_iterator(out, ec))
+                if (e.path().filename() == L"Studio Audio AI.exe") { root = e.path().parent_path(); break; }
+            if (root.empty()) return fail(tr("Le fichier téléchargé ne contient pas le Studio."));
+            job->extracted = narrow(root.wstring());
+            fs::remove(zip, ec);
+            job->state = 1;
+        }).detach();
+    }
+    // Lance le script d'installation (après la fermeture du Studio) puis ferme le Studio.
+    bool launch_update_install(const std::string & src_dir, const std::string & from_version, std::string & error) {
+        const fs::path app = app_dir(), work = studio->paths().cache / L"maj";
+        std::error_code ec;
+        const fs::path backup = backups_dir() / widen("avant_maj_" + from_version);
+        fs::create_directories(backup, ec);
+        for (const wchar_t * d : { L"outils", L"ressources", L"LICENSES" })
+            if (fs::exists(app / d, ec)) fs::copy(app / d, backup / d, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+        for (const auto & e : fs::directory_iterator(app, ec))
+            if (e.is_regular_file(ec)) fs::copy_file(e.path(), backup / e.path().filename(), fs::copy_options::overwrite_existing, ec);
+        if (!fs::exists(backup / L"Studio Audio AI.exe", ec)) { error = tr("Sauvegarde avant mise à jour impossible : installation annulée."); return false; }
+        const fs::path script = work / L"maj.ps1";
+        std::ofstream s(script, std::ios::binary | std::ios::trunc);
+        s << "\xEF\xBB\xBF"
+             "param([int]$PidApp,[string]$Src,[string]$Dst,[string]$Bak)\r\n"
+             "$log = Join-Path $Dst 'cache\\maj\\maj.log'\r\n"
+             "try { Wait-Process -Id $PidApp -Timeout 90 -ErrorAction SilentlyContinue } catch {}\r\n"
+             "Start-Sleep -Seconds 1\r\n"
+             "robocopy $Src $Dst /E /XD config cache donnees Audios modeles sauvegardes _sauvegardes /R:3 /W:1 /NFL /NDL /NJH /NJS | Out-Null\r\n"
+             "$code = $LASTEXITCODE\r\n"
+             "if ($code -ge 8) { robocopy $Bak $Dst /E /XD config cache donnees Audios modeles sauvegardes _sauvegardes /R:3 /W:1 /NFL /NDL /NJH /NJS | Out-Null; \"echec ($code) : version precedente restauree\" | Out-File $log }\r\n"
+             "else { \"mise a jour installee ($code)\" | Out-File $log }\r\n"
+             "Start-Process (Join-Path $Dst 'Studio Audio AI.exe')\r\n";
+        s.close();
+        std::wstring args = L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " + quote_arg(script.wstring()) + L" -PidApp " + std::to_wstring(GetCurrentProcessId()) +
+                            L" -Src " + quote_arg(widen(src_dir)) + L" -Dst " + quote_arg(app.wstring()) + L" -Bak " + quote_arg(backup.wstring());
+        ShellExecuteW(nullptr, L"open", L"powershell.exe", args.c_str(), nullptr, SW_HIDE);
+        return true;
+    }
+    void draw_update_panel() {
+        if (app_update->state != 3 || app_update->zip_url.empty()) return;
+        ImGui::AlignTextToFramePadding();
+        if (!update_job) {
+            if (soft_button(trf("Mettre à jour en un clic (%s)…", app_update->latest.c_str()).c_str(), P.amber)) update_confirm = true;
+        } else if (update_job->state == 0) {
+            ImGui::TextColored(P.accent, "%s", trf("Téléchargement : %s / %s", fmt_bytes(update_job->done).c_str(), fmt_bytes(update_job->total).c_str()).c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr("Annuler"))) update_job->cancel = true;
+        } else if (update_job->state == 2) {
+            colored_wrapped(P.danger, update_job->error);
+            if (ImGui::SmallButton(tr("Réessayer"))) update_job.reset();
+        } else {
+            colored_wrapped(P.amber, tr("Téléchargement vérifié. Le Studio va se fermer, installer la nouvelle version puis se rouvrir. Vos réglages, morceaux, modèles et LoRA sont gardés ; une sauvegarde des programmes est faite avant."));
+            ImGui::BeginDisabled(studio->local_active());
+            if (accent_button(tr("Installer et redémarrer"), ImVec2(0, 0), &P.green)) {
+                std::string err;
+                if (launch_update_install(update_job->extracted, STUDIO_VERSION, err)) { g_force_close = true; PostMessageW(hwnd, WM_CLOSE, 0, 0); }
+                else { update_job->error = err; update_job->state = 2; }
+            }
+            ImGui::EndDisabled();
+            if (studio->local_active() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", tr("Une génération est en cours : attendez sa fin."));
+        }
+        if (update_confirm) {
+            ImGui::OpenPopup(tr("Mettre à jour"));
+            update_confirm = false;
+        }
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        if (ImGui::BeginPopupModal(tr("Mettre à jour"), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::PushTextWrapPos(520 * g_dpi);
+            ImGui::TextWrapped("%s", trf("Télécharger la version %s depuis GitHub (%s) ? Le fichier est vérifié par son empreinte SHA-256 avant toute installation.", app_update->latest.c_str(), fmt_bytes(app_update->zip_size).c_str()).c_str());
+            ImGui::PopTextWrapPos();
+            if (accent_button(tr("Télécharger"), ImVec2(0, 0), &P.green)) { start_update_download(app_update); ImGui::CloseCurrentPopup(); }
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Annuler"))) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+    }
+
+    // ---- 1.0.97 : partition de tous les instruments : SheetSage2 transcrit chaque stem (voix, autres, basse) ; les portées sont assemblées
+    // mesure par mesure dans « score_stems.abc » et ouvertes dans l'Atelier partition (toute note modifiable). La batterie est ignorée.
+    struct StemScoreJob {
+        std::atomic<bool> finished{ false };
+        std::atomic<int>  done{ 0 };
+        std::mutex        mutex;
+        std::string       id, abc, notes, error;
+    };
+    std::shared_ptr<StemScoreJob> stem_score_job;
+    bool song_has_stems(const Song & s) const {
+        std::error_code ec;
+        const fs::path  d = song_folder(s.id) / L"stems";
+        return fs::exists(d / L"voix.wav", ec) || fs::exists(d / L"basse.wav", ec) || fs::exists(d / L"autres.wav", ec);
+    }
+    void open_stem_score(const Song & s, const std::string & abc) {
+        open_atelier(abc, display_title(s.title), s.artist + (s.album.empty() ? std::string() : " — " + s.album), display_title(s.title) + "_stems", song_folder(s.id), s.lyrics);
+    }
+    void start_stem_score(const Song & s) {
+        const fs::path saved = song_folder(s.id) / L"score_stems.abc";
+        std::error_code ec;
+        if (fs::exists(saved, ec)) {  // déjà faite : ouverte telle quelle (supprimez le fichier pour la refaire)
+            std::ifstream f(saved, std::ios::binary);
+            open_stem_score(s, std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()));
+            return;
+        }
+        if (stem_score_job && !stem_score_job->finished) { notify(tr("Une partition des instruments est déjà en cours.")); return; }
+        if (!studio->can_transcribe() || plan_busy() || studio->local_active() || ai_local_busy()) {
+            notify(tr("La partition des instruments se fait au repos (moteur de partition requis) : attendez la fin de la génération en cours."));
+            return;
+        }
+        auto job = std::make_shared<StemScoreJob>();
+        job->id  = s.id;
+        stem_score_job = job;
+        Studio * st = studio;
+        const std::string title = display_title(s.title);
+        const fs::path dir = song_folder(s.id) / L"stems";
+        notify(trf("Partition des instruments lancée : « %s » (environ 1 minute par instrument).", title.c_str()));
+        std::thread([job, st, title, dir, saved] {
+            std::vector<std::array<std::string, 3>> parts;
+            std::error_code ec;
+            const std::pair<const char *, std::pair<const char *, const wchar_t *>> list[] = { { "Vocal", { "Voix", L"voix.wav" } }, { "Other", { "Autres", L"autres.wav" } }, { "Bass", { "Basse", L"basse.wav" } } };
+            for (const auto & [id, info] : list) {
+                if (!fs::exists(dir / info.second, ec)) continue;
+                std::string err;
+                const std::string abc = st->transcribe_score(dir / info.second, true, err);
+                job->done++;
+                if (abc.empty()) { job->notes += std::string(info.first) + " : " + err + " "; continue; }
+                parts.push_back({ id, info.first, abc });
+            }
+            std::string notes;
+            const std::string combined = abc_combine_stems(title, parts, notes);
+            std::lock_guard<std::mutex> lock(job->mutex);
+            job->notes += notes;
+            if (combined.empty()) job->error = tr("Aucune partition n'a pu être écrite d'après les stems.");
+            else {
+                job->abc = combined;
+                std::ofstream(saved, std::ios::binary | std::ios::trunc) << combined;
+            }
+            job->finished = true;
+        }).detach();
+    }
+    void poll_stem_score() {
+        if (!stem_score_job || !stem_score_job->finished) return;
+        auto job = stem_score_job;
+        stem_score_job.reset();
+        if (!job->error.empty()) { notify(job->error); return; }
+        for (const Song & s : studio->snapshot())
+            if (s.id == job->id) { open_stem_score(s, job->abc); break; }
+        if (!job->notes.empty()) notify(job->notes);
+    }
+
+    // ====================================================================== 1.0.97 : sons de l'Atelier partition
+    // Instruments (échantillons FluidR3 GM en mp3, MIT) téléchargés dans ressources\partition\sons ; banques SoundFont 2 dans modeles\sons\banques
+    // pour la lecture et l'export audio de qualité (TinySoundFont). Tout est téléchargé au clic de l'utilisateur.
+    struct SoundInst { const char * id; const char * label; int program; };
+    static const std::vector<SoundInst> & sound_instruments() {
+        static const std::vector<SoundInst> v = {
+            { "acoustic_grand_piano", N_("Piano à queue"), 0 },          { "electric_piano_1", N_("Piano électrique"), 4 },
+            { "acoustic_guitar_nylon", N_("Guitare classique (nylon)"), 24 }, { "acoustic_guitar_steel", N_("Guitare acoustique (acier)"), 25 },
+            { "electric_guitar_clean", N_("Guitare électrique claire"), 27 }, { "electric_guitar_muted", N_("Guitare électrique étouffée"), 28 },
+            { "overdriven_guitar", N_("Guitare saturée"), 29 },         { "distortion_guitar", N_("Guitare distordue"), 30 },
+            { "acoustic_bass", N_("Contrebasse"), 32 },                  { "electric_bass_finger", N_("Basse électrique (doigts)"), 33 },
+            { "electric_bass_pick", N_("Basse électrique (médiator)"), 34 }, { "slap_bass_1", N_("Basse slap"), 36 },
+            { "synth_bass_1", N_("Basse synthé"), 38 },                  { "violin", N_("Violon"), 40 },
+            { "cello", N_("Violoncelle"), 42 },                          { "string_ensemble_1", N_("Ensemble de cordes"), 48 },
+            { "choir_aahs", N_("Chœur (aah)"), 52 },                     { "voice_oohs", N_("Voix (ooh)"), 53 },
+            { "synth_choir", N_("Chœur synthétique"), 54 },              { "trumpet", N_("Trompette"), 56 },
+            { "alto_sax", N_("Saxophone alto"), 65 },                    { "flute", N_("Flûte"), 73 },
+            { "lead_1_square", N_("Synthé lead (carré)"), 80 },          { "pad_2_warm", N_("Nappe chaude"), 89 },
+        };
+        return v;
+    }
+    fs::path sons_dir() const { return app_resource_dir(L"partition") / L"sons"; }
+    bool     instrument_installed(const std::string & id) const {
+        std::error_code ec;
+        return id == "acoustic_grand_piano" || fs::exists(sons_dir() / widen(id + "-mp3") / L"ok.txt", ec);
+    }
+    std::set<std::string> sound_dl_wait;
+    void download_instrument(const std::string & id) {
+        std::vector<DlFile> files;
+        std::error_code     ec;
+        for (const auto & e : fs::directory_iterator(sons_dir() / L"acoustic_grand_piano-mp3", ec))  // mêmes noms de notes pour tous les instruments
+            if (e.path().extension() == L".mp3" && e.path().filename().wstring().find(L'#') == std::wstring::npos) {  // les « F# » sont des copies des « Gb »
+                const std::string f = narrow(e.path().filename().wstring());
+                files.push_back({ "https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/" + id + "-mp3/" + f, f, 0 });
+            }
+        if (files.empty()) return;
+        std::string label = id;
+        for (const SoundInst & s : sound_instruments()) if (id == s.id) label = tr(s.label);
+        downloader.start("son-" + id, label, sons_dir() / widen(id + "-mp3"), files);
+        sound_dl_wait.insert(id);
+    }
+    void poll_sound_downloads() {
+        for (auto it = sound_dl_wait.begin(); it != sound_dl_wait.end();) {
+            auto j = downloader.find(it->rfind("bank-", 0) == 0 ? *it : "son-" + *it);
+            if (j && j->state != 0) {
+                if (j->state == 1 && it->rfind("bank-", 0) != 0) {
+                    const fs::path d = sons_dir() / widen(*it + "-mp3");
+                    std::error_code ec;
+                    for (int o = 1; o <= 7; o++) fs::copy_file(d / (L"Gb" + std::to_wstring(o) + L".mp3"), d / (L"F#" + std::to_wstring(o) + L".mp3"), fs::copy_options::overwrite_existing, ec);
+                    std::ofstream(d / L"ok.txt") << "ok";
+                }
+                const bool bank = it->rfind("bank-", 0) == 0;
+                notify(j->state == 1 ? (bank ? trf("Banque de sons téléchargée : %s", j->label.c_str()) : trf("Instrument téléchargé : %s", j->label.c_str()))
+                                     : trf("Échec du téléchargement : %s", j->label.c_str()));
+                it = sound_dl_wait.erase(it);
+            } else ++it;
+        }
+    }
+    struct SoundBank { const char * id; const char * label; const char * url; const char * file; unsigned long long bytes; const char * license_url; const char * license_file; };
+    static const std::vector<SoundBank> & sound_banks() {
+        static const std::vector<SoundBank> v = {
+            { "gu", N_("GeneralUser GS (31 Mo, bon compromis, usage libre y compris commercial)"), "https://github.com/mrbumpy409/GeneralUser-GS/raw/main/GeneralUser-GS.sf2", "GeneralUser-GS.sf2", 32319396ull,
+              "https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/main/documentation/LICENSE.txt", "LICENSE-GeneralUser-GS.txt" },
+            { "fluid", N_("FluidR3 GM (142 Mo, généraliste, licence permissive)"), "https://github.com/pianobooster/fluid-soundfont/releases/download/v3.1/FluidR3_GM.sf2", "FluidR3_GM.sf2", 148398306ull, nullptr, nullptr },
+        };
+        return v;
+    }
+    fs::path bank_dir() const { return studio->paths().models_dir / L"sons" / L"banques"; }
+    fs::path current_bank() const {  // banque choisie si elle est installée, sinon la première installée
+        std::error_code ec;
+        const fs::path  chosen = bank_dir() / widen(settings.soundfont_bank);
+        if (!settings.soundfont_bank.empty() && fs::exists(chosen, ec)) return chosen;
+        for (const SoundBank & b : sound_banks()) if (fs::exists(bank_dir() / widen(b.file), ec) && fs::file_size(bank_dir() / widen(b.file), ec) == b.bytes) return bank_dir() / widen(b.file);
+        return fs::path();
+    }
+    void download_bank(const SoundBank & b) {
+        std::vector<DlFile> files = { { b.url, b.file, b.bytes } };
+        if (b.license_url) files.push_back({ b.license_url, b.license_file, 0 });
+        downloader.start(std::string("bank-") + b.id, tr(b.label), bank_dir(), files);
+        sound_dl_wait.insert(std::string("bank-") + b.id);
+    }
+    struct RenderJob {
+        std::atomic<bool> finished{ false };
+        bool              ok = false, play = false;
+        std::string       error;
+        fs::path          out;
+    };
+    std::shared_ptr<RenderJob> render_job;
+    int                        render_seq = 0;
+    void poll_render() {
+        if (!render_job || !render_job->finished) return;
+        auto job = render_job;
+        render_job.reset();
+        if (job->play) {
+            std::string msg = job->ok ? "{\"type\":\"audio\",\"url\":\"https://rendu.atelier.studio/" + narrow(job->out.filename().wstring()) + "\"}"
+                                      : "{\"type\":\"audio\",\"error\":\"" + job->error + "\"}";
+            atelier_post(msg);
+        } else {
+            notify(job->ok ? trf("Audio enregistré : %s", narrow(job->out.wstring()).c_str()) : trf("Rendu audio impossible : %s", job->error.c_str()));
+        }
+    }
+    static std::string decode_b64(const std::string & data) {
+        DWORD n = 0;
+        CryptStringToBinaryA(data.c_str(), (DWORD) data.size(), CRYPT_STRING_BASE64, nullptr, &n, nullptr, nullptr);
+        std::string bytes(n, '\0');
+        if (!n || !CryptStringToBinaryA(data.c_str(), (DWORD) data.size(), CRYPT_STRING_BASE64, (BYTE *) bytes.data(), &n, nullptr, nullptr)) bytes.clear();
+        return bytes;
+    }
+    void start_render(const std::string & midi_b64, bool play, const std::string & name) {
+        if (render_job && !render_job->finished) { notify(tr("Un rendu audio est déjà en cours.")); return; }
+        const fs::path bank = current_bank();
+        if (bank.empty()) { atelier_post("{\"type\":\"audio\",\"error\":\"" + std::string(tr("Aucune banque de sons installée : Réglages › Système › Sons de l'Atelier partition.")) + "\"}"); return; }
+        const std::string midi = decode_b64(midi_b64);
+        auto job  = std::make_shared<RenderJob>();
+        job->play = play;
+        if (play) {
+            const fs::path dir = studio->paths().cache / L"partition";
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            for (const auto & e : fs::directory_iterator(dir, ec)) if (e.path().filename().wstring().rfind(L"rendu_", 0) == 0) fs::remove(e.path(), ec);
+            job->out = dir / (L"rendu_" + std::to_wstring(++render_seq) + L".wav");
+        } else {
+            job->out = ask_export_path(name.empty() ? std::string("partition") : name, "wav");
+            if (job->out.empty()) return;
+        }
+        render_job = job;
+        std::thread([job, midi, bank] {
+            job->ok = render_midi_wav(midi, bank, job->out, job->error);
+            job->finished = true;
+        }).detach();
+    }
+    void draw_sound_panel() {
+        if (getenv("STUDIO_TEST_SONS")) ImGui::SetNextItemOpen(true, ImGuiCond_Once);  // essai : panneau ouvert
+        if (!ImGui::CollapsingHeader(tr("Sons de l'Atelier partition (instruments et banques)"))) return;
+        muted_wrapped(tr("Instrument de chaque portée et lecture plus réaliste dans l'Atelier partition. Les instruments (échantillons FluidR3 GM, ≈ 2,5 Mo chacun) servent à l'écoute rapide ; une banque SoundFont donne la lecture de qualité et l'export audio (WAV). Tout est téléchargé à votre clic."));
+        ImGui::TextColored(P.accent, "%s", tr("Banques SoundFont"));
+        const fs::path cur = current_bank();
+        for (const SoundBank & b : sound_banks()) {
+            std::error_code ec;
+            const bool installed = fs::exists(bank_dir() / widen(b.file), ec) && fs::file_size(bank_dir() / widen(b.file), ec) == b.bytes;
+            auto       job       = downloader.find(std::string("bank-") + b.id);
+            ImGui::PushID(b.id);
+            if (installed) {
+                const bool chosen = cur == bank_dir() / widen(b.file);
+                if (ImGui::RadioButton(tr(b.label), chosen)) { settings.soundfont_bank = b.file; save_settings(settings, settings_path); }
+            } else if (job && job->state == 0) {
+                ImGui::TextColored(P.accent, "%s", trf("Téléchargement : %s — %s / %s", tr(b.label), fmt_bytes(job->done).c_str(), fmt_bytes(b.bytes).c_str()).c_str());
+            } else {
+                if (soft_button(tr("Télécharger"), P.green)) download_bank(b);
+                ImGui::SameLine();
+                ImGui::TextUnformatted(tr(b.label));
+            }
+            ImGui::PopID();
+        }
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        ImGui::TextColored(P.accent, "%s", tr("Instruments"));
+        if (soft_button(tr("Tout télécharger (≈ 60 Mo)"), P.green)) for (const SoundInst & s : sound_instruments()) if (!instrument_installed(s.id) && !downloader.find(std::string("son-") + s.id)) download_instrument(s.id);
+        for (const SoundInst & s : sound_instruments()) {
+            ImGui::PushID(s.id);
+            const bool ok  = instrument_installed(s.id);
+            auto       job = downloader.find(std::string("son-") + s.id);
+            if (ok) ImGui::TextColored(P.ok, "● %s", tr(s.label));
+            else if (job && job->state == 0) ImGui::TextColored(P.accent, "%s", trf("%s — téléchargement…", tr(s.label)).c_str());
+            else {
+                if (ImGui::SmallButton(tr("Télécharger"))) download_instrument(s.id);
+                ImGui::SameLine();
+                ImGui::TextColored(P.muted, "%s", tr(s.label));
+            }
+            ImGui::PopID();
+        }
     }
 
     // 1.0.95 : fenêtre « Paroles et structure » d'un morceau (texte sélectionnable, Ctrl+C, clic droit, boutons de copie).
@@ -10073,7 +11233,7 @@ struct App {
     bool passes_filters(const Song & s) const {
         if (s.active()) return true;  // la file reste toujours visible
         if (!filter_text.empty()) {
-            std::string hay = lower(s.title + " " + s.style + " " + s.parent_title + " " + s.artist + " " + s.album);
+            std::string hay = lower(s.title + " " + s.style + " " + s.parent_title + " " + s.artist + " " + s.album + " " + s.lyrics);  // 1.0.96 : paroles aussi
             if (hay.find(lower(filter_text)) == std::string::npos) return false;
         }
         switch (filter_type) {
@@ -10146,13 +11306,26 @@ struct App {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip(tr("Met toute la file en pause et libère la carte graphique.\nLa génération en cours reprendra depuis le début."));
         }
+        {  // 1.0.97 : session de nuit
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(P.muted, "%s", tr("Quand la file est terminée :"));
+            ImGui::SameLine();
+            const char * acts[] = { tr("ne rien faire"), tr("mettre le PC en veille"), tr("éteindre le PC") };
+            int cur = std::clamp(atoi(settings.night_action.c_str()), 0, 2);
+            ImGui::SetNextItemWidth(200 * g_dpi);
+            if (ImGui::Combo("##night", &cur, acts, 3)) { settings.night_action = std::to_string(cur); save_settings(settings, settings_path); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Un rapport « rapport_nuit.txt » est toujours écrit ; la veille ou l'extinction laisse 60 secondes pour annuler."));
+            bool ka = settings.key_check_auto == "1";  // 1.0.98
+            if (ImGui::Checkbox(tr("Contrôler la tonalité et le tempo des morceaux à la fin"), &ka)) { settings.key_check_auto = ka ? "1" : "0"; save_settings(settings, settings_path); }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("SheetSage2 réécoute chaque morceau de la session (≈ 1 min pour 3 min) : les morceaux qui dérivent de la partition ou du BPM demandé reçoivent un pouce rouge."));
+        }
         ImGui::EndChild();
         ImGui::PopStyleVar();
         ImGui::PopStyleColor(2);
     }
 
     void draw_filters(const std::vector<Song> & songs) {
-        input_line("##search", tr("Rechercher un titre, un groupe, un album ou un style…"), filter_text);
+        input_line("##search", tr("Rechercher un titre, un groupe, un album, un style ou des paroles…"), filter_text);
         float               w       = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 2) / 3;
         static const char * types[] = { N_("Tous les types"), N_("Chansons"), N_("Instrumentaux"), N_("Reprises"), N_("Re-rendus et suites"),
                                         N_("Non terminés"), N_("Validés"), N_("Non validés"), N_("À problème"), N_("Nouveaux (à écouter)") };
@@ -10422,6 +11595,15 @@ struct App {
 
     void update_jobs() {
         update_quality();
+        poll_trials();       // 1.0.97
+        poll_publication();
+        poll_night();
+        poll_stems_download();
+        poll_stem_score();
+        poll_sound_downloads();  // 1.0.97
+        poll_render();
+        poll_help();         // 1.0.98
+        poll_key_check();
         for (auto & j : jobs) {
             if (j->state != 0 && !j->announced) {
                 j->announced = true;
@@ -10718,6 +11900,7 @@ struct App {
             static_cast<VideoTask &>(c) = t;
             c.text_start    = trim(settings.clip_text_start);
             c.text_end      = trim(settings.clip_text_end);
+            c.karaoke       = settings.clip_karaoke == "1";  // 1.0.98
             c.whisper_exe   = studio->paths().whisper;
             c.whisper_model = studio->paths().models_dir / "voix" / whisper_file().name;
             if (with_scenes) {
@@ -10969,6 +12152,10 @@ struct App {
                 }
             }
             ImGui::Checkbox(tr("Refaire le scénario et les images (sinon ceux déjà faits sont réutilisés : montage seul, plus rapide)"), &video_redo);
+            {  // 1.0.98 : karaoké
+                bool k = settings.clip_karaoke == "1";
+                if (ImGui::Checkbox(tr("Karaoké : paroles défilantes (lues dans paroles.lrc, calées par Whisper sinon)"), &k)) { settings.clip_karaoke = k ? "1" : "0"; save_settings(settings, settings_path); }
+            }
             ImGui::Checkbox(tr("Short (YouTube Shorts / TikTok, 9:16) centré sur le refrain, avec les images du clip"), &video_short);
             if (video_short) {  // 1.0.75 : durée au choix ; 30 s = durée conseillée pour faire découvrir un titre (TikTok : 21 à 34 s)
                 static const int lengths[] = { 15, 30, 45, 60, 90 };
@@ -11456,10 +12643,14 @@ struct App {
         {  // 1.0.82 : Shorts manquants de toute la bibliothèque, en une seule file ; 1.0.83 : contrôle qualité
             const char * lib_label = tr("Shorts manquants (bibliothèque)…");
             const char * qc_label  = tr("Contrôle qualité (bibliothèque)");
+            const char * dup_label = tr("Doublons…");
             const float  pad       = ImGui::GetStyle().FramePadding.x * 2;
             const bool   busy      = studio->local_active() || ai_local_busy();
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(lib_label).x - ImGui::CalcTextSize(qc_label).x - pad * 2 -
-                            ImGui::GetStyle().ItemSpacing.x);
+            ImGui::SameLine(ImGui::GetContentRegionMax().x - ImGui::CalcTextSize(lib_label).x - ImGui::CalcTextSize(qc_label).x - ImGui::CalcTextSize(dup_label).x - pad * 3 -
+                            ImGui::GetStyle().ItemSpacing.x * 2);
+            if (soft_button(dup_label, P.pink, false)) start_dups(all);  // 1.0.97
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Cherche les morceaux dont la composition ou les paroles sont presque identiques (rapport « doublons.txt »)."));
+            ImGui::SameLine();
             ImGui::BeginDisabled(busy);
             if (soft_button(qc_label, P.amber, false)) start_quality_check(all, std::string(), tr("Toute la bibliothèque"));
             ImGui::EndDisabled();
@@ -11654,6 +12845,8 @@ struct App {
                     start_descriptions(a.key, all);
                 if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                     ImGui::SetTooltip("%s", tr("Écrit un fichier « description.txt » pour le groupe, l'album et chaque morceau. Un fichier déjà présent n'est jamais remplacé : supprimez-le pour le refaire."));
+                ImGui::Separator();
+                draw_tools_menu(done_songs_of(all, a.key), a.album, true);  // 1.0.97
                 ImGui::Separator();
                 ImGui::PushStyleColor(ImGuiCol_Text, P.danger);
                 bool del = ImGui::MenuItem(tr("Supprimer l'album…"), nullptr, false, !busy_album && !cover_job);
@@ -12806,6 +13999,12 @@ struct App {
         draw_startup_issues();  // 1.0.81
         draw_score_view();      // 1.0.87
         draw_lyrics_view();     // 1.0.95
+        draw_master_modal();    // 1.0.97
+        draw_pub_modal();
+        draw_dup_modal();
+        draw_night_modal();
+        draw_help_question();  // 1.0.98
+        { static bool hq_done = false; if (!hq_done && getenv("STUDIO_TEST_HELPQ")) { hq_done = true; open_helpq = true; help_q = "comment faire un Short ?"; } }  // essai
         // Essai (1.0.51) : STUDIO_TEST_ALBUMS=<clé d'album>[|1] ouvre « Albums » avec cet album déplié (onglet Vidéos si « |1 »)
         static bool test_library = [this] {  // essai (1.0.62) : STUDIO_TEST_LIBRARY=<filtre> : bibliothèque filtrée, cartes dépliées une sur deux
             wchar_t v[256];
@@ -12883,6 +14082,10 @@ struct App {
         if (getenv("STUDIO_TEST_EXPORT_DIR") && !atelier_export_done && atelier_ready_at > 0 && ImGui::GetTime() - atelier_ready_at > 4) {
             atelier_export_done = true;  // essai 1.0.92 : MIDI, MusicXML et ABC écrits dans ce dossier
             atelier_post("{\"type\":\"test_export\"}");
+        }
+        if (getenv("STUDIO_TEST_ATELIER_HQ") && atelier_ready_at > 0 && ImGui::GetTime() - atelier_ready_at > 5) {  // essai 1.0.97 : lecture « banque SoundFont » sans clic
+            static bool hq_done = false;
+            if (!hq_done) { hq_done = true; atelier_post("{\"type\":\"test_render\"}"); }
         }
         if (!atelier_test_done) {  // 1.0.91 : STUDIO_TEST_ATELIER=<titre> ouvre l'Atelier partition sur la partition de ce morceau
             const char * v = getenv("STUDIO_TEST_ATELIER");
@@ -13344,10 +14547,15 @@ struct App {
             float        w = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(text).x;
             const char * rb = tr("Réglages…");
             const char * hb = tr("Aide");
+            const char * qb = tr("Question…");
+            const float  qw = ImGui::CalcTextSize(qb).x + ImGui::GetStyle().FramePadding.x * 2 + ImGui::GetStyle().ItemSpacing.x;  // 1.0.98
             float        bw = ImGui::CalcTextSize(rb).x + ImGui::GetStyle().FramePadding.x * 2;
             float        hw = ImGui::CalcTextSize(hb).x + ImGui::GetStyle().FramePadding.x * 2;
-            const float right_x = ImGui::GetWindowWidth() - w - bw - hw - ImGui::GetStyle().ItemSpacing.x * 2 - ImGui::GetStyle().WindowPadding.x;
+            const float right_x = ImGui::GetWindowWidth() - w - bw - hw - qw - ImGui::GetStyle().ItemSpacing.x * 2 - ImGui::GetStyle().WindowPadding.x;
             ImGui::SameLine(right_x);
+            if (soft_button(qb, P.teal, false)) open_helpq = true;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Posez une question : l'IA locale répond d'après l'aide intégrée."));
+            ImGui::SameLine();
             if (soft_button(hb, P.teal, false)) open_help();
             if (ImGui::IsItemHovered()) ImGui::SetTooltip(tr("Ouvre l'aide détaillée de l'application (touche F1)."));
             ImGui::SameLine();
@@ -14182,6 +15390,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             t.width         = fmt == L"tiktok" ? 1080 : fmt == L"ig" ? 1080 : 1920;
             t.height        = fmt == L"tiktok" || fmt == L"short" ? 1920 : fmt == L"ig" ? 1080 : 1080;
             if (fmt == L"short") t.width = 1080, t.short_seconds = _wgetenv(L"STUDIO_TEST_SHORT_SECONDS") ? _wtoi(_wgetenv(L"STUDIO_TEST_SHORT_SECONDS")) : 30;  // 1.0.74 : Short de 30 s sur le refrain
+            t.karaoke       = _wgetenv(L"STUDIO_TEST_KARAOKE") != nullptr;  // 1.0.98
             t.whisper_exe   = studio.paths().whisper;
             t.whisper_model = studio.paths().models_dir / "voix" / whisper_file().name;
             if (argc >= 7) {  // 6e paramètre : type de rendu (id de clip_styles) = scénario et images par scène
@@ -14272,6 +15481,159 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 fclose(f);
             }
             return 0;
+        }
+        // Essai (1.0.97) : outils audio sur les morceaux terminés, sans interface : --tools-test sortie.txt [dossier d'export]
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--tools-test") {
+            std::vector<Song> all = studio.snapshot(), songs;
+            for (const Song & s : all)
+                if (s.status == "done" && s.long_rest.empty()) songs.push_back(s);
+            FILE * f = _wfopen(argv[2], L"wb");
+            auto   wait = [&](const std::shared_ptr<Job> & j, const char * what) {
+                while (j->state == 0) Sleep(300);
+                std::lock_guard<std::mutex> lock(j->mutex);
+                if (f) fprintf(f, "%s : etat=%d %s\n", what, (int) j->state, j->message.c_str());
+            };
+            if (!songs.empty()) {
+                std::vector<Song> one{ songs[0] };
+                auto j1 = app.new_job("master");
+                start_master(j1, one, -14, -1, true);
+                wait(j1, "master");
+                const fs::path m = song_folder(songs[0].id) / L"master";
+                std::error_code ec;
+                if (fs::exists(m, ec)) for (auto & e : fs::directory_iterator(m, ec)) if (f) fprintf(f, "  fichier %s %lld octets\n", narrow(e.path().filename().wstring()).c_str(), (long long) fs::file_size(e.path(), ec));
+                auto j2 = app.new_job("lrc");
+                std::vector<Song> sung; for (const Song & x : songs) if (!x.instrumental) { sung.push_back(x); break; }
+                start_lrc(j2, sung, studio.paths().whisper, studio.paths().models_dir / "voix" / whisper_file().name);
+                wait(j2, "lrc");
+                auto j3 = app.new_job("doublons");
+                auto found = std::make_shared<std::vector<DupPair>>();
+                start_duplicates(j3, songs, found, app_temp_dir() / L"doublons_test.txt");
+                wait(j3, "doublons");
+                if (f) fprintf(f, "  couples=%d\n", (int) found->size());
+                const Song & s0 = songs[0];
+                auto j4 = app.new_job("livret");
+                start_booklet(j4, songs, s0.artist, s0.album.empty() ? "Test" : s0.album, fs::path(), app_temp_dir() / L"livret_test");
+                wait(j4, "livret");
+                auto j5 = app.new_job("export");
+                start_daw_export(j5, one, argc >= 4 ? fs::path(argv[3]) : app_temp_dir() / L"export_test");
+                wait(j5, "export");
+                fs::path dx, dm;
+                if (app.stems_engine(dx, dm)) {
+                    auto j6 = app.new_job("stems");
+                    start_stems(j6, one, dx, dm);
+                    wait(j6, "stems");
+                }
+                std::vector<std::string> problems;
+                const int best = best_trial(songs.size() > 3 ? std::vector<Song>(songs.begin(), songs.begin() + 3) : songs, problems);
+                if (f) fprintf(f, "meilleur=%d problemes=%s\n", best, problems.empty() ? "" : problems[0].c_str());
+            }
+            if (f) fclose(f);
+            return 0;
+        }
+        // Essais (1.0.98), sans interface : --help-test "question" sortie | --disk-test sortie | --key-test sortie | --update-test zip sha256 sortie
+        if (argv && argc >= 4 && std::wstring(argv[1]) == L"--help-test") {
+            app.help_q = narrow(argv[2]);
+            app.start_help_question();
+            while (app.help_job && !app.help_job->finished) Sleep(300);
+            app.poll_help();
+            FILE * f = _wfopen(argv[3], L"wb");
+            if (f) {
+                fprintf(f, "rubriques=%d erreur=%s\nhits:", (int) app.help_sections.size(), app.help_error.c_str());
+                for (int h : app.help_hits) fprintf(f, " [%s]", app.help_sections[h].title.c_str());
+                fprintf(f, "\nreponse:\n%s\n", app.help_answer.c_str());
+                fclose(f);
+            }
+            return 0;
+        }
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--disk-test") {
+            app.start_disk_scan();
+            while (!app.disk_scan->finished) Sleep(200);
+            FILE * f = _wfopen(argv[2], L"wb");
+            if (f) {
+                for (const auto & it : app.disk_scan->items) fprintf(f, "%s : %s (%d chemin(s), supprimable=%d)\n", it.label.c_str(), App::fmt_bytes(it.bytes).c_str(), (int) it.paths.size(), (int) it.deletable);
+                const fs::path probe = studio.paths().cache / L"temp" / L"essai_corbeille.txt";
+                std::error_code ec;
+                fs::create_directories(probe.parent_path(), ec);
+                std::ofstream(probe) << "essai";
+                std::string err;
+                const bool ok = recycle_to_bin({ probe }, err);
+                fprintf(f, "corbeille ok=%d existe_encore=%d erreur=%s\n", (int) ok, (int) fs::exists(probe, ec), err.c_str());
+                std::string err2;
+                const bool refused = !recycle_to_bin({ fs::path(L"C:\\Windows\\Temp\\hors_programme.txt") }, err2) ? true : false;
+                fprintf(f, "hors programme refuse=%d (fichier absent : ignore)\n", (int) refused);
+                fclose(f);
+            }
+            return 0;
+        }
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--stemscore-test") {  // 1.0.97 : partition des stems du premier morceau qui en a
+            for (const Song & s : studio.snapshot())
+                if (s.status == "done" && app.song_has_stems(s)) {
+                    fs::remove(song_folder(s.id) / L"score_stems.abc");
+                    app.start_stem_score(s);
+                    break;
+                }
+            while (app.stem_score_job && !app.stem_score_job->finished) Sleep(500);
+            FILE * f = _wfopen(argv[2], L"wb");
+            if (f) {
+                if (app.stem_score_job) fprintf(f, "erreur=%s\nnotes=%s\n%s\n", app.stem_score_job->error.c_str(), app.stem_score_job->notes.c_str(), app.stem_score_job->abc.c_str());
+                fclose(f);
+            }
+            return 0;
+        }
+        if (argv && argc >= 5 && std::wstring(argv[1]) == L"--sf-test") {  // 1.0.97 : --sf-test banque.sf2 entree.mid sortie.wav
+            std::ifstream mf(argv[3], std::ios::binary);
+            const std::string midi((std::istreambuf_iterator<char>(mf)), std::istreambuf_iterator<char>());
+            std::string err;
+            const auto  t0 = std::chrono::steady_clock::now();
+            const bool  ok = render_midi_wav(midi, argv[2], argv[4], err);
+            std::error_code ec;
+            FILE * f = _wfopen((std::wstring(argv[4]) + L".txt").c_str(), L"wb");
+            if (f) {
+                fprintf(f, "ok=%d erreur=%s secondes=%.1f taille=%lld\n", (int) ok, err.c_str(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), ok ? (long long) fs::file_size(argv[4], ec) : 0LL);
+                fclose(f);
+            }
+            return 0;
+        }
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--key-test") {
+            std::vector<Song> songs;
+            for (const Song & s : studio.snapshot()) if (s.status == "done" && s.long_rest.empty()) songs.push_back(s);
+            app.start_key_check(songs, "essai");
+            while (app.key_job && !app.key_job->finished) Sleep(500);
+            FILE * f = _wfopen(argv[2], L"wb");
+            if (f) {
+                std::string rep;
+                if (app.key_job) { std::lock_guard<std::mutex> lock(app.key_job->mutex); rep = app.key_job->report; }
+                std::string det;
+                if (app.key_job) { std::lock_guard<std::mutex> lock(app.key_job->mutex); det = app.key_job->details; }
+                fprintf(f, "morceaux=%d rapport:\n%s\ndetail:\n%s\n", (int) songs.size(), rep.c_str(), det.c_str());
+                for (const Song & s : songs) {
+                    std::ifstream sf(song_folder(s.id) / L"score.abc", std::ios::binary);
+                    const ScoreInfo w = parse_score(std::string((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>()));
+                    fprintf(f, "%s : score %s %d BPM ; style %d BPM\n", s.title.c_str(), w.key.c_str(), w.tempo, App::style_bpm(s.style));
+                }
+                fclose(f);
+            }
+            return 0;
+        }
+        if (argv && argc >= 5 && std::wstring(argv[1]) == L"--update-test") {
+            auto info        = std::make_shared<UpdateInfo>();
+            info->zip_url    = "file:///" + narrow(fs::absolute(argv[2]).wstring());
+            info->zip_name   = narrow(fs::path(argv[2]).filename().wstring());
+            info->zip_digest = "sha256:" + narrow(argv[3]);
+            std::error_code ec;
+            info->zip_size   = fs::file_size(argv[2], ec);
+            app.start_update_download(info);
+            while (app.update_job->state == 0) Sleep(300);
+            FILE * f = _wfopen(argv[4], L"wb");
+            std::string err;
+            bool        launched = false;
+            if (app.update_job->state == 1) launched = app.launch_update_install(app.update_job->extracted, "essai", err);
+            if (f) {
+                fprintf(f, "etat=%d erreur=%s extrait=%s lance=%d %s\n", (int) app.update_job->state, app.update_job->error.c_str(), app.update_job->extracted.c_str(), (int) launched, err.c_str());
+                fclose(f);
+            }
+            studio.shutdown();
+            return 0;  // le script attend la fin de ce processus, installe, puis rouvre le Studio
         }
         if (argv && argc >= 6 && std::wstring(argv[1]) == L"--cover-test") {
             std::string key = album_key(narrow(argv[2]), narrow(argv[3]));
