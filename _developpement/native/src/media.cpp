@@ -415,6 +415,16 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
         return false;
     }
     out = ClipScenes{};
+    // 1.0.98 (atelier clip, point 8) : même graine pour toutes les images du morceau. Les scènes gardent leur propre
+    // description ; seul le tirage du bruit de départ est commun, ce qui rapproche visage, couleurs et cadrage d'une image
+    // à l'autre (sans garantie : un modèle d'images ne « reconnaît » pas un personnage). Graine tirée de l'id du morceau
+    // (FNV-1a) : la même à chaque reprise, différente d'un morceau à l'autre.
+    long long seed = -1;
+    if (eng.same_seed) {
+        unsigned long long h = 1469598103934665603ull;
+        for (unsigned char c : s.id) h = (h ^ c) * 1099511628211ull;
+        seed = (long long) (h & 0x7fffffffull);
+    }
     for (size_t k = 0; k < sb.scenes.size() && !j.cancel; k++) {
         char name[32];
         snprintf(name, sizeof(name), "scene_%02d.png", (int) k + 1);
@@ -429,11 +439,11 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
                 else slot.failed = true;
             }
             AiCallResult r;
-            if (slot.server) r = slot.server->generate(sb.scenes[k].prompt, 1344, 768, png, &j.cancel);
+            if (slot.server) r = slot.server->generate(sb.scenes[k].prompt, 1344, 768, png, &j.cancel, seed);
             if (!r.ok && !j.cancel) {
                 slot.server.reset();  // libère la mémoire vidéo pour sd-cli
                 slot.failed = true;
-                r = ai_image_local(eng.sd_cli, eng.image_root, *eng.image_model, sb.scenes[k].prompt, 1344, 768, png, &j.cancel, eng.offload);
+                r = ai_image_local(eng.sd_cli, eng.image_root, *eng.image_model, sb.scenes[k].prompt, 1344, 768, png, &j.cancel, eng.offload, seed);
             }
             if (!r.ok || !fs::exists(png, ec)) {
                 if (j.cancel) return false;
@@ -628,6 +638,8 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
                 texts.end      = t.text_end;
                 texts.duration = seconds;
                 texts.karaoke  = t.karaoke;
+                texts.end_pos  = t.end_pos;  // 1.0.98
+                texts.end_box  = t.end_box;
                 f << clip_ass(lines, t.width, t.height, texts);
             }
             std::wstring short_ass = ass.wstring();

@@ -1576,7 +1576,7 @@ static std::wstring image_weights(const fs::path & dir, const std::vector<ImageM
 }
 
 AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & m, const std::string & prompt,
-                            int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload) {
+                            int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload, long long seed) {
     AiCallResult r;
     if (sd_cli.empty()) {
         r.error = N_("Moteur d'images introuvable (dossier « outils\\sd-vulkan »).");
@@ -1599,7 +1599,7 @@ AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_roo
     std::wstring cmd = L"\"" + sd_cli.wstring() + L"\"" + weights +
                        (offload ? L" --offload-to-cpu" : L"") + L" -p \"" + widen(p) + L"\" --cfg-scale " + cfg + L" --steps " +
                        std::to_wstring(m.steps) + L" -W " + std::to_wstring(width) + L" -H " + std::to_wstring(height) +
-                       L" --seed -1 -o \"" + out_png.wstring() + L"\"";
+                       L" --seed " + std::to_wstring(seed < 0 ? -1 : seed) + L" -o \"" + out_png.wstring() + L"\"";
     fs::path            log = app_temp_dir() / L"studio_yue2_image.log";
     SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
     HANDLE              out = CreateFileW(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &sa, CREATE_ALWAYS, 0, nullptr);
@@ -1721,7 +1721,8 @@ bool LocalImageServer::start(std::atomic<bool> * cancel) {
     return false;
 }
 
-AiCallResult LocalImageServer::generate(const std::string & prompt, int width, int height, const fs::path & out_png, std::atomic<bool> * cancel) {
+AiCallResult LocalImageServer::generate(const std::string & prompt, int width, int height, const fs::path & out_png, std::atomic<bool> * cancel,
+                                        long long seed) {
     AiCallResult r;
     r.error = N_("Le moteur d'images n'a pas produit d'image (détails : %s).");
     r.error_arg = narrow((app_temp_dir() / L"studio_yue2_image.log").wstring());
@@ -1733,7 +1734,7 @@ AiCallResult LocalImageServer::generate(const std::string & prompt, int width, i
     yyjson_mut_obj_add_int(doc, root, "height", height);
     yyjson_mut_obj_add_int(doc, root, "steps", model_.steps);
     yyjson_mut_obj_add_real(doc, root, "cfg_scale", model_.cfg);
-    yyjson_mut_obj_add_int(doc, root, "seed", -1);
+    yyjson_mut_obj_add_int(doc, root, "seed", seed < 0 ? -1 : (int64_t) seed);  // 1.0.98 : graine fixe possible
     if (model_.files.size() == 1) {  // SDXL-Lightning : réglages de sa fiche
         yyjson_mut_obj_add_str(doc, root, "sampler_name", "euler");
         yyjson_mut_obj_add_str(doc, root, "scheduler", "sgm_uniform");

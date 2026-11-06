@@ -11,6 +11,11 @@ set(YYJSON ${CMAKE_CURRENT_SOURCE_DIR}/../yue2.cpp/vendor/yyjson)
 set(ORT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/onnxruntime)
 # 1.0.45 : sources dans music/_developpement/native ; le Studio installé est à la racine de music.
 set(APP_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+# 1.0.98 : -DSTUDIO_APP_ROOT=<dossier> envoie l'exe compile dans une copie de test (dossier de build a part)
+# au lieu de remplacer celui du Studio installe (a ne faire qu'apres "studio ferme").
+if(DEFINED STUDIO_APP_ROOT)
+    set(APP_ROOT ${STUDIO_APP_ROOT})
+endif()
 
 add_executable(StudioYuE2 WIN32
     src/main.cpp

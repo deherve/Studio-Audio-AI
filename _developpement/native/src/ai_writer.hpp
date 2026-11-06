@@ -304,7 +304,9 @@ public:
     LocalImageServer(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & model, bool offload);
     ~LocalImageServer();
     bool         start(std::atomic<bool> * cancel);  // faux : pas de serveur (l'appelant se rabat sur ai_image_local)
-    AiCallResult generate(const std::string & prompt, int width, int height, const fs::path & out_png, std::atomic<bool> * cancel);
+    // seed : graine du tirage (-1 = au hasard). 1.0.98 : une graine fixe par clip garde un personnage et un décor plus réguliers.
+    AiCallResult generate(const std::string & prompt, int width, int height, const fs::path & out_png, std::atomic<bool> * cancel,
+                          long long seed = -1);
 
 private:
     fs::path                sd_cli_, root_;
@@ -313,7 +315,8 @@ private:
     void *                  process_ = nullptr;
 };
 AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & m, const std::string & prompt,
-                            int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload = false);
+                            int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload = false,
+                            long long seed = -1);  // 1.0.98 : graine (-1 = au hasard)
 // Image en ligne (bloquant) : out_base sans extension ; l'extension suit le format reçu (.png, .jpg, .webp). r.text = chemin.
 AiCallResult ai_image_online(const std::string & service, const AiEndpoint & ep, const std::string & prompt, int width, int height,
                              const fs::path & out_base);

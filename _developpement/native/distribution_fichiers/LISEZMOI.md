@@ -1,4 +1,4 @@
-# Studio Audio AI (1.0.97)
+# Studio Audio AI (1.0.98)
 
 Générateur de chansons local basé sur **YuE2-3B** (moteur `yue2.cpp`, Vulkan). Application Windows native : pas de navigateur, pas de serveur, tout reste sur votre PC.
 
@@ -61,6 +61,7 @@ Les versions précédentes rangeaient ces éléments à la racine du dossier : i
 **Blocs repliables et morceaux neufs** :
 - Les blocs Morceau, Style, Paroles/Structure, LoRA et Génération se replient d'un clic sur leur titre (flèche ▾ / ▸) ; replié, un bloc affiche un résumé de son contenu. L'état est mémorisé. Dans le bloc Génération, les boutons « Générer… » et « Ajouter en pause » restent visibles sur une même ligne, même replié.
 - Un morceau fraîchement généré et pas encore écouté s'affiche en rose (carte teintée, bordure rose, mention « Nouveau — à écouter et vérifier » ou pastille « À écouter ») dans les trois affichages de cartes. Il revient à la normale dès qu'on le lance en lecture ou qu'on le valide ou le signale. Le filtre « Nouveaux (à écouter) » les liste. Les morceaux déjà présents dans la bibliothèque sont considérés comme écoutés.
+- Clips (1.0.98) : le texte de fin se place au centre ou en bas (à la hauteur des paroles), avec un bandeau sombre facultatif sur toute la largeur ; « Même graine pour toutes les images d'un clip » rend personnage et décor plus réguliers ; « Actions ▾ › Écrire les fiches texte » crée les fiches (paroles, morceau, album, groupe) des anciens morceaux sans faire de clip (un paroles.txt existant n'est jamais remplacé).
 
 **Fin des morceaux** : un morceau qui atteint le plafond de durée sans conclure (c'est le cas des instrumentaux, que la LoRA instrumentale ne termine jamais, et de tout morceau à durée fixe) reçoit un fondu de sortie. Sa longueur se règle dans Réglages > Fin des morceaux (5 s par défaut, de 1 à 30 s, courbe linéaire). La case **« Fin en fondu sur la structure »** du bloc Génération remplace ce réglage pour le morceau : le fondu dure comme la dernière section de la structure (outro : 20 s en instrumental, 15 s en chanson) avec une courbe douce en demi-sinus. Aucun lien avec le solveur : AB2 et Midpoint donnent exactement la même fin.
 

@@ -215,16 +215,25 @@ std::string clip_ass(const std::vector<ClipLine> & lines, int width, int height,
     auto         sy        = [&](int v) { return (int) (v * u); };
     const int    lyric_mv  = portrait ? (int) (height * 0.2) : sy(150);
     const int    card_mv   = portrait ? (int) (height * 0.08) : sy(70);
+    // 1.0.98 : colonne « BorderStyle » (1 = contour normal) ; le fond sombre du texte de fin est un dessin à part (voir carte de fin).
     snprintf(head, sizeof(head),
              "[Script Info]\nScriptType: v4.00+\nPlayResX: %d\nPlayResY: %d\n\n[V4+ Styles]\n"
-             "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Outline,Shadow,Alignment,MarginL,MarginR,MarginV\n"
-             "Style: Verse,Impact,%d,&H00FFFFFF,&H00000000,&H80000000,0,3,2,2,%d,%d,%d\n"
-             "Style: Chorus,Impact,%d,&H00A8D9FF,&H003655FF,&H80000000,0,4,3,2,%d,%d,%d\n"
-             "Style: Card,Impact,%d,&H00FFFFFF,&H00000000,&H80000000,0,3,2,7,%d,%d,%d\n"
-             "Style: End,Impact,%d,&H00FFFFFF,&H00000000,&H80000000,0,4,3,5,%d,%d,0\n\n[Events]\n"
-             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n",
-             width, height, sy(62), sx(60), sx(60), lyric_mv, sy(84), sx(60), sx(60), lyric_mv, sy(72), sx(80), sx(80), card_mv, sy(70), sx(100), sx(100));
+             "Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV\n"
+             "Style: Verse,Impact,%d,&H00FFFFFF,&H00000000,&H80000000,0,1,3,2,2,%d,%d,%d\n"
+             "Style: Chorus,Impact,%d,&H00A8D9FF,&H003655FF,&H80000000,0,1,4,3,2,%d,%d,%d\n"
+             "Style: Card,Impact,%d,&H00FFFFFF,&H00000000,&H80000000,0,1,3,2,7,%d,%d,%d\n",
+             width, height, sy(62), sx(60), sx(60), lyric_mv, sy(84), sx(60), sx(60), lyric_mv, sy(72), sx(80), sx(80), card_mv);
     std::string out = head;
+    {  // style du texte de fin : centre (alignement 5) ou bas (alignement 2, à la hauteur des paroles) ; bandeau sombre ou contour
+        const bool bottom = texts.end_pos == 1;
+        char       end_style[256];
+        // 1.0.98 (bandeau unique) : plus de BorderStyle 3 (un rectangle par ligne, chevauchements plus sombres) ;
+        // avec fond sombre, contour normal sans ombre, le bandeau pleine largeur est dessiné à part (événement de la couche 0 plus bas).
+        snprintf(end_style, sizeof(end_style), "Style: End,Impact,%d,&H00FFFFFF,&H00000000,&H80000000,0,1,4,%d,%d,%d,%d,%d\n",
+                 sy(70), texts.end_box ? 0 : 3, bottom ? 2 : 5, sx(100), sx(100), bottom ? lyric_mv : 0);
+        out += end_style;
+    }
+    out += "\n[Events]\nFormat: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n";
     // carte de début : titre du morceau, groupe — album, puis le texte de début de l'utilisateur
     if (!texts.title.empty() || !texts.artist.empty() || !texts.album.empty() || !texts.start.empty()) {
         std::string who = ass_text(texts.artist) + (!texts.artist.empty() && !texts.album.empty() ? " — " : "") + ass_text(texts.album);
@@ -238,6 +247,17 @@ std::string clip_ass(const std::vector<ClipLine> & lines, int width, int height,
     }
     // carte de fin : le texte de fin au centre, pendant les 8 dernières secondes
     if (!texts.end.empty() && texts.duration > 12) {
+        if (texts.end_box) {  // 1.0.98 : un seul bandeau sombre sur toute la largeur, couche 0 (sous le texte), même fondu
+            const int fs  = sy(70), pad = sy(24);
+            int       nl  = 1;
+            for (char c : texts.end) nl += c == '\n';
+            const int th  = (int) (nl * fs * 1.2);
+            const int y0  = texts.end_pos == 1 ? height - lyric_mv - th - pad : height / 2 - th / 2 - pad;
+            const int y1  = texts.end_pos == 1 ? height - lyric_mv + pad : height / 2 + th / 2 + pad;
+            char      box[256];
+            snprintf(box, sizeof(box), "{\\fad(600,600)\\an7\\pos(0,0)\\bord0\\shad0\\1c&H000000&\\1a&H60&\\p1}m 0 %d l %d %d l %d %d l 0 %d{\\p0}", y0, width, y0, width, y1, y1);
+            out += "Dialogue: 0," + ass_time(texts.duration - 8) + "," + ass_time(texts.duration - 0.3) + ",End,,0,0,0,," + box + "\n";
+        }
         out += "Dialogue: 1," + ass_time(texts.duration - 8) + "," + ass_time(texts.duration - 0.3) + ",End,,0,0,0,,{\\fad(600,600)}" + ass_text(texts.end) + "\n";
     }
     if (texts.karaoke) {  // 1.0.98 : une fenêtre de 5 lignes qui défile ; la ligne chantée est grande et orangée

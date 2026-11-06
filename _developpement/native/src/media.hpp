@@ -77,6 +77,7 @@ struct SceneEngine {
     bool                    offload = false;
     int                     scene_count = 0;  // nombre d'images demandÃ© ; 0 = automatique (6 Ã  12 selon les paroles)
     std::map<std::string, int> counts;        // nombre d'images propre Ã  chaque morceau (id) : prime sur scene_count
+    bool                    same_seed = false;  // 1.0.98 : même graine pour toutes les images d'un morceau (tirée de son id)
     std::string             style_id = "auto", style_prompt;  // type de rendu choisi (voir clip_styles) ; prompt vide = auto
 };
 // Dossier du scÃ©nario et des images d'un morceau pour le type de rendu et le moteur d'images choisis (<morceau>\clip_scenes\â€¦).
@@ -89,6 +90,8 @@ struct ClipTask : VideoTask {
     fs::path    whisper_exe, whisper_model;
     std::string text_start, text_end;  // 1.0.54 : textes personnalisÃ©s de la carte de dÃ©but et de la carte de fin (voir clip.hpp)
     bool        karaoke = false;        // 1.0.98 : paroles défilantes, lues dans paroles.lrc si elles existent
+    int         end_pos = 0;            // 1.0.98 : texte de fin au centre (0) ou en bas (1)
+    bool        end_box = false;        // 1.0.98 : bandeau sombre derrière le texte de fin
     double      short_seconds = 0;      // 1.0.74 : > 0 = Short : extrait de cette durÃ©e centrÃ© sur le refrain (clip_short_start)
     // ScÃ©nario d'aprÃ¨s les paroles : rempli par l'application (IA locale), appelÃ© une fois par titre aprÃ¨s le calage des
     // paroles. Faux ou aucune image : le clip utilise l'image du clip (la pochette) ; note = motif, affichÃ© Ã  la fin.

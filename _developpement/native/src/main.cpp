@@ -851,6 +851,7 @@ struct Settings {
     // Atelier clip (1.0.54) : textes affichés au début et à la fin des clips (« Rock Ballads Fr », « Abonnez-vous »…) et type de rendu
     std::string                        clip_text_start, clip_text_end, clip_style_id = "auto", clip_image_model = "klein", clip_image_count = "0", clip_image_mode = "rec";
     std::string                        clip_karaoke = "0", key_check_auto = "0";  // 1.0.98
+    std::string                        clip_end_pos = "0", clip_end_box = "0", clip_same_seed = "0";  // 1.0.98 : texte de fin, graine commune
     std::string                        soundfont_bank;  // 1.0.97 : fichier .sf2 choisi (modeles\sons\banques)
     std::string                        night_action = "0";  // 1.0.97 : à la fin de la file : 0 rien, 1 veille, 2 extinction
     std::string                        clip_short_seconds = "30";  // 1.0.75 : durée des Shorts (15, 30, 45, 60 ou 90 s)
@@ -1065,6 +1066,7 @@ static void parse_settings(Settings & s, yyjson_val * r) {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
         { "clip_short_seconds", &s.clip_short_seconds }, { "night_action", &s.night_action }, { "soundfont_bank", &s.soundfont_bank }, { "clip_karaoke", &s.clip_karaoke }, { "key_check_auto", &s.key_check_auto },
+        { "clip_end_pos", &s.clip_end_pos }, { "clip_end_box", &s.clip_end_box }, { "clip_same_seed", &s.clip_same_seed },  // 1.0.98
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -1221,6 +1223,7 @@ static void save_settings(const Settings & s, const fs::path & path) {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
         { "clip_short_seconds", &s.clip_short_seconds }, { "night_action", &s.night_action }, { "soundfont_bank", &s.soundfont_bank }, { "clip_karaoke", &s.clip_karaoke }, { "key_check_auto", &s.key_check_auto },
+        { "clip_end_pos", &s.clip_end_pos }, { "clip_end_box", &s.clip_end_box }, { "clip_same_seed", &s.clip_same_seed },  // 1.0.98
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -9729,6 +9732,19 @@ struct App {
             }
         }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Copie l'audio (version masterisée si elle existe), la partition ABC, les paroles et les stems, avec le tempo et la tonalité dans le nom du fichier."));
+        // 1.0.98 (atelier clip, point 4) : fiches texte des anciens morceaux, sans attendre un clip. Rapide (fichiers texte seuls) :
+        // fait tout de suite. paroles.txt déjà présent n'est jamais remplacé (il a pu être corrigé à la main).
+        if (ImGui::MenuItem(tr("Écrire les fiches texte (paroles, morceau, album, groupe)"))) {
+            int n = 0;
+            for (const Song & s : songs) {
+                if (!s.long_rest.empty()) continue;  // partie 1 d'un morceau long : la fiche est celle du morceau final
+                write_fiches(s, song_folder(s.id));
+                n++;
+            }
+            notify(trf("Fiches texte écrites pour %d morceau(x).", n));
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("« paroles.txt » et « fiche.txt » dans le dossier de chaque morceau, « fiche_album.txt » et « fiche_groupe.txt » au-dessus. Le clip s'en sert pour son scénario. Un « paroles.txt » déjà présent n'est jamais remplacé."));
         if (ImGui::MenuItem(tr("Fiche de publication (IA locale)"), nullptr, false, !busy_gpu)) start_publication(songs);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
             ImGui::SetTooltip("%s", tr("Titre, description et hashtags pour YouTube, TikTok ou Instagram, écrits par l'IA locale dans « publication.txt ». Un fichier déjà présent n'est jamais remplacé. Rien n'est publié : vous copiez et publiez vous-même."));
@@ -11885,6 +11901,7 @@ struct App {
                 for (const Song & sg : video_songs) scene_engine.counts[sg.id] = clip_images_for(sg);  // recommandation ou réglage, par morceau
                 scene_engine.style_id    = cs.id;
                 scene_engine.style_prompt = cs.prompt;
+                scene_engine.same_seed   = settings.clip_same_seed == "1";  // 1.0.98
                 with_scenes              = true;
             }
             if (video_redo && with_scenes) {  // « Refaire » : scénario et images de ce rendu repartent de zéro
@@ -11901,6 +11918,8 @@ struct App {
             c.text_start    = trim(settings.clip_text_start);
             c.text_end      = trim(settings.clip_text_end);
             c.karaoke       = settings.clip_karaoke == "1";  // 1.0.98
+            c.end_pos       = settings.clip_end_pos == "1" ? 1 : 0;  // 1.0.98 : texte de fin centre / bas
+            c.end_box       = settings.clip_end_box == "1";
             c.whisper_exe   = studio->paths().whisper;
             c.whisper_model = studio->paths().models_dir / "voix" / whisper_file().name;
             if (with_scenes) {
@@ -12152,6 +12171,15 @@ struct App {
                 }
             }
             ImGui::Checkbox(tr("Refaire le scénario et les images (sinon ceux déjà faits sont réutilisés : montage seul, plus rapide)"), &video_redo);
+            {  // 1.0.98 (atelier clip, point 8) : graine commune aux images d'un même clip
+                bool same = settings.clip_same_seed == "1";
+                if (ImGui::Checkbox(tr("Même graine pour toutes les images d'un clip (personnage et décor plus réguliers)"), &same)) {
+                    settings.clip_same_seed = same ? "1" : "0";
+                    save_settings(settings, settings_path);
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", tr("Chaque scène garde sa description, mais le tirage de départ est le même : visage, couleurs et cadrage se ressemblent davantage d'une image à l'autre. Ce n'est pas une garantie. Ne change que les nouvelles images : cochez « Refaire » pour un clip déjà fait."));
+            }
             {  // 1.0.98 : karaoké
                 bool k = settings.clip_karaoke == "1";
                 if (ImGui::Checkbox(tr("Karaoké : paroles défilantes (lues dans paroles.lrc, calées par Whisper sinon)"), &k)) { settings.clip_karaoke = k ? "1" : "0"; save_settings(settings, settings_path); }
@@ -12228,6 +12256,20 @@ struct App {
             ImGui::SetNextItemWidth(440 * g_dpi);
             tx::InputTextMultiline("##clip_t2", &settings.clip_text_end, ImVec2(std::max(300 * g_dpi, ImGui::GetContentRegionAvail().x), 52 * g_dpi));
             if (ImGui::IsItemDeactivatedAfterEdit()) save_settings(settings, settings_path);
+            {  // 1.0.98 (atelier clip, point 9) : place du texte de fin et bandeau sombre, pour qu'il ne masque pas le personnage
+                int pos = settings.clip_end_pos == "1" ? 1 : 0;
+                ImGui::TextColored(P.muted, "%s", tr("Texte de fin :"));
+                ImGui::SameLine(field_x);
+                bool ch = ImGui::RadioButton(tr("au centre"), &pos, 0);
+                ImGui::SameLine();
+                ch |= ImGui::RadioButton(tr("en bas"), &pos, 1);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("En bas, à la place des paroles : le centre de l'image (souvent le personnage) reste visible."));
+                if (ch) { settings.clip_end_pos = pos ? "1" : "0"; save_settings(settings, settings_path); }
+                ImGui::SameLine();
+                bool box = settings.clip_end_box == "1";
+                if (ImGui::Checkbox(tr("fond sombre"), &box)) { settings.clip_end_box = box ? "1" : "0"; save_settings(settings, settings_path); }
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Bandeau noir semi-transparent derrière le texte de fin : lisible même sur une image claire."));
+            }
             muted_wrapped(tr("Exemples : « Rock Ballads Fr » au début ; « Abonnez-vous à la chaîne » à la fin (affiché pendant les 8 dernières secondes)."));
         }
         if (video_clip) muted_wrapped(tr("Fichiers « _Clip.mp4 » dans les mêmes dossiers YouTube / TikTok / IG. Paroles : fiche « paroles.txt » du morceau (modifiable) ; scénario et images dans le dossier « clip_scenes » du morceau. À lancer au repos."));
@@ -15391,6 +15433,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             t.height        = fmt == L"tiktok" || fmt == L"short" ? 1920 : fmt == L"ig" ? 1080 : 1080;
             if (fmt == L"short") t.width = 1080, t.short_seconds = _wgetenv(L"STUDIO_TEST_SHORT_SECONDS") ? _wtoi(_wgetenv(L"STUDIO_TEST_SHORT_SECONDS")) : 30;  // 1.0.74 : Short de 30 s sur le refrain
             t.karaoke       = _wgetenv(L"STUDIO_TEST_KARAOKE") != nullptr;  // 1.0.98
+            t.end_pos       = _wgetenv(L"STUDIO_TEST_END_POS") ? 1 : 0;      // 1.0.98 : texte de fin en bas
+            t.end_box       = _wgetenv(L"STUDIO_TEST_END_BOX") != nullptr;   // 1.0.98 : bandeau sombre
+            // 1.0.98 : texte de fin (sinon vide = rien dessiné) : STUDIO_TEST_END_TEXT, ou « Abonnez-vous » si END_POS / END_BOX est défini
+            if (const wchar_t * et = _wgetenv(L"STUDIO_TEST_END_TEXT")) t.text_end = narrow(et);
+            else if (_wgetenv(L"STUDIO_TEST_END_POS") || t.end_box) t.text_end = "Abonnez-vous";
             t.whisper_exe   = studio.paths().whisper;
             t.whisper_model = studio.paths().models_dir / "voix" / whisper_file().name;
             if (argc >= 7) {  // 6e paramètre : type de rendu (id de clip_styles) = scénario et images par scène
@@ -15406,6 +15453,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 if (const wchar_t * im = _wgetenv(L"STUDIO_TEST_IMAGE_MODEL")) eng.image_model = &local_image_model(narrow(im));  // essai : autre moteur
                 eng.offload     = App::image_offload(*eng.image_model);
                 if (const wchar_t * n = _wgetenv(L"STUDIO_TEST_CLIP_IMAGES")) eng.scene_count = _wtoi(n);  // essai : nombre d'images voulu
+                eng.same_seed   = _wgetenv(L"STUDIO_TEST_SAME_SEED") != nullptr;  // 1.0.98 : graine commune
                 for (const ClipStyle & cs : clip_styles())
                     if (narrow(argv[6]) == cs.id) { eng.style_id = cs.id; eng.style_prompt = cs.prompt; }
                 t.make_scenes = [eng](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out, std::string & note) {

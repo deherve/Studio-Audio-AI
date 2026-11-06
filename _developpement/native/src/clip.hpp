@@ -30,6 +30,10 @@ struct ClipTexts {
     std::string title, artist, album, start, end;  // start et end : plusieurs lignes possibles (retours à la ligne)
     double      duration = 0;
     bool        karaoke = false;  // 1.0.98 : paroles défilantes (lignes voisines atténuées, ligne chantée en couleur)
+    // 1.0.98 (atelier clip, point 9) : texte de fin au centre (0) ou en bas (1), à l'endroit des paroles ;
+    // end_box : bandeau sombre semi-transparent derrière le texte (lisible sur une image claire ou sur le personnage).
+    int         end_pos = 0;
+    bool        end_box = false;
 };
 std::string clip_ass(const std::vector<ClipLine> & lines, int width, int height, const ClipTexts & texts = ClipTexts());
 // Script de filtres ffmpeg (-filter_complex_script) : plans de caméra lents sur les images, fondus, vignette, sous-titres.
