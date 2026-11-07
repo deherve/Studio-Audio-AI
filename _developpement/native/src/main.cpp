@@ -41,6 +41,7 @@ using std::min;
 #include "score.hpp"
 #include "soundfont.hpp"  // 1.0.89
 #include "atelier.hpp"  // 1.0.91
+#include "helpview.hpp"  // 1.1.005 : aide intégrée (disposition B)
 #include "media.hpp"
 #include "setup.hpp"
 #include "gpumem.hpp"
@@ -263,14 +264,17 @@ static bool windows_light_theme() {
 // Thèmes graphiques : 0 = Minuit violet (par défaut ; suit le mode clair/sombre de Windows), puis des thèmes fixes.
 static int  g_theme        = 0;
 static bool g_system_light = false;
-static const char * THEME_NAMES[] = { N_("Minuit violet (par défaut)"), N_("Studio gris"), N_("Papier encre"), N_("Menthe clair") };
+// 1.1.002 : trois ambiances des maquettes (une couleur d'action, trois couleurs d'état, le reste en gris) : Nuit, Console, Clair.
+static const char * THEME_NAMES[] = { N_("Minuit violet (par défaut)"), N_("Studio gris"), N_("Papier encre"), N_("Menthe clair"),
+                                      N_("Nuit"), N_("Console"), N_("Clair") };
 static const char * THEME_HINTS[] = { N_("sombre violet (ou clair selon Windows)"), N_("gris neutre et dense, ambre"), N_("clair chaud, bleu encre, coins très arrondis"),
-                                      N_("clair frais, turquoise") };
-static const int    THEME_COUNT   = 4;
+                                      N_("clair frais, turquoise"), N_("sombre sobre, une seule couleur d'action (menthe)"),
+                                      N_("graphite chaud façon table de mixage, ambre"), N_("clair sobre pour le plein jour, bleu") };
+static const int    THEME_COUNT   = 7;
 
 // Un thème est dark ou light ; vrai si la fenêtre doit prendre la barre de titre sombre.
 static bool theme_is_dark(int theme, bool system_light) {
-    return theme == 1 || (theme == 0 && !system_light);
+    return theme == 1 || theme == 4 || theme == 5 || (theme == 0 && !system_light);
 }
 
 static void apply_theme(bool light, float dpi) {
@@ -287,6 +291,18 @@ static void apply_theme(bool light, float dpi) {
         P = { hex(0xeef6f3), hex(0xffffff), hex(0xf6fbf9), hex(0x14231e), hex(0x5a7068), hex(0xd5e6df),
               hex(0x0d9488), hex(0xffffff), hex(0xd6f1ec), hex(0xc2372f), hex(0x059669), hex(0xe5f1ed), hex(0xb45309),
               hex(0x2563eb), hex(0x6d5ce7), hex(0x0891b2), hex(0xd97706), hex(0xdb2777), hex(0xea580c), hex(0x15803d) };
+    } else if (theme == 4) {  // Nuit : sombre sobre ; couleurs des blocs adoucies pour que la menthe reste la seule couleur d'action
+        P = { hex(0x141519), hex(0x1b1d22), hex(0x202329), hex(0xe6e7eb), hex(0x8d92a0), hex(0x2c2f36),
+              hex(0x5fd6b8), hex(0x0d1f1a), hex(0x1d3a33), hex(0xff8a8a), hex(0x7fe3c9), hex(0x262930), hex(0xf4b860),
+              hex(0x8fa8c8), hex(0xa79fc9), hex(0x7cc7b5), hex(0xd9b779), hex(0xc99ab0), hex(0xd5a183), hex(0x8cc9a2) };
+    } else if (theme == 5) {  // Console : graphite chaud, ambre
+        P = { hex(0x1a1714), hex(0x221e1a), hex(0x28231e), hex(0xefe8df), hex(0xa39888), hex(0x3a332c),
+              hex(0xf2a541), hex(0x2a1700), hex(0x3b2a12), hex(0xff7b6b), hex(0x9bd17a), hex(0x2b2621), hex(0xf2a541),
+              hex(0x9fb3c8), hex(0xb7a6c9), hex(0x8fc4b3), hex(0xe0b46a), hex(0xd6a0a8), hex(0xe39a6a), hex(0x9bd17a) };
+    } else if (theme == 6) {  // Clair : plein jour, bleu
+        P = { hex(0xf5f6f8), hex(0xffffff), hex(0xfbfcfd), hex(0x1d2129), hex(0x5d6573), hex(0xd9dde3),
+              hex(0x2f7de1), hex(0xffffff), hex(0xe2edfb), hex(0xb42318), hex(0x1d7a52), hex(0xeef0f3), hex(0x9a5b00),
+              hex(0x3b6ea8), hex(0x6b5fa8), hex(0x2a8577), hex(0x9a6a12), hex(0xa8507a), hex(0xb0602a), hex(0x1d7a52) };
     } else if (light) {
         P = { hex(0xf3f1ee), hex(0xffffff), hex(0xfbfaf8), hex(0x1d1c1a), hex(0x6b6862), hex(0xe3e0da),
               hex(0x5b4bdb), hex(0xffffff), hex(0xece9fd), hex(0xc2372f), hex(0x1f8a4c), hex(0xf0eee9), hex(0xb45309),
@@ -300,6 +316,7 @@ static void apply_theme(bool light, float dpi) {
     float child_r = 12, frame_r = 8, popup_r = 10, tab_r = 7, pad_x = 10, pad_y = 6, item_y = 7;
     if (theme == 1) { child_r = 4; frame_r = 3; popup_r = 4; tab_r = 3; pad_x = 8; pad_y = 4; item_y = 5; }
     if (theme == 2) { child_r = 14; frame_r = 9; popup_r = 12; tab_r = 8; }
+    if (theme >= 4) { child_r = 8; frame_r = 6; popup_r = 8; tab_r = 5; }  // 1.1.002 : ambiances des maquettes
     ImGuiStyle & s = ImGui::GetStyle();
     s                    = ImGuiStyle();
     s.WindowRounding     = 0;
@@ -353,6 +370,21 @@ static void apply_theme(bool light, float dpi) {
     c[ImGuiCol_NavCursor]            = P.accent;
     c[ImGuiCol_ModalWindowDimBg]     = ImVec4(0, 0, 0, 0.5f);
     c[ImGuiCol_Separator]            = P.line;
+    // 1.1.003 : couleurs qu'ImGui laissait sombres dans les thèmes clairs (texte illisible) : barres de titre des fenêtres
+    // (Réglages, Albums…), en-têtes et bordures de tableaux, poignée de redimensionnement.
+    c[ImGuiCol_TitleBg]              = tint(P.panel, P.accent, 0.10f);
+    c[ImGuiCol_TitleBgActive]        = tint(P.panel, P.accent, 0.18f);
+    c[ImGuiCol_TitleBgCollapsed]     = P.panel;
+    c[ImGuiCol_MenuBarBg]            = P.panel;
+    c[ImGuiCol_TableHeaderBg]        = P.chip;
+    c[ImGuiCol_TableBorderStrong]    = P.line;
+    c[ImGuiCol_TableBorderLight]     = alpha(P.line, 0.6f);
+    c[ImGuiCol_TableRowBgAlt]        = alpha(P.chip, 0.5f);
+    c[ImGuiCol_ResizeGrip]           = alpha(P.accent, 0.20f);
+    c[ImGuiCol_ResizeGripHovered]    = alpha(P.accent, 0.50f);
+    c[ImGuiCol_ResizeGripActive]     = P.accent;
+    c[ImGuiCol_SeparatorHovered]     = alpha(P.accent, 0.6f);
+    c[ImGuiCol_SeparatorActive]      = P.accent;
 }
 
 // ---------------------------------------------------------------------------- Dégradé des jauges et barres de progression
@@ -808,6 +840,7 @@ struct Settings {
     int                 fade_seconds = 5;       // fondu de fin des morceaux coupés au plafond de durée (secondes)
     std::vector<std::string> collapsed;     // blocs du formulaire repliés
     int                 theme      = 0;         // thème graphique (voir THEME_NAMES)
+    int                 layout     = 0;         // 1.1.002 : disposition de l'écran principal : 0 actuelle, 1 A (rangée)
     int                 mark_style = 1;         // marques validé / à problème : 0 pouces, 1 coche et croix (défaut 1.0.31, livrable de Herve), 2 commutateur
     int                 card_mode  = 0;         // cartes de la bibliothèque : 0 détaillée, 1 compacte, 2 pochette
     int                 style_mode = 0;         // bloc Style : 0 classique, 1 pastilles, 2 constructeur
@@ -992,6 +1025,8 @@ static void parse_settings(Settings & s, yyjson_val * r) {
     }
     v = yyjson_obj_get(r, "theme");
     if (yyjson_is_int(v)) s.theme = std::clamp((int) yyjson_get_int(v), 0, THEME_COUNT - 1);
+    v = yyjson_obj_get(r, "layout");
+    if (yyjson_is_int(v)) s.layout = std::clamp((int) yyjson_get_int(v), 0, 2);
     v = yyjson_obj_get(r, "card_mode");
     if (yyjson_is_int(v)) s.card_mode = std::clamp((int) yyjson_get_int(v), 0, 3);
     v = yyjson_obj_get(r, "style_mode");
@@ -1173,6 +1208,7 @@ static void save_settings(const Settings & s, const fs::path & path) {
         for (const std::string & id : s.collapsed) yyjson_mut_arr_add_strcpy(doc, ca, id.c_str());
     }
     yyjson_mut_obj_add_int(doc, o, "theme", s.theme);
+    yyjson_mut_obj_add_int(doc, o, "layout", s.layout);
     yyjson_mut_obj_add_int(doc, o, "card_mode", s.card_mode);
     yyjson_mut_obj_add_int(doc, o, "style_mode", s.style_mode);
     yyjson_mut_obj_add_bool(doc, o, "analysis_auto", s.analysis_auto);
@@ -1426,7 +1462,9 @@ static std::map<std::string, int>   g_album_slots;  // clé d'album -> case de l
 static ImVec4 album_palette(int i) {
     static const float sv[3][2] = { { 0.62f, 0.96f }, { 0.88f, 0.82f }, { 0.42f, 1.00f } };
     ImVec4             c(0, 0, 0, 1);
-    ImGui::ColorConvertHSVtoRGB((float) ((i * 105) % 360) / 360.f, sv[i % 3][0], sv[i % 3][1], c.x, c.y, c.z);
+    // 1.1.003 : couleurs plus foncées sur les thèmes clairs (sinon le badge « Album » est presque illisible sur fond blanc)
+    const float v = theme_is_dark(g_theme, g_system_light) ? sv[i % 3][1] : 0.58f;
+    ImGui::ColorConvertHSVtoRGB((float) ((i * 105) % 360) / 360.f, sv[i % 3][0], v, c.x, c.y, c.z);
     return c;
 }
 
@@ -5850,9 +5888,15 @@ struct App {
                                     (f.auto_duration ? std::string(tr("durée auto")) : trf("%d s", f.duration)) + "  ·  " +
                                     (f.versions > 1 ? trf("%d versions", f.versions) : trf("%d version", f.versions));
         bool open = begin_section("sec_generation", tr("Génération"), P.amber, nullptr, summary_gen);
+        if (settings.layout == 0) draw_generate_buttons();  // dispositions A et B : en bas du panneau (draw_form)
+        draw_generation_options(open, lyrics);
+    }
 
-        // Boutons toujours visibles, sur une même ligne, même quand le bloc est replié.
-        // Pas de génération sans nom ni style (ni paroles pour une chanson).
+    // Boutons « Générer » et « Ajouter en pause », sur une même ligne, même quand le bloc Génération est replié.
+    // Pas de génération sans nom ni style (ni paroles pour une chanson).
+    void draw_generate_buttons() {
+        Form &        f      = form;
+        std::string & lyrics = f.instrumental ? f.lyrics_inst : f.lyrics_song;
         std::string missing;
         auto        need = [&](const char * what) { missing += (missing.empty() ? "" : ", ") + std::string(tr(what)); };
         if (trim(f.title).empty()) need(N_("nom du morceau"));
@@ -5875,7 +5919,10 @@ struct App {
         }
         ImGui::EndDisabled();
         if (!missing.empty()) muted_wrapped(trf("À renseigner pour lancer la génération : %s.", missing.c_str()));
+    }
 
+    void draw_generation_options(bool open, std::string & lyrics) {
+        Form & f = form;
         if (open) {
             static const char * engines[] = { N_("LoRA instrumentale"), N_("Modèle de base") };
             ImGui::Dummy(ImVec2(0, 3 * g_dpi));
@@ -6265,6 +6312,7 @@ struct App {
             }
             ImGui::EndTabBar();
         }
+        form_shown = shown;  // 1.1.003 : entrée du menu de la disposition B
         poll_plan();
         if (shown == 2) {
             ImGui::BeginChild("##score_body", ImVec2(0, 0), 0);
@@ -6274,6 +6322,17 @@ struct App {
             ImGui::BeginChild("##ai_body", ImVec2(0, 0), 0);
             draw_ai_tab();
             ImGui::EndChild();
+        } else if (settings.layout >= 1) {
+            // Dispositions A et B (1.1.002) : « Générer » reste en bas du panneau ; seul le formulaire défile au-dessus.
+            // Hauteur du pied mesurée à l'image précédente (bouton + éventuelle ligne « À renseigner… »).
+            static float foot_h = 60 * g_dpi;
+            ImGui::BeginChild("##form_body", ImVec2(0, -foot_h), 0);
+            draw_form_body();
+            ImGui::EndChild();
+            const float y0 = ImGui::GetCursorPosY();
+            ImGui::Separator();
+            draw_generate_buttons();
+            foot_h = ImGui::GetCursorPosY() - y0 + ImGui::GetStyle().ItemSpacing.y;
         } else {
             ImGui::BeginChild("##form_body", ImVec2(0, 0), 0);
             draw_form_body();
@@ -9116,6 +9175,8 @@ struct App {
             }
             ImGui::SameLine();
             if (danger_button(tr("Annuler"))) studio->cancel(s.id);
+        } else if (s.status == "done" && settings.layout >= 1) {
+            draw_song_actions_c(s);  // 1.1.002 : disposition A, carte rangée
         } else if (s.status == "done") {
             draw_player(s);
             Flow         flow;
@@ -9332,6 +9393,85 @@ struct App {
             if (ImGui::Selectable(tr("Modifier et renvoyer…"))) reuse(s);
             if (ImGui::Selectable(tr("Enregistrer comme style personnalisé…"), false, trim(s.style).empty() ? ImGuiSelectableFlags_Disabled : 0))
                 open_song_style_save(s);
+            ImGui::PushStyleColor(ImGuiCol_Text, P.danger);
+            if (ImGui::Selectable(tr("Supprimer…"))) pending_delete = s.id;
+            ImGui::PopStyleColor();
+            ImGui::EndPopup();
+        }
+    }
+
+    // 1.1.002 : carte rangée de la disposition A (proposition C de la revue 1.0.98) : lecture, puis 4 boutons et 3 menus.
+    // Chaque action des 14 boutons et du menu « Actions ▾ » de la carte actuelle se retrouve une seule fois.
+    void draw_song_actions_c(const Song & s) {
+        draw_player(s);
+        const bool  has_codes = cached_exists(song_folder(s.id) / "audio.json");
+        const std::string key = s.album.empty() ? std::string() : album_key(s.artist, s.album);
+        lyrics_button(s);
+        ImGui::SameLine();
+        if (soft_button(tr("Télécharger ▾"), P.green)) ImGui::OpenPopup("##c_dl");
+        ImGui::SameLine();
+        if (soft_button(tr("Refaire ▾"), P.violet)) ImGui::OpenPopup("##c_redo");
+        ImGui::SameLine();
+        if (soft_button(tr("Vidéos ▾"), P.teal)) ImGui::OpenPopup("##c_video");
+        ImGui::SameLine();
+        if (ImGui::SmallButton(tr("Plus ▾"))) ImGui::OpenPopup("##c_more");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Outils audio, partition, infos du morceau, suppression."));
+        if (ImGui::BeginPopup("##c_dl")) {
+            if (ImGui::Selectable(tr("↓ Exporter en FLAC"))) export_song(s, "flac");
+            if (ImGui::Selectable(tr("↓ Exporter en WAV"))) export_song(s, "wav");
+            if (ImGui::Selectable(tr("↓ Exporter en MP3"))) export_song(s, "mp3");
+            if (ImGui::Selectable(tr("Ouvrir le dossier"))) {
+                std::wstring arg = L"/select,\"" + (song_folder(s.id) / "audio.flac").wstring() + L"\"";
+                ShellExecuteW(nullptr, L"open", L"explorer.exe", arg.c_str(), nullptr, SW_SHOWNORMAL);
+            }
+            ImGui::EndPopup();
+        }
+        if (ImGui::BeginPopup("##c_redo")) {
+            if (ImGui::Selectable(tr("Nouvelle version (mêmes paroles)"), false, s.kind == "extend" ? ImGuiSelectableFlags_Disabled : 0)) recompose(s);
+            if (ImGui::Selectable(tr("Prolonger…"), false, (!has_codes || s.audio_seconds >= 340) ? ImGuiSelectableFlags_Disabled : 0)) {
+                extend_id      = s.id;
+                extend_title   = s.title + tr(" (suite)");
+                extend_seconds = 60;
+                extend_lyrics  = s.instrumental ? "[verse]\n[chorus]\n[outro]\n" : "[Verse]\n\n\n[Chorus]\n\n\n[Outro]\n";
+                open_extend    = true;
+            }
+            if (ImGui::Selectable(tr("Modifier et renvoyer…"))) reuse(s);
+            if (ImGui::Selectable(tr("Refaire le son (même composition)…"), false, has_codes ? 0 : ImGuiSelectableFlags_Disabled)) {
+                rerender_id   = s.id;
+                open_rerender = true;
+            }
+            if (ImGui::Selectable(tr("Enregistrer comme style personnalisé…"), false, trim(s.style).empty() ? ImGuiSelectableFlags_Disabled : 0))
+                open_song_style_save(s);
+            ImGui::EndPopup();
+        }
+        if (ImGui::BeginPopup("##c_video")) {
+            if (ImGui::Selectable(tr("Vidéo…"))) open_video_dialog({ s }, s.title, key);
+            if (ImGui::Selectable(tr("Clip animé…"))) open_video_dialog({ s }, s.title, key, true);
+            ImGui::EndPopup();
+        }
+        if (ImGui::BeginPopup("##c_more")) {
+            draw_tools_menu({ s }, display_title(s.title), false);  // mastering, paroles synchronisées, pistes, fiches…
+            ImGui::Separator();
+            const bool has_score = score_info(s).present;
+            if (ImGui::Selectable(tr("Voir la partition…"), false, has_score ? 0 : ImGuiSelectableFlags_Disabled)) {
+                score_view_id   = s.id;
+                open_score_view = true;
+            }
+            if (ImGui::Selectable(tr("Utiliser cette partition…"), false, has_score ? 0 : ImGuiSelectableFlags_Disabled)) use_song_score(s);
+            if (!has_score) {
+                fs::path   audio = playable_file(s.id);
+                const bool ok    = !audio.empty() && studio->can_transcribe() && !plan_busy() && !studio->local_active() && !ai_local_busy();
+                if (ImGui::Selectable(tr("Reconnaître sa partition…"), false, ok ? 0 : ImGuiSelectableFlags_Disabled)) start_recognize(audio, display_title(s.title));
+            }
+            ImGui::Separator();
+            if (ImGui::Selectable(tr("Modifier le titre, le groupe, l'album…"))) {
+                edit_id     = s.id;
+                edit_title  = s.title;
+                edit_artist = s.artist;
+                edit_album  = s.album;
+                edit_track  = s.track;
+                open_edit   = true;
+            }
             ImGui::PushStyleColor(ImGuiCol_Text, P.danger);
             if (ImGui::Selectable(tr("Supprimer…"))) pending_delete = s.id;
             ImGui::PopStyleColor();
@@ -10117,7 +10257,62 @@ struct App {
         help_answer = job->text;
         if (!job->error.empty()) help_error = tr(job->error.c_str());
     }
+    // 1.1.005 : page Aide de la disposition B : question à l'IA en haut, aide affichée dessous par le navigateur intégré.
+    std::wstring help_url(const std::string & anchor = std::string()) {
+        return L"https://aide.studio/" + help_page_path().filename().wstring() + (anchor.empty() ? std::wstring() : L"#" + widen(anchor));
+    }
+    bool help_focus = false;  // curseur dans le champ de question (« Question… »)
+    void draw_help_page() {
+        ImGui::AlignTextToFramePadding();
+        if (ImGui::Button("←")) helpview_back();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Page précédente"));
+        ImGui::SameLine();
+        if (ImGui::Button("→")) helpview_forward();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Page suivante"));
+        ImGui::SameLine();
+        if (ImGui::Button(tr("Sommaire"))) helpview_navigate(help_url());
+        ImGui::SameLine();
+        const bool busy = help_job && !help_job->finished;
+        const char * ask = tr("Demander à l'IA");
+        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize(ask).x - ImGui::GetStyle().FramePadding.x * 2 - ImGui::GetStyle().ItemSpacing.x);
+        if (help_focus) { ImGui::SetKeyboardFocusHere(); help_focus = false; }
+        if (tx::InputTextWithHint("##hq_page", tr("Ex. : comment faire un Short de 30 secondes ?"), &help_q, ImGuiInputTextFlags_EnterReturnsTrue) && !busy) start_help_question();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(busy || help_q.empty());
+        if (accent_button(ask, ImVec2(0, 0), &P.green)) start_help_question();
+        ImGui::EndDisabled();
+        if (busy) ImGui::TextColored(P.accent, "%s", help_job->stage == 0 ? tr("Chargement du modèle…") : tr("Réponse en cours…"));
+        if (!help_error.empty()) colored_wrapped(P.amber, help_error);
+        if (!help_answer.empty()) {
+            lyrics_box("##ha_page", help_answer, 110 * g_dpi);
+            if (!help_hits.empty() && !help_sections.empty()) {
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextColored(P.muted, "%s", tr("Rubriques :"));
+                for (int h : help_hits) {
+                    if (h >= (int) help_sections.size()) continue;
+                    ImGui::SameLine();
+                    ImGui::PushID(h);
+                    if (ImGui::SmallButton(help_sections[h].title.c_str())) helpview_navigate(help_url(help_sections[h].id));
+                    ImGui::PopID();
+                }
+            }
+        }
+        // Le navigateur (fenêtre Windows posée sur le Studio) occupe le reste de la page ; caché quand une fenêtre ou un menu du Studio
+        // s'ouvre, sinon il passerait par-dessus.
+        const ImVec2 p0 = ImGui::GetCursorScreenPos(), sz = ImGui::GetContentRegionAvail();
+        ImGui::Dummy(sz);
+        const ImVec2 org = ImGui::GetMainViewport()->Pos;  // coordonnées client de la fenêtre principale
+        RECT r{ (LONG) (p0.x - org.x), (LONG) (p0.y - org.y), (LONG) (p0.x - org.x + sz.x), (LONG) (p0.y - org.y + sz.y) };
+        if (!helpview_show(hwnd, r, app_resource_dir(L"aide").wstring(), (studio->paths().cache / L"webview2").wstring(), help_url())) {
+            ImGui::SetCursorScreenPos(p0);
+            muted_wrapped(tr("L'aide intégrée a besoin du moteur Microsoft Edge WebView2 (fourni avec Windows 10 et 11)."));
+            if (ImGui::Button(tr("Ouvrir l'aide dans le navigateur"))) ShellExecuteW(nullptr, L"open", help_page_path().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        helpview_set_visible(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
+    }
+
     void draw_help_question() {
+        if (open_helpq && settings.layout == 2) { open_helpq = false; b_page = 3; help_focus = true; return; }  // 1.1.005 : page Aide
         if (open_helpq) { ImGui::OpenPopup(tr("Aide interrogeable")); open_helpq = false; }
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         ImGui::SetNextWindowSize(ImVec2(760 * g_dpi, 0));
@@ -11239,12 +11434,27 @@ struct App {
         return true;
     }
 
+    bool queue_open = false;  // disposition A : bloc de la file déplié alors qu'elle est vide
     void draw_queue_bar(const std::vector<Song> & songs) {
         int running = 0, waiting = 0, held = 0;
         for (const Song & s : songs) {
             running += s.status == "running";
             waiting += s.waiting();
             held += s.status == "queued" && s.held;
+        }
+        // Disposition A (1.1.002) : file vide = une seule ligne ; « Options ▾ » déplie le bloc complet (fin de file, contrôle).
+        const bool empty = running + waiting + held == 0;
+        if (settings.layout >= 1 && empty && !queue_open) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(P.muted, "● %s", tr("File de génération vide"));
+            if (studio->gate_closed()) {
+                ImGui::SameLine(0, 12 * g_dpi);
+                ImGui::TextColored(P.orange, tr("● jeu en cours : file suspendue"));
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(tr("Options ▾"))) queue_open = true;
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Ce qu'il faut faire quand la file est terminée, contrôle de la tonalité et du tempo."));
+            return;
         }
         ImVec4 color = running ? P.accent : waiting ? P.blue : held ? P.amber : P.muted;
         ImGui::PushStyleColor(ImGuiCol_ChildBg, tint(P.panel, color, 0.07f));
@@ -11299,6 +11509,10 @@ struct App {
             bool ka = settings.key_check_auto == "1";  // 1.0.98
             if (ImGui::Checkbox(tr("Contrôler la tonalité et le tempo des morceaux à la fin"), &ka)) { settings.key_check_auto = ka ? "1" : "0"; save_settings(settings, settings_path); }
             if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("SheetSage2 réécoute chaque morceau de la session (≈ 1 min pour 3 min) : les morceaux qui dérivent de la partition ou du BPM demandé reçoivent un pouce rouge."));
+            if (settings.layout >= 1 && empty) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton(tr("Replier ▴"))) queue_open = false;
+            }
         }
         ImGui::EndChild();
         ImGui::PopStyleVar();
@@ -12626,6 +12840,12 @@ struct App {
     }
 
     void draw_albums_modal() {
+        if (open_albums && settings.layout == 2) {  // 1.1.005 : onglet Albums de la page Bibliothèque
+            open_albums = false;
+            b_page      = 1;
+            lib_tab     = 1;
+            lib_tab_request = 1;
+        }
         if (open_albums) {
             ImGui::OpenPopup(tr("Albums"));
             open_albums = false;
@@ -12635,6 +12855,13 @@ struct App {
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));  // 1.0.78 : reste centrée (Studio agrandi, rétabli)
         if (!ImGui::BeginPopupModal(tr("Albums"), nullptr, ImGuiWindowFlags_NoResize)) return;
         albums_drawn = true;
+        draw_albums_body(false);
+        ImGui::EndPopup();
+    }
+
+    // 1.1.005 : contenu de « Albums », dans la fenêtre (page = false) ou dans l'onglet Albums de la Bibliothèque (disposition B :
+    // la liste prend toute la hauteur ; la fenêtre « Créer des vidéos » et l'écran des pochettes sont dessinés au niveau principal).
+    void draw_albums_body(bool page) {
         std::vector<Song> all    = studio->snapshot();
         auto              albums = list_albums(all);
         muted_wrapped(tr("Un album regroupe les morceaux terminés ayant le même groupe et le même titre d'album (renseignés à l'import ou avec « Modifier »). La pochette (carrée) est intégrée aux fichiers exportés ; les images YouTube (16:9) et TikTok (9:16) servent aux vidéos."));
@@ -12681,7 +12908,7 @@ struct App {
             ask_missing_shorts(all, std::string(), tr("Toute la bibliothèque"));
         }
         draw_shorts_confirm();
-        ImGui::BeginChild("albums_list", ImVec2(0, 470 * g_dpi), ImGuiChildFlags_Borders);
+        ImGui::BeginChild("albums_list", ImVec2(0, page ? 0.f : 470 * g_dpi), ImGuiChildFlags_Borders);
         if (albums.empty()) {
             ImGui::Dummy(ImVec2(0, 20 * g_dpi));
             muted_wrapped(tr("Aucun album pour l'instant."));
@@ -12966,9 +13193,11 @@ struct App {
             ImGui::PopID();
         }
         ImGui::EndChild();
-        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
-        draw_video_modal();  // dans la portée de « Albums » : s'ouvre par-dessus au lieu de la fermer
-        draw_cover_splash();  // 1.0.37 : au-dessus de « Albums »
+        if (!page) {
+            if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+            draw_video_modal();  // dans la portée de « Albums » : s'ouvre par-dessus au lieu de la fermer
+            draw_cover_splash();  // 1.0.37 : au-dessus de « Albums »
+        }
         draw_rename_album_modal();  // 1.0.41
         draw_album_tool_modals();   // 1.0.46 : aperçu, toutes les pochettes, suppression
         // « Régénérer » (1.0.36) : remplacer une image existante seulement après confirmation
@@ -12989,7 +13218,6 @@ struct App {
             }
             ImGui::EndPopup();
         }
-        ImGui::EndPopup();
     }
 
     // Toute suppression définitive de fichier passe par ici (1.0.32) : refusée hors du dossier du programme, pour
@@ -13211,6 +13439,11 @@ struct App {
 
     // Ouvre la page d'aide (dossier « aide » à côté de l'application) dans le navigateur par défaut.
     void open_help() {
+        if (settings.layout == 2) {  // 1.1.005 : page Aide (navigateur intégré)
+            if (b_page == 3) helpview_navigate(help_url());
+            b_page = 3;
+            return;
+        }
         // Page d'aide de la langue courante (aide.<code>.html), sinon l'anglais, sinon le français (aide.html)
         fs::path     dir = app_resource_dir(L"aide");  // ressources\aide (1.0.30), sinon aide
         fs::path     page = dir / "aide.html";
@@ -13369,6 +13602,14 @@ struct App {
     ImVec4 card_color;
 
     void draw_settings_modal() {
+        if (settings.layout == 2) {  // 1.1.005 : page de droite
+            if (open_settings) {
+                open_settings = false;
+                models        = studio->paths().list_models();
+                b_page        = 2;
+            }
+            return;
+        }
         if (open_settings) {
             ImGui::OpenPopup(tr("Réglages"));
             open_settings = false;
@@ -13387,8 +13628,14 @@ struct App {
         }
         if (!ImGui::BeginPopupModal(tr("Réglages"), nullptr, ImGuiWindowFlags_NoCollapse)) return;
         settings_shown = true;
+        draw_settings_body(false);
+        ImGui::EndPopup();
+    }
 
-        static int cat = 0;
+    // 1.1.005 : contenu des Réglages, dans la fenêtre (page = false) ou dans la page de droite de la disposition B
+    // (catégories dans le menu de gauche, pas de bouton « Fermer »).
+    void draw_settings_body(bool page) {
+        int & cat = settings_cat;
         if (open_settings_cat >= 0) {  // bouton « Réglages › IA… » de l'onglet Composer avec l'IA
             cat               = open_settings_cat;
             open_settings_cat = -1;
@@ -13398,9 +13645,14 @@ struct App {
             const Cat cats[] = { { N_("Interface"), &P.accent }, { N_("Génération"), &P.teal }, { N_("Analyse et paroles"), &P.pink },
                                  { N_("LoRA"), &P.violet }, { N_("Système"), &P.blue }, { N_("Bibliothèque"), &P.danger },
                                  { N_("IA (paroles)"), &P.amber } };
-            const float foot   = ImGui::GetFrameHeight() + 12 * g_dpi;
+            const float foot   = page ? 0.f : ImGui::GetFrameHeight() + 12 * g_dpi;
             const bool  narrow = ImGui::GetContentRegionAvail().x < 820 * g_dpi;
-            if (narrow) {
+            if (page) {
+                ImGui::PushFont(g_header);
+                ImGui::TextUnformatted((std::string(tr("Réglages")) + "  ·  " + tr(cats[std::clamp(cat, 0, IM_ARRAYSIZE(cats) - 1)].label)).c_str());
+                ImGui::PopFont();
+                ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+            } else if (narrow) {
                 for (int i = 0; i < IM_ARRAYSIZE(cats); i++) {
                     if (i > 0) {
                         float w = ImGui::CalcTextSize(tr(cats[i].label)).x + ImGui::GetStyle().FramePadding.x * 2 + ImGui::GetStyle().ItemSpacing.x;
@@ -13479,9 +13731,7 @@ struct App {
                 if (ImGui::Selectable(tr(THEME_NAMES[i]), settings.theme == i)) {
                     settings.theme = i;
                     g_theme        = i;
-                    apply_theme(g_system_light, g_dpi);
-                    BOOL dark_title = theme_is_dark(g_theme, g_system_light);
-                    DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark_title, sizeof(dark_title));
+                    theme_pending  = true;  // 1.1.004 : appliqué au début de l'image suivante (voir frame)
                     save_settings(settings, settings_path);
                 }
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr(THEME_HINTS[i]));
@@ -13502,6 +13752,19 @@ struct App {
             ImGui::Dummy(ImVec2(IM_ARRAYSIZE(sw) * (sz + 3 * g_dpi), ImGui::GetFrameHeight()));
         }
         muted_wrapped(tr("Le thème par défaut suit le mode clair ou sombre de Windows ; les autres thèmes sont fixes. Le changement est immédiat."));
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        {   // 1.1.002 : disposition de l'écran principal (maquettes A et B de la revue 1.0.98)
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(P.muted, "%s", tr("Disposition"));
+            ImGui::SameLine();
+            if (ImGui::RadioButton(tr("Actuelle"), settings.layout == 0)) { settings.layout = 0; save_settings(settings, settings_path); }
+            ImGui::SameLine();
+            if (ImGui::RadioButton(tr("A : rangée"), settings.layout == 1)) { settings.layout = 1; save_settings(settings, settings_path); }
+            ImGui::SameLine();
+            if (ImGui::RadioButton(tr("B : menu à gauche"), settings.layout == 2)) { settings.layout = 2; save_settings(settings, settings_path); }  // 1.1.003
+            muted_wrapped(tr("A : bouton Générer toujours visible en bas du formulaire, file de génération repliée quand elle est vide, lecteur fixe en bas de la fenêtre, cartes avec 4 boutons et 3 menus (Télécharger, Refaire, Vidéos) au lieu de 14 boutons."));
+            muted_wrapped(tr("B : comme A, avec un menu à gauche ; la création et la bibliothèque occupent chacune toute la largeur."));
+        }
         ImGui::Dummy(ImVec2(0, 4 * g_dpi));
         ImGui::AlignTextToFramePadding();
         ImGui::TextColored(P.muted, tr("Marques des morceaux"));
@@ -13816,8 +14079,10 @@ struct App {
         }
         if (cat == 6) draw_ai_settings();
         ImGui::EndChild();  // contenu
-        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
-        if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        if (!page) {
+            ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+            if (ImGui::Button(tr("Fermer"))) ImGui::CloseCurrentPopup();
+        }
 
         // Confirmations (fenêtres au-dessus des Réglages)
         if (!pending_model_delete.empty() && !ImGui::IsPopupOpen(tr("Supprimer le modèle ?"))) ImGui::OpenPopup(tr("Supprimer le modèle ?"));
@@ -13941,9 +14206,10 @@ struct App {
             }
             ImGui::EndPopup();
         }
-        draw_pack_modals();  // export, import, suppression d'un pack : au-dessus des Réglages
-        draw_cover_splash();  // 1.0.37 : pochettes créées pendant que les Réglages sont ouverts
-        ImGui::EndPopup();
+        if (!page) {  // en page, dessinées au niveau principal (draw_modals)
+            draw_pack_modals();  // export, import, suppression d'un pack : au-dessus des Réglages
+            draw_cover_splash();  // 1.0.37 : pochettes créées pendant que les Réglages sont ouverts
+        }
     }
 
     // ------------------------------------------------------------------ Tri
@@ -14140,12 +14406,15 @@ struct App {
                 const std::string key = item.substr(0, eq), val = eq == std::string::npos ? std::string() : item.substr(eq + 1);
                 if (key == "filter") filter_text = val;
                 else if (key == "cards") settings.card_mode = atoi(val.c_str());
+                else if (key == "layout") settings.layout = std::clamp(atoi(val.c_str()), 0, 2);  // 1.1.002
+                else if (key == "page") b_page = std::clamp(atoi(val.c_str()), 0, 3);  // 1.1.003 : page de la disposition B (1.1.005 : 2 réglages, 3 aide)
+                else if (key == "libtab") lib_tab = lib_tab_request = std::clamp(atoi(val.c_str()), 0, 1);  // 1.1.005 : 1 = onglet Albums
                 else if (key == "marks") settings.mark_style = atoi(val.c_str());
                 else if (key == "style") settings.style_mode = atoi(val.c_str());
                 else if (key == "gauge") settings.gauge_style = atoi(val.c_str());
                 else if (key == "theme") {
                     settings.theme = g_theme = atoi(val.c_str());
-                    apply_theme(g_system_light, g_dpi);
+                    theme_pending  = true;
                 }
                 else if (key == "reglages") {
                     open_settings     = true;
@@ -14502,7 +14771,108 @@ struct App {
         tray_gauges_update(hwnd, settings.tray_gauges && IsIconic(hwnd), m, unseen_ready, tg, tc);
     }
 
+    // Disposition B (1.1.003) : menu de gauche. Pages : création (onglets Nouveau morceau / Composer avec l'IA / Partition)
+    // et bibliothèque ; Albums, Réglages et l'aide gardent leurs fenêtres.
+    int b_page     = 1;  // 0 création, 1 bibliothèque, 2 réglages, 3 aide (1.1.005)
+    int lib_tab    = 0;  // page bibliothèque : 0 morceaux, 1 albums (1.1.005)
+    int lib_tab_request = -1;  // onglet à sélectionner (menu de gauche, « Albums… »)
+    int settings_cat = 0;  // catégorie des Réglages (fenêtre ou page)
+    static constexpr const char * SET_CATS[] = { N_("Interface"), N_("Génération"), N_("Analyse et paroles"), N_("LoRA"), N_("Système"), N_("Bibliothèque"), N_("IA (paroles)") };
+    static constexpr int SET_CAT_COUNT = 7;
+    int form_shown = 0;  // onglet affiché par draw_form (0 Nouveau morceau, 1 Composer avec l'IA, 2 Partition)
+    void draw_nav(const std::vector<Song> & songs) {
+        int running = 0, waiting = 0;
+        for (const Song & s : songs) {
+            running += s.status == "running";
+            waiting += s.waiting();
+        }
+        const ImVec2 item(0, std::round(30 * g_dpi));
+        auto group = [&](const char * label) {
+            ImGui::Dummy(ImVec2(0, 6 * g_dpi));
+            ImGui::TextColored(P.muted, "%s", label);
+        };
+        auto entry = [&](const char * label, bool on) {
+            ImGui::PushStyleColor(ImGuiCol_Header, P.accent_soft);
+            const bool clicked = ImGui::Selectable(label, on, 0, item);
+            ImGui::PopStyleColor();
+            if (on) {  // trait de couleur à gauche de l'entrée choisie
+                const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+                ImGui::GetWindowDrawList()->AddRectFilled(a, ImVec2(a.x + 3 * g_dpi, b.y), ImGui::GetColorU32(P.accent));
+            }
+            return clicked;
+        };
+        auto go_form = [&](int tab) { b_page = 0; form_tab_request = tab; };
+        group(tr("Créer"));
+        if (entry(tr("Nouveau morceau"), b_page == 0 && form_shown == 0)) go_form(0);
+        if (entry(tr("Composer avec l'IA"), b_page == 0 && form_shown == 1)) go_form(1);
+        if (entry(tr("Partition"), b_page == 0 && form_shown == 2)) go_form(2);
+        group(tr("Bibliothèque"));
+        const std::string lib = trf("Morceaux (%d)", (int) songs.size());
+        if (entry(lib.c_str(), b_page == 1 && lib_tab == 0)) b_page = 1, lib_tab = 0, lib_tab_request = 0;
+        if (entry(tr("Albums"), b_page == 1 && lib_tab == 1)) b_page = 1, lib_tab = 1, lib_tab_request = 1;  // 1.1.005 : onglet de la page
+        if (running + waiting > 0) {
+            const std::string q = trf("File : %d en cours, %d en attente", running, waiting);
+            ImGui::TextColored(running ? P.accent : P.blue, "● %s", q.c_str());
+            if (ImGui::IsItemClicked()) b_page = 1, lib_tab = 0, lib_tab_request = 0;
+        }
+        group(tr("Aide et réglages"));
+        if (entry(tr("Réglages"), b_page == 2)) open_settings = true;  // 1.1.005 : page, catégories dessous
+        if (b_page == 2) {
+            ImGui::Indent(14 * g_dpi);
+            for (int i = 0; i < SET_CAT_COUNT; i++) {
+                ImGui::PushID(i);
+                if (entry(tr(SET_CATS[i]), settings_cat == i)) settings_cat = i;
+                ImGui::PopID();
+            }
+            ImGui::Unindent(14 * g_dpi);
+        }
+        if (entry(tr("Aide"), b_page == 3)) open_help();
+        if (entry(tr("Question…"), false)) open_helpq = true;
+    }
+
+    // Disposition A (1.1.002) : lecteur fixe en bas de la fenêtre, pour le morceau chargé dans le lecteur ; il reste visible
+    // quand on fait défiler la bibliothèque. Même commande que la carte (draw_player), plus « Paroles ».
+    void draw_fixed_player(const std::vector<Song> & songs, float height) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14 * g_dpi, 9 * g_dpi));
+        ImGui::BeginChild("player_bar", ImVec2(0, height), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const Song * cur = nullptr;
+        if (!player.id().empty())
+            for (const Song & s : songs)
+                if (s.id == player.id()) cur = &s;
+        if (!cur) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(P.muted, "%s", tr("Aucun morceau en lecture : « ▶ Lecture » sur une carte pour écouter."));
+        } else {
+            ImGui::AlignTextToFramePadding();
+            ImGui::PushFont(g_bold);
+            ImGui::TextUnformatted(ellipsize(display_title(cur->title), 240 * g_dpi).c_str());
+            ImGui::PopFont();
+            if (!cur->artist.empty()) {
+                ImGui::SameLine();
+                ImGui::TextColored(P.muted, "%s", ellipsize(cur->artist, 160 * g_dpi).c_str());
+            }
+            ImGui::SameLine(0, 14 * g_dpi);
+            ImGui::PushID("fixed_player");
+            lyrics_button(*cur);
+            ImGui::SameLine();
+            draw_player(*cur);
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar();
+    }
+
+    // 1.1.004 : changement de thème appliqué ici, hors de toute fenêtre. Appliqué au milieu d'une image (Réglages ouverts),
+    // les PopStyleColor en cours remettaient les anciennes couleurs (fonds sombres restés sur un thème clair).
+    bool theme_pending = false;
     void frame() {
+        if (theme_pending) {
+            theme_pending = false;
+            apply_theme(g_system_light, g_dpi);
+            BOOL dark_title = theme_is_dark(g_theme, g_system_light);
+            DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark_title, sizeof(dark_title));
+        }
         update_imports();  // packs .yue2pack à importer
         std::vector<Song> songs = studio->snapshot();
         static const bool test_shot_on = GetEnvironmentVariableW(L"STUDIO_TEST_SHOT", nullptr, 0) > 0;
@@ -14583,15 +14953,60 @@ struct App {
         float avail_w = ImGui::GetContentRegionAvail().x;
         float avail_h = ImGui::GetContentRegionAvail().y - (ImGui::GetTime() < toast_until ? ImGui::GetFrameHeightWithSpacing() : 0);
         float left_w  = std::floor(avail_w * 0.47f);
+        // Dispositions A et B (1.1.002, 1.1.003) : lecteur fixe en bas de la fenêtre
+        const float player_h = settings.layout >= 1 ? ImGui::GetFrameHeight() + 2 * 9 * g_dpi + ImGui::GetStyle().ItemSpacing.y : 0;
+        avail_h -= player_h;
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(14 * g_dpi, 12 * g_dpi));
-        ImGui::BeginChild("form", ImVec2(left_w, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
-        draw_form();
-        ImGui::EndChild();
-        ImGui::SameLine();
-        ImGui::BeginChild("library", ImVec2(0, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
-        draw_library(songs);
-        ImGui::EndChild();
+        // Disposition B : une action qui remplit le formulaire (« Modifier et renvoyer », « Utiliser cette partition »…) ouvre la page de création
+        if (settings.layout == 2 && (form_tab_request >= 0 || scroll_form_top)) b_page = 0;
+        if (settings.layout == 2) {
+            // Disposition B (1.1.003) : menu à gauche ; la page choisie (création ou bibliothèque) prend toute la largeur.
+            ImGui::BeginChild("nav", ImVec2(std::floor(210 * g_dpi), avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+            draw_nav(songs);
+            ImGui::EndChild();
+            ImGui::SameLine();
+            if (b_page == 0) {
+                ImGui::BeginChild("form", ImVec2(0, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+                draw_form();
+            } else if (b_page == 2) {  // 1.1.005 : Réglages en page
+                ImGui::BeginChild("settings_page", ImVec2(0, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+                draw_settings_body(true);
+            } else if (b_page == 3) {  // 1.1.005 : Aide en page
+                ImGui::BeginChild("help_page", ImVec2(0, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
+                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                draw_help_page();
+            } else {
+                ImGui::BeginChild("library", ImVec2(0, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+                // 1.1.005 : deux onglets, Morceaux et Albums (ex-fenêtre « Albums… »), chacun en pleine page
+                if (ImGui::BeginTabBar("##lib_tabs")) {
+                    const bool to0 = lib_tab_request == 0, to1 = lib_tab_request == 1;
+                    lib_tab_request = -1;
+                    if (ImGui::BeginTabItem((trf("Morceaux (%d)", (int) songs.size()) + "###lib_songs").c_str(), nullptr, to0 ? ImGuiTabItemFlags_SetSelected : 0)) {
+                        lib_tab = 0;
+                        ImGui::EndTabItem();
+                    }
+                    if (ImGui::BeginTabItem(tr("Albums"), nullptr, to1 ? ImGuiTabItemFlags_SetSelected : 0)) {
+                        lib_tab = 1;
+                        ImGui::EndTabItem();
+                    }
+                    ImGui::EndTabBar();
+                }
+                if (lib_tab == 1) draw_albums_body(true);
+                else draw_library(songs);
+            }
+            ImGui::EndChild();
+        } else {
+            ImGui::BeginChild("form", ImVec2(left_w, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+            draw_form();
+            ImGui::EndChild();
+            ImGui::SameLine();
+            ImGui::BeginChild("library", ImVec2(0, avail_h), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+            draw_library(songs);
+            ImGui::EndChild();
+        }
         ImGui::PopStyleVar();
+        if (settings.layout >= 1) draw_fixed_player(songs, player_h - ImGui::GetStyle().ItemSpacing.y);
+        if (settings.layout != 2 || b_page != 3) helpview_release();  // 1.1.005 : page Aide quittée : navigateur libéré (mémoire)
 
         if (ImGui::GetTime() < toast_until) {
             ImGui::AlignTextToFramePadding();

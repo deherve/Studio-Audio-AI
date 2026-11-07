@@ -26,6 +26,7 @@ add_executable(StudioYuE2 WIN32
     src/score.cpp
     src/soundfont.cpp
     src/atelier.cpp
+    src/helpview.cpp
     src/clip.cpp
     src/fiches.cpp
     src/setup.cpp

@@ -471,12 +471,22 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p><b>Each language is a file</b> in the <code>langues\</code> folder (<code>en.json</code>, <code>ja.json</code>…): a translator can fix a text by editing its file, or add a language by copying <code>_modele.json</code> (an added language appears at the next start). Missing texts of a language are shown in English, then in French. The “Open the languages folder” button opens this folder; the file <code>langues\LISEZMOI.md</code> details the rules (keep the <code>%d</code> / <code>%s</code> markers, line breaks, etc.).</p>
 <p>The window has a minimum width (1180 px) so that the longest texts (German, Portuguese…) do not overlap; when space runs out, buttons wrap to the next line.</p>
 <h3>Graphic theme</h3>
-<p>Four themes, with a palette preview; the change is immediate and remembered:</p>
+<p>Seven themes, with a palette preview; the change is immediate and remembered:</p>
 <ul>
 <li><b>Midnight violet</b> (default) — dark violet; follows Windows's light or dark mode.</li>
 <li><b>Studio gray</b> — dark, neutral, amber, denser (almost square corners).</li>
 <li><b>Paper and ink</b> — warm light, ink blue, very rounded corners.</li>
 <li><b>Light mint</b> — fresh light, turquoise.</li>
+<li><b>Night</b> (1.1.002) — sober dark: a single action colour (mint), the other colours softened.</li>
+<li><b>Console</b> (1.1.002) — warm graphite like a mixing desk, amber.</li>
+<li><b>Light</b> (1.1.002) — sober light for daytime, blue.</li>
+</ul>
+<h3>Screen layout</h3>
+<p>Below the theme, <b>Layout</b> chooses how the main screen is arranged:</p>
+<ul>
+<li><b>Current</b> (default) — the usual screen, unchanged.</li>
+<li><b>A: tidy</b> (1.1.002) — the “Generate” button always stays visible at the bottom of the form; the generation queue shrinks to one line when it is empty (“Options ▾” expands it); a fixed player at the bottom of the window shows the track being listened to; cards only keep “▶ Play”, “Lyrics” and three menus: <b>Download ▾</b> (FLAC, WAV, MP3, folder), <b>Redo ▾</b> (new version, extend, edit and resend, redo the sound, custom style), <b>Videos ▾</b> (video, animated clip), plus <b>More ▾</b> (audio tools, score, edit info, delete).</li>
+<li><b>B: menu on the left</b> (1.1.003) — like A, with a menu on the left: <i>Create</i> (New track, Compose with AI, Score), <i>Library</i> (Tracks, Albums…, queue status), <i>Help and settings</i>. The chosen page (creation or library) takes the full width; “Edit and resend” or “Use this score” open the creation page. Since 1.1.005, no more windows on top: <i>Albums</i> is a tab of the Library (next to Tracks), <i>Settings</i> are shown in the right-hand page (their categories unfold under “Settings” in the menu), and <i>Help</i> is shown in the right-hand page by the built-in browser, with the AI question at the top. The help browser is closed as soon as you leave the page (about 220 MB of memory given back).</li>
 </ul>
 <div class="grid">
 <figure><img src="img/en/theme_gris.jpg" alt="Studio gray theme"><figcaption>Studio gray</figcaption></figure>
@@ -666,6 +676,10 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">This help is updated with every added or modified feature. The French version (aide.html) is the reference; this English version follows it.</p>
 <table>
 <tr><th>Date</th><th>Change</th></tr>
+<tr><td>7 Nov 2026 (1.1.005)</td><td>Layout B: Albums as a tab of the Library, Settings and Help in the right-hand page (help shown by the built-in browser, without leaving the Studio).</td></tr>
+<tr><td>7 Nov 2026 (1.1.004)</td><td>Changing the theme in Settings: backgrounds that stayed dark after switching to a light theme (panels, left menu) now take the new colours.</td></tr>
+<tr><td>7 Nov 2026 (1.1.003)</td><td>Layout <b>B: menu on the left</b> (Settings › Interface). Light themes (Paper and ink, Light mint, Light): window title bars (Settings, Albums…) and table headers no longer stay dark, so their text is readable again.</td></tr>
+<tr><td>7 Nov 2026 (1.1.002)</td><td>Settings › Interface: three new themes (Night, Console, Light) and a choice of <b>layout</b>: “Current” or “A: tidy” (Generate button always visible, queue collapsed when empty, fixed player at the bottom, cards with 4 buttons and 3 menus).</td></tr>
 <tr><td>6 Nov 2026 (1.1.001)</td><td>New version numbering: 1.1.001 follows 1.0.100 (the last number goes from 001 to 100, then the second one goes up). Internal clean-up with no visible change: the small text and file helpers, copied up to 6 times in the program, now exist only once.</td></tr>
 <tr><td>6 Nov 2026 (1.0.100)</td><td><b>Graphics card token</b>: only one heavy job at a time on the card (music generation, local text AI, local images for covers and videos). The others wait their turn instead of sharing the video memory; a queued track then shows “Waiting for the graphics card (local text AI)” and starts on its own when the card is free. Pausing the track stops the wait.</td></tr>
 <tr><td>6 Nov 2026 (1.0.99)</td><td>Reliability, no visible change: the programs started by the Studio (engine, ffmpeg, Whisper, text AI, images) go through a <b>single launcher</b>. They stop with the Studio, even after a crash (no text AI or image server left in memory); the text AI and the image server use a <b>free port</b> (two Studios or two AIs no longer get in each other's way); the music engine's FP32 settings can no longer go missing when an AI starts at the same moment; a task can no longer stay stuck “running” because another program started at the same instant.</td></tr>

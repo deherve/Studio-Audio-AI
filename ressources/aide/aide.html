@@ -470,12 +470,22 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p><b>Chaque langue est un fichier</b> du dossier <code>langues\</code> (<code>en.json</code>, <code>ja.json</code>…) : un traducteur peut corriger un texte en éditant son fichier, ou ajouter une langue en copiant <code>_modele.json</code> (une langue ajoutée apparaît au prochain démarrage). Les textes manquants d'une langue s'affichent en anglais, puis en français. Le bouton « Ouvrir le dossier des langues » ouvre ce dossier ; le fichier <code>langues\LISEZMOI.md</code> détaille les règles (marques <code>%d</code> / <code>%s</code> à conserver, sauts de ligne, etc.).</p>
 <p>La fenêtre a une largeur minimale (1180 px) pour que les textes les plus longs (allemand, portugais…) ne se chevauchent pas ; quand la place manque, les boutons passent à la ligne suivante.</p>
 <h3>Thème graphique</h3>
-<p>Quatre thèmes, avec un aperçu de la palette ; le changement est immédiat et mémorisé :</p>
+<p>Sept thèmes, avec un aperçu de la palette ; le changement est immédiat et mémorisé :</p>
 <ul>
 <li><b>Minuit violet</b> (par défaut) — sombre violet ; suit le mode clair ou sombre de Windows.</li>
 <li><b>Studio gris</b> — sombre, neutre, ambre, plus dense (coins presque droits).</li>
 <li><b>Papier encre</b> — clair chaud, bleu encre, coins très arrondis.</li>
 <li><b>Menthe clair</b> — clair frais, turquoise.</li>
+<li><b>Nuit</b> (1.1.002) — sombre sobre : une seule couleur d'action (menthe), les autres couleurs adoucies.</li>
+<li><b>Console</b> (1.1.002) — graphite chaud façon table de mixage, ambre.</li>
+<li><b>Clair</b> (1.1.002) — clair sobre pour le plein jour, bleu.</li>
+</ul>
+<h3>Disposition de l'écran</h3>
+<p>Sous le thème, <b>Disposition</b> choisit l'agencement de l'écran principal :</p>
+<ul>
+<li><b>Actuelle</b> (par défaut) — l'écran habituel, inchangé.</li>
+<li><b>A : rangée</b> (1.1.002) — le bouton « Générer » reste toujours visible en bas du formulaire ; la file de génération se réduit à une ligne quand elle est vide (« Options ▾ » la déplie) ; un lecteur fixe en bas de la fenêtre montre le morceau en cours d'écoute ; les cartes n'ont plus que « ▶ Lecture », « Paroles » et trois menus : <b>Télécharger ▾</b> (FLAC, WAV, MP3, dossier), <b>Refaire ▾</b> (nouvelle version, prolonger, modifier et renvoyer, refaire le son, style perso), <b>Vidéos ▾</b> (vidéo, clip animé), plus <b>Plus ▾</b> (outils audio, partition, modifier les infos, supprimer).</li>
+<li><b>B : menu à gauche</b> (1.1.003) — comme A, avec un menu à gauche : <i>Créer</i> (Nouveau morceau, Composer avec l'IA, Partition), <i>Bibliothèque</i> (Morceaux, Albums…, état de la file), <i>Aide et réglages</i>. La page choisie (création ou bibliothèque) occupe toute la largeur ; « Modifier et renvoyer » ou « Utiliser cette partition » ouvrent la page de création. Depuis la 1.1.005, plus de fenêtres par-dessus : <i>Albums</i> est un onglet de la Bibliothèque (à côté de Morceaux), les <i>Réglages</i> s'affichent dans la page de droite (leurs catégories se déplient sous « Réglages » dans le menu), et l'<i>Aide</i> s'affiche dans la page de droite par le navigateur intégré, avec la question à l'IA en haut. Le navigateur de l'aide est fermé dès qu'on quitte la page (environ 220 Mo de mémoire rendus).</li>
 </ul>
 <div class="grid">
 <figure><img src="img/theme_gris.jpg" alt="Thème Studio gris"><figcaption>Studio gris</figcaption></figure>
@@ -664,6 +674,10 @@ figcaption{font-size:13px;color:var(--muted);margin-top:5px}
 <p class="updated">Cette aide est mise à jour à chaque ajout ou modification de fonctionnalité.</p>
 <table>
 <tr><th>Date</th><th>Évolution</th></tr>
+<tr><td>7 nov. 2026 (1.1.005)</td><td>Disposition B : Albums en onglet de la Bibliothèque, Réglages et Aide dans la page de droite (aide affichée par le navigateur intégré, sans quitter le Studio).</td></tr>
+<tr><td>7 nov. 2026 (1.1.004)</td><td>Changement de thème dans les Réglages : les fonds restés sombres après le passage à un thème clair (panneaux, menu de gauche) prennent bien les nouvelles couleurs.</td></tr>
+<tr><td>7 nov. 2026 (1.1.003)</td><td>Disposition <b>B : menu à gauche</b> (Réglages › Interface). Thèmes clairs (Papier encre, Menthe clair, Clair) : la barre de titre des fenêtres (Réglages, Albums…) et les en-têtes des tableaux ne restent plus sombres, leurs textes redeviennent lisibles.</td></tr>
+<tr><td>7 nov. 2026 (1.1.002)</td><td>Réglages › Interface : trois nouveaux thèmes (Nuit, Console, Clair) et le choix de la <b>disposition</b> : « Actuelle » ou « A : rangée » (bouton Générer toujours visible, file repliée quand elle est vide, lecteur fixe en bas, cartes avec 4 boutons et 3 menus).</td></tr>
 <tr><td>6 nov. 2026 (1.1.001)</td><td>Nouvelle numérotation des versions : 1.1.001 suit la 1.0.100 (le dernier nombre va de 001 à 100, puis le deuxième augmente). Ménage interne sans changement visible : les petites fonctions de texte et de fichier, recopiées jusqu'à 6 fois dans le programme, n'existent plus qu'en un seul exemplaire.</td></tr>
 <tr><td>6 nov. 2026 (1.0.100)</td><td><b>Jeton carte graphique</b> : un seul gros travail à la fois sur la carte (génération de musique, IA de texte locale, images locales des pochettes et des clips). Les autres attendent leur tour au lieu de se partager la mémoire vidéo ; un morceau en file affiche alors « En attente de la carte graphique (IA de texte locale) » et démarre tout seul quand elle se libère. Mettre le morceau en pause arrête l'attente.</td></tr>
 <tr><td>6 nov. 2026 (1.0.99)</td><td>Fiabilité, sans changement visible : les programmes lancés par le Studio (moteur, ffmpeg, Whisper, IA de texte, images) passent par un <b>lanceur unique</b>. Ils s'arrêtent avec le Studio, même après un plantage (plus d'IA ou de serveur d'images resté en mémoire) ; l'IA de texte et le serveur d'images prennent un <b>port libre</b> (deux Studios ou deux IA ne se gênent plus) ; les réglages FP32 du moteur de musique ne peuvent plus manquer quand une IA démarre au même moment ; une tâche ne peut plus rester bloquée « en cours » parce qu'un autre programme a démarré au même instant.</td></tr>
