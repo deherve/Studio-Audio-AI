@@ -6290,11 +6290,7 @@ struct App {
         // Les deux onglets doivent être déclarés à chaque image AVANT de fermer la barre : ImGui n'affiche que les
         // onglets déclarés (1.0.27 : en 1.0.26, la barre était fermée dès le premier onglet, le second n'apparaissait pas).
         int shown = 0;  // 0 Nouveau morceau, 1 Composer avec l'IA, 2 Partition (1.0.88)
-        poll_ai_job();  // la réponse de l'IA est reçue même si l'on est revenu sur « Nouveau morceau »
-        poll_ai_album();  // morceaux d'album mis en file au fur et à mesure (1.0.33)
-        poll_covers();    // pochettes générées rangées au fur et à mesure (1.0.36)
-        poll_descriptions();
-        auto_album_step();  // essai automatique (variable STUDIO_TEST_AUTO_ALBUM) ; sans effet sinon
+        // 1.1.008 : suivis des travaux de fond déplacés dans update_jobs (appelé à chaque image, quelle que soit la page)
         if (ImGui::BeginTabBar("##form_tabs")) {
             bool to_form = form_tab_request == 0, to_ai = form_tab_request == 1, to_score = form_tab_request == 2;
             form_tab_request = -1;
@@ -6313,7 +6309,6 @@ struct App {
             ImGui::EndTabBar();
         }
         form_shown = shown;  // 1.1.003 : entrée du menu de la disposition B
-        poll_plan();
         if (shown == 2) {
             ImGui::BeginChild("##score_body", ImVec2(0, 0), 0);
             draw_score_tab();
@@ -11929,6 +11924,15 @@ struct App {
     }
 
     void update_jobs() {
+        // 1.1.008 : avant, dans draw_form seulement : en disposition B, sur une autre page que « Nouveau morceau », une pochette
+        // finie n'était jamais rangée (fenêtre « Création des pochettes » bloquée, « Annuler » sans effet), et de même pour
+        // les réponses de l'IA, les albums écrits par l'IA, les descriptions et la partition préparée.
+        poll_ai_job();      // la réponse de l'IA est reçue même si l'on est revenu sur « Nouveau morceau »
+        poll_ai_album();    // morceaux d'album mis en file au fur et à mesure (1.0.33)
+        poll_covers();      // pochettes générées rangées au fur et à mesure (1.0.36)
+        poll_descriptions();
+        auto_album_step();  // essai automatique (variable STUDIO_TEST_AUTO_ALBUM) ; sans effet sinon
+        poll_plan();        // partition préparée (onglet « Partition »)
         update_quality();
         poll_trials();       // 1.0.97
         poll_publication();
@@ -14556,6 +14560,17 @@ struct App {
                 }
                 else if (key == "redopick") redo_pick_test = atoi(val.c_str());
                 else if (key == "dups") start_dups(studio->snapshot());  // 1.1.007 : recherche de doublons (fenêtre à la fin)
+                else if (key == "cover") {  // 1.1.008 : pochette 1:1 de l'album « Groupe|Album » (moteur des Réglages)
+                    const size_t bar = val.find('|');
+                    if (bar != std::string::npos) {
+                        const std::string artist = val.substr(0, bar), album = val.substr(bar + 1), k = album_key(artist, album);
+                        CoverTask task;
+                        task.slot   = k;
+                        task.prompt = album_image_prompt(k, album, artist);
+                        task.label  = album;
+                        start_covers({ task });
+                    }
+                }
                 else if (key == "marks") settings.mark_style = atoi(val.c_str());
                 else if (key == "style") settings.style_mode = atoi(val.c_str());
                 else if (key == "gauge") settings.gauge_style = atoi(val.c_str());
