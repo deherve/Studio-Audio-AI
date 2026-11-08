@@ -98,3 +98,19 @@ bool analyze_audio(const fs::path & audio, const fs::path & models_dir, const fs
                    const fs::path & sheetsage_gguf, const fs::path & whisper_exe, const fs::path & whisper_model,
                    const std::function<void(const std::string &, float)> & progress,
                    std::atomic<bool> & cancel, AudioAnalysis & out);
+
+// 1.1.007 : empreinte d'un morceau pour la recherche de doublons.
+//  - sound : « son » global (moyenne et écart des embeddings Discogs-EffNet, 2 x 1280 valeurs, normé) ; vide si le modèle
+//    d'analyse n'est pas installé ;
+//  - chroma : mélodie et accords, 12 valeurs (hauteurs de Do à Si) par demi-seconde, centrées et normées.
+struct AudioPrint {
+    std::vector<float> sound;
+    std::vector<float> chroma;
+};
+bool audio_print(const fs::path & audio, const fs::path & models_dir, const fs::path & work_dir, std::atomic<bool> & cancel, AudioPrint & out);
+bool save_print(const fs::path & file, const AudioPrint & p);
+bool load_print(const fs::path & file, AudioPrint & p);
+// Ressemblance du son (cosinus, -1 à 1) ; -2 si une empreinte manque.
+float print_sound_similarity(const AudioPrint & a, const AudioPrint & b);
+// Ressemblance de la mélodie (0 à 1) : meilleur passage commun d'au moins 20 s, toutes tonalités et tous décalages essayés.
+float print_melody_similarity(const AudioPrint & a, const AudioPrint & b);

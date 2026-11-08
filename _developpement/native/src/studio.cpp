@@ -420,6 +420,7 @@ static bool load_song(const fs::path & meta, Song & song) {
     song.source_file       = get_str(r, "source_file");
     song.long_rest         = get_str(r, "long_rest");  // 1.0.48
     song.long_join         = get_num(r, "long_join", 0);
+    song.redo_from         = get_num(r, "redo_from", 0);  // 1.1.006
     song.model             = get_str(r, "model");
     song.solver            = get_str(r, "solver");
     song.lyrics_lang          = get_str(r, "lyrics_lang");
@@ -547,6 +548,7 @@ void Studio::save(const Song & s) {
     yyjson_mut_obj_add_strcpy(doc, o, "source_file", s.source_file.c_str());
     if (!s.long_rest.empty()) yyjson_mut_obj_add_strcpy(doc, o, "long_rest", s.long_rest.c_str());  // 1.0.48
     if (s.long_join > 0) yyjson_mut_obj_add_real(doc, o, "long_join", s.long_join);
+    if (s.redo_from > 0) yyjson_mut_obj_add_real(doc, o, "redo_from", s.redo_from);  // 1.1.006
     yyjson_mut_obj_add_strcpy(doc, o, "artist", s.artist.c_str());
     yyjson_mut_obj_add_strcpy(doc, o, "album", s.album.c_str());
     yyjson_mut_obj_add_strcpy(doc, o, "track", s.track.c_str());
@@ -1915,6 +1917,37 @@ void Studio::worker() {
     }
 }
 
+// 1.1.006 : « Refaire à partir d'ici » : nouveau morceau qui garde le début du parent (ses codes jusqu'à « from » secondes) et
+// recompose la suite avec les paroles données (complètes : le moteur se repère d'après le début gardé), même style, même modèle, même LoRA.
+// La durée visée reste celle du parent ; le moteur peut conclure plus tôt ou plus tard (durée automatique, plafond 6 min).
+std::string Studio::submit_redo(const Song & p, double from, const std::string & lyrics) {
+    Song n;
+    n.kind              = "extend";
+    n.parent            = p.id;
+    n.parent_title      = p.title;
+    n.redo_from         = std::max(1.0, from);
+    const int m         = (int) n.redo_from / 60, s = (int) n.redo_from % 60;
+    n.title             = p.title + trf(" (refait depuis %d:%02d)", m, s);
+    n.style             = p.style;
+    n.lyrics            = lyrics;
+    n.instrumental      = p.instrumental;
+    n.instrumental_lora = p.instrumental_lora;
+    n.adapters          = p.adapters;
+    n.negative_style    = p.negative_style;
+    n.negative_scale    = p.negative_scale;
+    n.fade_seconds      = p.fade_seconds;
+    n.model             = p.model;
+    n.solver            = p.solver;
+    n.artist            = p.artist;
+    n.album             = p.album;
+    n.track             = p.track;
+    n.auto_duration     = true;
+    n.lm_seed = n.seed  = -1;
+    n.duration          = 360;
+    n.expected_seconds  = std::min(360.0, std::max(p.audio_seconds, n.redo_from + 20));
+    return submit(n);
+}
+
 // 1.0.48 : partie 1 d'un morceau long terminée → la partie 2 est mise en file, à la suite de ses 25 dernières secondes.
 void Studio::launch_long_part(const std::string & id) {
     Song p;
@@ -2071,7 +2104,7 @@ void Studio::generate(const std::string & id) {
                 if (alone > 0) source_seconds = alone;
             }
             put_num(doc, o, "source_start", song.long_join > 0 ? std::max(0.0, source_seconds - song.long_join) : 0);
-            put_num(doc, o, "source_end", -1);
+            put_num(doc, o, "source_end", song.redo_from > 0 ? song.redo_from : -1);  // 1.1.006 : refaire à partir d'ici
             put_str(doc, o, "style", song.style);
             yyjson_mut_obj_remove_key(o, "negative_style");  // le rejeu du parent peut en contenir un
             yyjson_mut_obj_remove_key(o, "cfg_scale");
@@ -2173,7 +2206,7 @@ void Studio::generate(const std::string & id) {
         double t = 6;  // chargement du modèle
         if (run.has_score) t += 1100 / run.model.score_rate;
         if (run.has_semantic) {
-            double from = song.kind == "extend" && has_parent ? parent.audio_seconds * 25 : 0;
+            double from = song.kind == "extend" && has_parent ? (song.redo_from > 0 ? song.redo_from : parent.audio_seconds) * 25 : 0;
             t += std::max(0.0, run.expected_frames - from) / run.model.sem_rate;
         }
         return t + remaining_after_semantic(run, run.expected_frames);

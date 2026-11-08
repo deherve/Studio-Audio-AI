@@ -126,6 +126,8 @@ void write_descriptions(const std::vector<Song> & songs, const std::string & lan
 void start_master(const std::shared_ptr<Job> & job, std::vector<Song> songs, double lufs, double tp, bool mp3);
 // Paroles synchronisÃ©es : Whisper mot par mot, calage sur le texte, <morceau>\paroles.lrc et paroles.srt.
 void start_lrc(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path whisper_exe, fs::path whisper_model);
+// 1.1.006 : lignes d'un paroles.lrc (début de chaque ligne ; fin = début de la suivante).
+std::vector<ClipLine> read_lrc(const fs::path & file, double seconds);
 // Livret d'album : livret.html puis livret.pdf (Edge sans fenÃªtre) dans dest ; songs = morceaux dans l'ordre des pistes.
 void start_booklet(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::string artist, std::string album, fs::path cover, fs::path dest);
 // Export pour un logiciel de musique : audio (master s'il existe) nommÃ© Â« Titre - 120 BPM - Em Â», partition .abc, paroles, stems.
@@ -137,8 +139,11 @@ void write_publication(const std::vector<Song> & songs, const std::string & lang
 struct DupPair {
     std::string a, b, label_a, label_b, why;
     double      tokens = 0, lyrics = 0;
+    double      sound = 0, melody = 0;  // 1.1.007 : empreinte audio (son global, mélodie) ; son -2 / mélodie -1 = pas d'empreinte
 };
-void start_duplicates(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::shared_ptr<std::vector<DupPair>> found, fs::path report);
+// 1.1.007 : analysis_models = dossier du modèle d'analyse (empreinte du son) ; empreintes gardées dans <morceau>\empreinte.bin.
+void start_duplicates(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::shared_ptr<std::vector<DupPair>> found, fs::path report,
+                      fs::path analysis_models = fs::path());
 // Meilleur essai : contrÃ´le rapide (durÃ©e, silences) de plusieurs essais d'un mÃªme morceau ; renvoie l'indice du meilleur et les dÃ©fauts de chacun.
 int best_trial(const std::vector<Song> & trials, std::vector<std::string> & problems);
 // SÃ©paration des pistes (voix, batterie, basse, autres) : <morceau>\stems\*.wav, avec demucs.cpp (exe + modÃ¨le).

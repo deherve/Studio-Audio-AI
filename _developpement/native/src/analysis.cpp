@@ -849,3 +849,211 @@ std::string suggested_lyrics(const AudioAnalysis & a) {
     }
     return out;
 }
+
+// ====================================================================== 1.1.007 : empreinte pour la recherche de doublons
+namespace {
+constexpr int PRINT_N = 4096, PRINT_HOP = 2000, PRINT_GROUP = 8;  // fenêtre 0,256 s, pas 0,125 s, 8 pas = 1 s par valeur de chroma
+
+void fft_inplace(std::vector<std::complex<float>> & a) {  // radix 2, taille puissance de 2
+    const size_t n = a.size();
+    for (size_t i = 1, j = 0; i < n; i++) {
+        size_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(a[i], a[j]);
+    }
+    for (size_t len = 2; len <= n; len <<= 1) {
+        const double ang = -2 * M_PI / (double) len;
+        const std::complex<float> wl((float) std::cos(ang), (float) std::sin(ang));
+        for (size_t i = 0; i < n; i += len) {
+            std::complex<float> w(1.f, 0.f);
+            for (size_t k = 0; k < len / 2; k++) {
+                const std::complex<float> u = a[i + k], v = a[i + k + len / 2] * w;
+                a[i + k] = u + v;
+                a[i + k + len / 2] = u - v;
+                w *= wl;
+            }
+        }
+    }
+}
+
+void normalize(std::vector<float> & v, size_t from, size_t count) {  // centré, norme 1 (zéros si silence)
+    double mean = 0;
+    for (size_t k = 0; k < count; k++) mean += v[from + k];
+    mean /= (double) count;
+    double norm = 0;
+    for (size_t k = 0; k < count; k++) { v[from + k] -= (float) mean; norm += (double) v[from + k] * v[from + k]; }
+    norm = std::sqrt(norm);
+    for (size_t k = 0; k < count; k++) v[from + k] = norm > 1e-6 ? (float) (v[from + k] / norm) : 0.f;
+}
+}  // namespace
+
+bool audio_print(const fs::path & audio, const fs::path & models_dir, const fs::path & work_dir, std::atomic<bool> & cancel, AudioPrint & out) {
+    out = AudioPrint();
+    try {
+        std::error_code ec;
+        fs::create_directories(work_dir, ec);
+        const fs::path raw = work_dir / "empreinte.f32";
+        fs::remove(raw, ec);
+        const std::wstring ff = ffmpeg_exe() + L" -v error -y -i " + quote_arg(audio.wstring()) + L" -vn -ac 1 -ar 16000 -f f32le " + quote_arg(raw.wstring());
+        if (run_command(ff, nullptr) != 0 || !fs::exists(raw, ec)) return false;
+        std::vector<float> y;
+        {
+            std::ifstream in(raw, std::ios::binary);
+            in.seekg(0, std::ios::end);
+            const size_t n = (size_t) in.tellg() / sizeof(float);
+            in.seekg(0);
+            y.resize(n);
+            in.read((char *) y.data(), (std::streamsize) (n * sizeof(float)));
+        }
+        fs::remove(raw, ec);
+        if (y.size() < (size_t) SR * 10 || cancel) return false;
+
+        // Chroma : énergie de chaque note (55 Hz à 2 kHz) ramenée aux 12 hauteurs, moyennée par seconde.
+        {
+            std::vector<int> pc(PRINT_N / 2 + 1, -1);
+            for (int k = 1; k <= PRINT_N / 2; k++) {
+                const double f = (double) k * SR / PRINT_N;
+                if (f < 55 || f > 2000) continue;
+                const int midi = (int) std::lround(12.0 * std::log2(f / 440.0) + 69.0);
+                pc[k] = ((midi % 12) + 12) % 12;
+            }
+            std::vector<float> win(PRINT_N);
+            for (int i = 0; i < PRINT_N; i++) win[i] = (float) (0.5 - 0.5 * std::cos(2.0 * M_PI * i / (PRINT_N - 1)));
+            std::vector<std::complex<float>> buf(PRINT_N);
+            std::vector<float> acc(12, 0.f);
+            int in_group = 0;
+            for (size_t start = 0; start + PRINT_N <= y.size(); start += PRINT_HOP) {
+                for (int i = 0; i < PRINT_N; i++) buf[i] = std::complex<float>(y[start + i] * win[i], 0.f);
+                fft_inplace(buf);
+                for (int k = 1; k <= PRINT_N / 2; k++)
+                    if (pc[k] >= 0) acc[pc[k]] += std::abs(buf[k]);
+                if (++in_group == PRINT_GROUP) {
+                    const size_t at = out.chroma.size();
+                    for (int c = 0; c < 12; c++) out.chroma.push_back(std::log1p(acc[c]));
+                    normalize(out.chroma, at, 12);
+                    std::fill(acc.begin(), acc.end(), 0.f);
+                    in_group = 0;
+                }
+                if (cancel) return false;
+            }
+        }
+
+        // Son global : embeddings Discogs-EffNet (comme l'analyse), moyenne et écart de chaque dimension.
+        if (fs::exists(models_dir / L"discogs-effnet-bsdynamic-1.onnx", ec)) {
+            int nfr = 0;
+            std::vector<float> mel = mel_spectrogram(y, nfr);
+            y.clear();
+            y.shrink_to_fit();
+            std::vector<int> starts;
+            for (int s = 0; s + PATCH <= nfr; s += PATCH_HOP) starts.push_back(s);
+            if (!starts.empty()) {
+                static Ort::Env     env(ORT_LOGGING_LEVEL_ERROR, "empreinte");
+                Ort::SessionOptions so;
+                so.SetIntraOpNumThreads(4);
+                so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+                Ort::Session            eff(env, (models_dir / L"discogs-effnet-bsdynamic-1.onnx").c_str(), so);
+                Ort::MemoryInfo         mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+                Ort::AllocatedStringPtr in_name = eff.GetInputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
+                Ort::AllocatedStringPtr out0    = eff.GetOutputNameAllocated(0, Ort::AllocatorWithDefaultOptions());
+                Ort::AllocatedStringPtr out1    = eff.GetOutputNameAllocated(1, Ort::AllocatorWithDefaultOptions());
+                const char *            in_names[]  = { in_name.get() };
+                const char *            out_names[] = { out0.get(), out1.get() };
+                std::vector<double>     sum(EMB, 0.0), sq(EMB, 0.0);
+                const int               batch = 16;
+                for (size_t b0 = 0; b0 < starts.size(); b0 += batch) {
+                    if (cancel) return false;
+                    const int          n = (int) std::min<size_t>(batch, starts.size() - b0);
+                    std::vector<float> in((size_t) n * PATCH * BANDS);
+                    for (int i = 0; i < n; i++)
+                        std::copy(mel.begin() + (size_t) starts[b0 + i] * BANDS, mel.begin() + (size_t) (starts[b0 + i] + PATCH) * BANDS, in.begin() + (size_t) i * PATCH * BANDS);
+                    int64_t       shape[3] = { n, PATCH, BANDS };
+                    Ort::Value    tensor   = Ort::Value::CreateTensor<float>(mem, in.data(), in.size(), shape, 3);
+                    auto          res      = eff.Run(Ort::RunOptions{ nullptr }, in_names, &tensor, 1, out_names, 2);
+                    const float * e_ptr    = res[1].GetTensorData<float>();
+                    for (int i = 0; i < n; i++)
+                        for (int k = 0; k < EMB; k++) { const double v = e_ptr[(size_t) i * EMB + k]; sum[k] += v; sq[k] += v * v; }
+                }
+                const double cnt = (double) starts.size();
+                out.sound.resize(2 * EMB);
+                for (int k = 0; k < EMB; k++) {
+                    const double m = sum[k] / cnt;
+                    out.sound[k]       = (float) m;
+                    out.sound[EMB + k] = (float) std::sqrt(std::max(0.0, sq[k] / cnt - m * m));
+                }
+            }
+        }
+        return !out.chroma.empty();
+    } catch (...) {
+        return false;
+    }
+}
+
+bool save_print(const fs::path & file, const AudioPrint & p) {
+    std::ofstream o(file, std::ios::binary | std::ios::trunc);
+    if (!o) return false;
+    const uint32_t head[3] = { 0x31505341u /* « ASP1 » */, (uint32_t) p.sound.size(), (uint32_t) p.chroma.size() };
+    o.write((const char *) head, sizeof(head));
+    o.write((const char *) p.sound.data(), (std::streamsize) (p.sound.size() * sizeof(float)));
+    o.write((const char *) p.chroma.data(), (std::streamsize) (p.chroma.size() * sizeof(float)));
+    return (bool) o;
+}
+
+bool load_print(const fs::path & file, AudioPrint & p) {
+    std::ifstream in(file, std::ios::binary);
+    uint32_t      head[3] = {};
+    if (!in.read((char *) head, sizeof(head)) || head[0] != 0x31505341u || head[1] > 100000 || head[2] > 10000000) return false;
+    p.sound.resize(head[1]);
+    p.chroma.resize(head[2]);
+    in.read((char *) p.sound.data(), (std::streamsize) (p.sound.size() * sizeof(float)));
+    in.read((char *) p.chroma.data(), (std::streamsize) (p.chroma.size() * sizeof(float)));
+    return (bool) in && !p.chroma.empty();
+}
+
+float print_sound_similarity(const AudioPrint & a, const AudioPrint & b) {
+    if (a.sound.empty() || a.sound.size() != b.sound.size()) return -2.f;
+    double ab = 0, aa = 0, bb = 0;
+    for (size_t k = 0; k < a.sound.size(); k++) { ab += (double) a.sound[k] * b.sound[k]; aa += (double) a.sound[k] * a.sound[k]; bb += (double) b.sound[k] * b.sound[k]; }
+    return aa > 0 && bb > 0 ? (float) (ab / std::sqrt(aa * bb)) : -2.f;
+}
+
+float print_melody_similarity(const AudioPrint & a, const AudioPrint & b) {
+    const int na = (int) a.chroma.size() / 12, nb = (int) b.chroma.size() / 12, W = 20;  // passage commun d'au moins 20 s
+    if (na < W || nb < W) return 0.f;
+    // Tonalités essayées : les 2 transpositions qui accordent le mieux les profils moyens (un morceau transposé reste trouvé).
+    std::vector<double> pa(12, 0.0), pb(12, 0.0);
+    for (int i = 0; i < na; i++) for (int c = 0; c < 12; c++) pa[c] += a.chroma[(size_t) i * 12 + c];
+    for (int j = 0; j < nb; j++) for (int c = 0; c < 12; c++) pb[c] += b.chroma[(size_t) j * 12 + c];
+    std::vector<std::pair<double, int>> tr;
+    for (int t = 0; t < 12; t++) {
+        double s = 0;
+        for (int c = 0; c < 12; c++) s += pa[c] * pb[(c + t) % 12];
+        tr.push_back({ s, t });
+    }
+    std::sort(tr.rbegin(), tr.rend());
+    float best = 0.f;
+    std::vector<float> sim((size_t) na * nb);
+    for (int r = 0; r < 2; r++) {
+        const int t = tr[r].second;
+        for (int i = 0; i < na; i++)
+            for (int j = 0; j < nb; j++) {
+                const float * x = &a.chroma[(size_t) i * 12];
+                const float * y = &b.chroma[(size_t) j * 12];
+                float d = 0;
+                for (int c = 0; c < 12; c++) d += x[c] * y[(c + t) % 12];
+                sim[(size_t) i * nb + j] = d;
+            }
+        // Chaque diagonale (décalage dans le temps) : meilleure moyenne sur W secondes consécutives.
+        for (int lag = -(na - W); lag <= nb - W; lag++) {
+            const int i0 = std::max(0, -lag), i1 = std::min(na, nb - lag);
+            if (i1 - i0 < W) continue;
+            double run = 0;
+            for (int i = i0; i < i1; i++) {
+                run += sim[(size_t) i * nb + i + lag];
+                if (i - i0 >= W) run -= sim[(size_t) (i - W) * nb + (i - W) + lag];
+                if (i - i0 >= W - 1) best = std::max(best, (float) (run / W));
+            }
+        }
+    }
+    return std::clamp(best, 0.f, 1.f);
+}

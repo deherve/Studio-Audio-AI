@@ -9119,7 +9119,7 @@ struct App {
             }
         }
         if (s.kind == "rerender") tag(tr("Re-rendu"), P.violet);
-        if (s.kind == "extend") tag(tr("Suite"), P.violet);
+        if (s.kind == "extend") tag(s.redo_from > 0 ? tr("Partie refaite") : tr("Suite"), P.violet);
         if (s.kind == "cover") tag(tr("Reprise"), P.pink);
         if (s.truncated) tag(tr("Fondu de fin"), P.amber);
         if (!s.album.empty()) {  // 1.0.37 : badge de l'album (clic = filtre)
@@ -9135,6 +9135,7 @@ struct App {
         }
         if (s.kind != "new" && !s.parent_title.empty()) {
             muted_wrapped(s.kind == "rerender" ? trf("Re-rendu de « %s »", s.parent_title.c_str())
+                          : s.kind == "extend" && s.redo_from > 0 ? trf("Refait à partir de %d:%02d de « %s »", (int) s.redo_from / 60, (int) s.redo_from % 60, s.parent_title.c_str())
                           : s.kind == "extend" ? trf("Suite de « %s »", s.parent_title.c_str())
                                                : trf("Reprise de « %s »", s.parent_title.c_str()));
         }
@@ -9361,6 +9362,7 @@ struct App {
             }
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                 ImGui::SetTooltip("%s", tr("Même composition, nouvelle synthèse audio (timbre et mixage différents)."));
+            if (ImGui::Selectable(tr("Refaire à partir d'ici…"), false, has_codes ? 0 : ImGuiSelectableFlags_Disabled)) ask_redo(s);  // 1.1.006
             {  // 1.0.87
                 const bool has_score = score_info(s).present;
                 if (ImGui::Selectable(tr("Voir la partition…"), false, has_score ? 0 : ImGuiSelectableFlags_Disabled)) {
@@ -9440,6 +9442,9 @@ struct App {
                 rerender_id   = s.id;
                 open_rerender = true;
             }
+            if (ImGui::Selectable(tr("Refaire à partir d'ici…"), false, has_codes ? 0 : ImGuiSelectableFlags_Disabled)) ask_redo(s);  // 1.1.006
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", tr("Garde le début du morceau et recompose tout ce qui suit la section choisie (nouveau morceau)."));
             if (ImGui::Selectable(tr("Enregistrer comme style personnalisé…"), false, trim(s.style).empty() ? ImGuiSelectableFlags_Disabled : 0))
                 open_song_style_save(s);
             ImGui::EndPopup();
@@ -9975,7 +9980,7 @@ struct App {
         dup_found = std::make_shared<std::vector<DupPair>>();
         dup_shown = false;
         dup_job   = new_job(tr("Doublons — toute la bibliothèque"));
-        start_duplicates(dup_job, all, dup_found, studio->paths().library / L"doublons.txt");
+        start_duplicates(dup_job, all, dup_found, studio->paths().library / L"doublons.txt", analysis_dir());
         notify(tr("Recherche de doublons lancée."));
     }
     void draw_dup_modal() {
@@ -9986,9 +9991,9 @@ struct App {
         if (!ImGui::BeginPopupModal(tr("Doublons"), nullptr, ImGuiWindowFlags_NoResize)) return;
         std::vector<DupPair> found;
         if (dup_found && dup_job) { std::lock_guard<std::mutex> lock(dup_job->mutex); found = *dup_found; }
-        if (found.empty()) muted_wrapped(tr("Aucun couple de morceaux trop proches : les compositions et les paroles sont toutes différentes."));
+        if (found.empty()) muted_wrapped(tr("Aucun couple de morceaux trop proches : compositions, paroles, sons et mélodies sont tous différents."));
         else {
-            muted_wrapped(tr("Couples dont la composition (jetons du modèle) ou les paroles se ressemblent beaucoup. Un clic sur un titre le cherche dans la bibliothèque ; rapport complet : « doublons.txt »."));
+            muted_wrapped(tr("Couples dont la composition (jetons du modèle), les paroles, le son ou la mélodie (empreinte audio) se ressemblent beaucoup. Un clic sur un titre le cherche dans la bibliothèque ; rapport complet : « doublons.txt »."));
             if (ImGui::BeginChild("##dups", ImVec2(0, 340 * g_dpi), ImGuiChildFlags_Borders)) {
                 int n = 0;
                 for (const DupPair & d : found) {
@@ -9999,6 +10004,10 @@ struct App {
                     ImGui::SameLine();
                     if (ImGui::Selectable(d.label_b.c_str(), false, 0, ImVec2(ImGui::GetContentRegionAvail().x * 0.75f, 0))) { filter_text = d.label_b; ImGui::CloseCurrentPopup(); }
                     ImGui::TextColored(P.muted, "   %s — %d %% %s, %d %% %s", d.why.c_str(), (int) (d.tokens * 100), tr("composition"), (int) (d.lyrics * 100), tr("paroles"));
+                    if (d.sound > -1.5 || d.melody >= 0) {  // 1.1.007 : empreinte audio
+                        ImGui::SameLine(0, 0);
+                        ImGui::TextColored(P.muted, ", %d %% %s, %d %% %s", (int) (std::max(0.0, d.sound) * 100), tr("son"), (int) (std::max(0.0, d.melody) * 100), tr("mélodie"));
+                    }
                     ImGui::PopID();
                 }
             }
@@ -11002,6 +11011,137 @@ struct App {
     }
     // Petit bouton « Paroles » des cartes : ouvre la fenêtre ci-dessus.
     float lyrics_button_width() const { return ImGui::CalcTextSize(tr("Paroles")).x + 2 * ImGui::GetStyle().FramePadding.x; }
+    // ====================================================================== 1.1.006 : refaire à partir d'ici
+    // Le début du morceau est gardé (codes du moteur jusqu'au point choisi), tout ce qui suit est recomposé. Pour une chanson,
+    // le point est le début d'une section, calé par les paroles synchronisées (paroles.lrc, Whisper) ; pour un instrumental,
+    // une seconde choisie au curseur. Les paroles données au moteur sont celles des sections à partir de la partie refaite.
+    struct RedoSection {
+        std::string name;   // nom de la section, avec son numéro d'ordre (« Chorus 2 »)
+        double      start;  // début de sa première ligne chantée (s)
+        int         line;   // indice de cette ligne parmi les lignes chantées
+    };
+    static std::string redo_lyrics_text(const Song & s) {  // même texte que celui des paroles synchronisées
+        std::string text = s.lyrics;
+        std::ifstream pf(song_folder(s.id) / L"paroles.txt", std::ios::binary);
+        if (pf) text.assign((std::istreambuf_iterator<char>(pf)), std::istreambuf_iterator<char>());
+        return text;
+    }
+    // Sections chantées et leur début ; vide si le morceau n'a pas de paroles synchronisées qui correspondent à ses paroles.
+    static std::vector<RedoSection> redo_sections(const Song & s) {
+        std::vector<RedoSection> out;
+        const std::vector<ClipLine> lines = clip_lyrics_lines(redo_lyrics_text(s));
+        const std::vector<ClipLine> lrc   = read_lrc(song_folder(s.id) / L"paroles.lrc", s.audio_seconds);
+        if (lines.empty() || lrc.size() != lines.size()) return out;
+        std::map<std::string, int> seen;
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (i > 0 && lines[i].section == lines[i - 1].section) continue;
+            const int n = ++seen[lower(lines[i].section)];
+            out.push_back({ lines[i].section + (n > 1 ? " " + std::to_string(n) : std::string()), lrc[i].start, (int) i });
+        }
+        return out;
+    }
+    // Paroles à partir de la section de la ligne chantée « line » (balise de section comprise, sections vides suivantes comprises).
+    static std::string redo_lyrics_from(const std::string & text, int line) {
+        std::vector<std::string> rows;
+        for (size_t i = 0; i <= text.size();) {
+            size_t e = text.find('\n', i);
+            rows.push_back(text.substr(i, e == std::string::npos ? std::string::npos : e - i));
+            if (e == std::string::npos) break;
+            i = e + 1;
+        }
+        int sung = -1, tag = -1;
+        for (int r = 0; r < (int) rows.size(); r++) {
+            const std::string t = trim(rows[r]);
+            if (t.empty()) continue;
+            if (t.front() == '[' && t.back() == ']') { tag = r; continue; }
+            if (++sung == line) {
+                std::string out;
+                for (int k = tag >= 0 ? tag : r; k < (int) rows.size(); k++) out += rows[k] + "\n";
+                return trim(out);
+            }
+        }
+        return text;
+    }
+    std::string redo_id;            // morceau à refaire (fenêtre ouverte)
+    bool        open_redo = false;
+    int         redo_pick = -1;     // section choisie
+    int         redo_pick_test = -1;  // essai (STUDIO_TEST_SHOT « redopick ») : section choisie à l'ouverture
+    float       redo_seconds = 30;  // instrumental : point choisi au curseur
+    std::shared_ptr<Job> redo_lrc_job;  // paroles synchronisées en cours pour ce morceau
+    // Point de reprise : 1 s avant la première ligne chantée de la section (la mesure qui l'amène est refaite aussi).
+    static double redo_cut(double section_start) { return std::max(2.0, section_start - 1.0); }
+    void draw_redo_modal() {
+        const char * title = tr("Refaire à partir d'ici");
+        if (open_redo) { ImGui::OpenPopup(title); open_redo = false; redo_pick = redo_pick_test; }
+        ImGui::SetNextWindowSize(ImVec2(640 * g_dpi, 0));
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_NoResize)) return;
+        Song s;
+        for (const Song & x : studio->snapshot())
+            if (x.id == redo_id) s = x;
+        if (s.id.empty()) { ImGui::CloseCurrentPopup(); ImGui::EndPopup(); return; }
+        ImGui::PushFont(g_bold);
+        ImGui::TextUnformatted(display_title(s.title).c_str());
+        ImGui::PopFont();
+        muted_wrapped(tr("Le début du morceau est gardé tel quel ; le moteur recompose tout ce qui suit le point choisi (même style, mêmes réglages). Le résultat est un nouveau morceau : l'original ne change pas."));
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        double from = -1;
+        std::string lyrics;
+        if (s.instrumental) {
+            ImGui::TextColored(P.muted, "%s", tr("Refaire à partir de :"));
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            redo_seconds = std::clamp(redo_seconds, 2.f, std::max(3.f, (float) s.audio_seconds - 5.f));
+            ImGui::SliderFloat("##redo_s", &redo_seconds, 2.f, std::max(3.f, (float) s.audio_seconds - 5.f), "%.0f s");
+            ImGui::TextColored(P.muted, "%s", trf("soit %d:%02d sur %s", (int) redo_seconds / 60, (int) redo_seconds % 60, fmt_time(s.audio_seconds).c_str()).c_str());
+            from   = redo_seconds;
+            lyrics = s.lyrics;  // structure seule : le moteur la suit à partir du point
+        } else {
+            const bool busy = redo_lrc_job && redo_lrc_job->state == 0;
+            if (redo_lrc_job && redo_lrc_job->state != 0) redo_lrc_job.reset();
+            const std::vector<RedoSection> secs = busy ? std::vector<RedoSection>() : redo_sections(s);
+            if (busy) {
+                ImGui::TextColored(P.accent, "%s", tr("Calage des paroles sur le chant (Whisper)…"));
+            } else if (secs.empty()) {
+                colored_wrapped(P.amber, tr("Pour choisir une section, les paroles doivent être calées sur le chant (fichier paroles.lrc, environ 30 s)."));
+                if (soft_button(tr("Caler les paroles"), P.teal)) {
+                    redo_lrc_job = std::make_shared<Job>();
+                    start_lrc(redo_lrc_job, { s }, studio->paths().whisper, studio->paths().models_dir / "voix" / whisper_file().name);
+                }
+            } else {
+                ImGui::TextColored(P.muted, "%s", tr("Refaire à partir de la section :"));
+                ImGui::BeginChild("##redo_secs", ImVec2(0, std::min(260.f * g_dpi, (secs.size() + 0.5f) * ImGui::GetFrameHeightWithSpacing())), ImGuiChildFlags_Borders);
+                for (int i = 1; i < (int) secs.size(); i++) {  // la première section ne se refait pas : ce serait un nouveau morceau
+                    const std::string label = trf("%s  —  %d:%02d", secs[i].name.c_str(), (int) secs[i].start / 60, (int) secs[i].start % 60);
+                    if (ImGui::Selectable(label.c_str(), redo_pick == i)) redo_pick = i;
+                }
+                ImGui::EndChild();
+                if (redo_pick > 0 && redo_pick < (int) secs.size()) {
+                    from   = redo_cut(secs[redo_pick].start);
+                    lyrics = redo_lyrics_from(redo_lyrics_text(s), secs[redo_pick].line);
+                    ImGui::TextColored(P.muted, "%s", tr("Paroles chantées à partir de ce point :"));
+                    std::string shown = lyrics;
+                    lyrics_box("##redo_lyr", shown, 140 * g_dpi);
+                }
+            }
+        }
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        if (ImGui::Button(tr("Annuler"))) ImGui::CloseCurrentPopup();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(from <= 0);
+        if (accent_button(tr("Refaire"), ImVec2(0, 0), &P.violet)) {
+            studio->submit_redo(s, from, s.instrumental ? lyrics : redo_lyrics_text(s));  // paroles complètes (essai du 8/11)
+            notify(trf("« %s » : nouvelle version à partir de %d:%02d ajoutée à la file.", display_title(s.title).c_str(), (int) from / 60, (int) from % 60));
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::EndPopup();
+    }
+    void ask_redo(const Song & s) {
+        redo_id      = s.id;
+        open_redo    = true;
+        redo_seconds = (float) std::max(2.0, s.audio_seconds / 2);
+    }
+
     void lyrics_button(const Song & s) {
         if (ImGui::SmallButton(tr("Paroles"))) { lyrics_view_id = s.id; open_lyrics_view = true; }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Affiche les paroles et la structure du morceau, à sélectionner et copier."));
@@ -14272,6 +14412,7 @@ struct App {
         draw_startup_issues();  // 1.0.81
         draw_score_view();      // 1.0.87
         draw_lyrics_view();     // 1.0.95
+        draw_redo_modal();      // 1.1.006
         draw_master_modal();    // 1.0.97
         draw_pub_modal();
         draw_dup_modal();
@@ -14409,6 +14550,12 @@ struct App {
                 else if (key == "layout") settings.layout = std::clamp(atoi(val.c_str()), 0, 2);  // 1.1.002
                 else if (key == "page") b_page = std::clamp(atoi(val.c_str()), 0, 3);  // 1.1.003 : page de la disposition B (1.1.005 : 2 réglages, 3 aide)
                 else if (key == "libtab") lib_tab = lib_tab_request = std::clamp(atoi(val.c_str()), 0, 1);  // 1.1.005 : 1 = onglet Albums
+                else if (key == "redo") {  // 1.1.006 : fenêtre « Refaire à partir d'ici » du morceau de ce titre, section n° redopick
+                    for (const Song & sg : studio->snapshot())
+                        if (sg.title == val) ask_redo(sg);
+                }
+                else if (key == "redopick") redo_pick_test = atoi(val.c_str());
+                else if (key == "dups") start_dups(studio->snapshot());  // 1.1.007 : recherche de doublons (fenêtre à la fin)
                 else if (key == "marks") settings.mark_style = atoi(val.c_str());
                 else if (key == "style") settings.style_mode = atoi(val.c_str());
                 else if (key == "gauge") settings.gauge_style = atoi(val.c_str());
@@ -15638,6 +15785,64 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             studio.shutdown();
             return 0;
         }
+        // Essai (1.1.007) : « --dup-test sortie.txt » : recherche de doublons sur toute la bibliothèque (empreintes calculées si
+        // besoin), temps et rapport recopiés ; STUDIO_TEST_DUP_ALL = tous les couples avec leurs scores (réglage des seuils).
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--dup-test") {
+            auto t0    = std::chrono::steady_clock::now();
+            auto job   = app.new_job("doublons");
+            auto found = std::make_shared<std::vector<DupPair>>();
+            const fs::path rep = app_temp_dir() / L"doublons_test.txt";
+            start_duplicates(job, studio.snapshot(), found, rep, app.analysis_dir());
+            while (job->state == 0) Sleep(300);
+            if (FILE * f = _wfopen(argv[2], L"wb")) {
+                fprintf(f, "etat=%d secondes=%.1f couples=%d\n%s\n", (int) job->state, std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(),
+                        (int) found->size(), read_text(rep).c_str());
+                fclose(f);
+            }
+            studio.shutdown();
+            return 0;
+        }
+        // Essai (1.1.006) : « --redo-test "Titre" <n> sortie.txt » : refait le morceau à partir de sa section n (1 = la 2e section
+        // chantée) ; cale d'abord les paroles (paroles.lrc) s'il le faut ; compte rendu : sections, paroles données, résultat.
+        if (argv && argc >= 5 && std::wstring(argv[1]) == L"--redo-test") {
+            Song found;
+            for (const Song & x : studio.snapshot())
+                if (x.status == "done" && x.title == narrow(argv[2])) found = x;
+            FILE * f = _wfopen(argv[4], L"wb");
+            if (!f) return 1;
+            if (found.id.empty()) { fprintf(f, "morceau introuvable\n"); fclose(f); return 1; }
+            if (App::redo_sections(found).empty() && !found.instrumental) {
+                auto job = std::make_shared<Job>();
+                start_lrc(job, { found }, studio.paths().whisper, studio.paths().models_dir / "voix" / whisper_file().name);
+                while (job->state == 0) Sleep(500);
+            }
+            const auto secs = App::redo_sections(found);
+            for (size_t i = 0; i < secs.size(); i++) fprintf(f, "section %d : %s  %.1f s  (ligne %d)\n", (int) i, secs[i].name.c_str(), secs[i].start, secs[i].line);
+            const int n = _wtoi(argv[3]);
+            if (n < 1 || n >= (int) secs.size()) { fprintf(f, "section %d absente\n", n); fclose(f); return 1; }
+            const double      from   = App::redo_cut(secs[n].start);
+            // Paroles complètes : le moteur se repère dans les paroles d'après le début gardé (essai du 8/11 : avec les seules sections
+            // refaites, il n'a pas chanté le Bridge). STUDIO_TEST_REDO_PART = l'ancien essai, sections à partir de la reprise seulement.
+            const std::string lyrics = getenv("STUDIO_TEST_REDO_PART") ? App::redo_lyrics_from(App::redo_lyrics_text(found), secs[n].line) : App::redo_lyrics_text(found);
+            fprintf(f, "reprise a %.1f s\n--- paroles donnees ---\n%s\n---\n", from, lyrics.c_str());
+            fflush(f);
+            const std::string id = studio.submit_redo(found, from, lyrics);
+            auto t0 = std::chrono::steady_clock::now();
+            Song done;
+            for (;;) {
+                Sleep(1000);
+                for (const Song & x : studio.snapshot())
+                    if (x.id == id) done = x;
+                if (done.status == "done" || done.status == "error" || std::chrono::steady_clock::now() - t0 > std::chrono::seconds(900)) break;
+            }
+            Sleep(500);
+            fprintf(f, "statut=%s message=%s secondes=%.0f duree_audio=%.1f (origine %.1f)\ndossier=%s\n", done.status.c_str(), done.message.c_str(),
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), done.audio_seconds, found.audio_seconds,
+                    narrow(song_folder(id).wstring()).c_str());
+            fclose(f);
+            studio.shutdown();
+            return 0;
+        }
         if (argv && argc >= 6 && std::wstring(argv[1]) == L"--gen-test") {
             Song s;
             s.title        = narrow(argv[4]);
@@ -15935,7 +16140,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 wait(j2, "lrc");
                 auto j3 = app.new_job("doublons");
                 auto found = std::make_shared<std::vector<DupPair>>();
-                start_duplicates(j3, songs, found, app_temp_dir() / L"doublons_test.txt");
+                start_duplicates(j3, songs, found, app_temp_dir() / L"doublons_test.txt", app.analysis_dir());
                 wait(j3, "doublons");
                 if (f) fprintf(f, "  couples=%d\n", (int) found->size());
                 const Song & s0 = songs[0];

@@ -71,6 +71,9 @@ struct Song {
     // long_join = secondes de la fin de la partie 1 reprises au début de la partie 2 (> 0 : assemblage après génération).
     std::string long_rest;
     double      long_join = 0;
+    // 1.1.006 : « Refaire à partir d'ici » (suite, kind « extend ») : les codes du morceau d'origine sont gardés jusqu'à cette
+    // seconde, le moteur recompose tout ce qui suit (> 0 ; 0 = « Prolonger », tout le morceau d'origine est gardé).
+    double      redo_from = 0;
     int         long_retry = 0;  // 1.0.70 : partie refaite car le modèle a conclu trop tôt (non enregistré)
 
     // Mesures de la génération, pour apprendre l'estimation du temps restant.
@@ -161,6 +164,8 @@ class Studio {
     // Envoie tous les morceaux terminés à la corbeille ; renvoie leur nombre, ou -1 avec un message (génération en cours).
     int               remove_all(std::string & error);
     bool              remove_folder(const fs::path & dir, std::string & error);
+    // 1.1.006 : met en file la reprise du morceau parent à partir de « from » secondes ; lyrics = paroles données au moteur (complètes pour une chanson).
+    std::string       submit_redo(const Song & parent, double from, const std::string & lyrics);
     void              launch_long_part(const std::string & id);  // 1.0.48 : partie 2 d'un morceau long  // 1.0.46 : album entier à la corbeille
     void              rescan();  // recharge les morceaux gérés ailleurs (version web)
     bool              local_active();  // une génération tourne ici

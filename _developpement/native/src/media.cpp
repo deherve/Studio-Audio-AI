@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "analysis.hpp"  // 1.1.007 : empreinte audio des doublons
 #include "clip.hpp"
 #include "fiches.hpp"
 #include "score.hpp"
@@ -469,7 +470,7 @@ static std::string fmt_seconds(double s) {
 // écriture « .part » puis renommage que start_videos. Un titre instrumental n'a pas de paroles : seulement les plans.
 
 // 1.0.98 : paroles synchronisées d'un fichier .lrc (« [mm:ss.xx]texte ») ; la fin de chaque ligne est le début de la suivante.
-static std::vector<ClipLine> read_lrc(const fs::path & file, double seconds) {
+std::vector<ClipLine> read_lrc(const fs::path & file, double seconds) {  // 1.1.006 : aussi pour « Refaire à partir d'ici »
     std::vector<ClipLine> out;
     std::ifstream f(file, std::ios::binary);
     std::string   line;
@@ -1247,39 +1248,85 @@ static std::vector<uint64_t> lyric_lines(const std::string & lyrics) {
     return out;
 }
 
-void start_duplicates(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::shared_ptr<std::vector<DupPair>> found, fs::path report) {
+// Seuils de l'empreinte audio (1.1.007), réglés sur la copie de test (album « Awaken the Storm » + 2 morceaux refaits) :
+// morceaux sans lien jusqu'à 41 % (son) et 75 % (mélodie) ; morceau refait / original : 64 à 73 % (son), 97-98 % (mélodie).
+static const double DUP_SOUND = 0.60, DUP_MELODY = 0.85;
+
+void start_duplicates(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::shared_ptr<std::vector<DupPair>> found, fs::path report,
+                      fs::path analysis_models) {
     job->thread = std::thread([=]() mutable {
         Job & j = *job;
         std::vector<Song> done;
         for (const Song & s : songs) if (s.status == "done" && s.long_rest.empty()) done.push_back(s);
         std::vector<std::vector<uint64_t>> grams(done.size()), lines(done.size());
         for (size_t i = 0; i < done.size() && !j.cancel; i++) {
-            j.progress = 0.5f * i / std::max<size_t>(1, done.size());
+            j.progress = 0.05f * i / std::max<size_t>(1, done.size());
             grams[i] = token_grams(song_folder(done[i].id) / L"audio.json");
             lines[i] = done[i].instrumental ? std::vector<uint64_t>() : lyric_lines(done[i].lyrics);
         }
+        // 1.1.007 : empreinte audio de chaque morceau, calculée une fois puis gardée dans son dossier (empreinte.bin).
+        std::vector<AudioPrint> prints(done.size());
+        const fs::path          work = fs::temp_directory_path() / L"studio_empreinte";
+        for (size_t i = 0; i < done.size() && !j.cancel; i++) {
+            j.total = (int) done.size(); j.item = (int) i + 1;
+            j.progress = 0.05f + 0.85f * i / std::max<size_t>(1, done.size());
+            { std::lock_guard<std::mutex> lock(j.mutex); j.message = display_title(done[i].title); }
+            const fs::path file = song_folder(done[i].id) / L"empreinte.bin";
+            if (load_print(file, prints[i]) && (!prints[i].sound.empty() || analysis_models.empty())) continue;
+            const fs::path audio = best_audio(song_folder(done[i].id));
+            if (!audio.empty() && audio_print(audio, analysis_models, work, j.cancel, prints[i])) save_print(file, prints[i]);
+        }
+        std::error_code ec0;
+        fs::remove_all(work, ec0);
+        // Son : cosinus des empreintes centrées sur la moyenne de la bibliothèque (sinon toute musique se ressemble).
+        std::vector<double> mean;
+        int with_sound = 0;
+        for (const AudioPrint & p : prints) {
+            if (p.sound.empty()) continue;
+            if (mean.empty()) mean.assign(p.sound.size(), 0.0);
+            if (p.sound.size() != mean.size()) continue;
+            for (size_t k = 0; k < mean.size(); k++) mean[k] += p.sound[k];
+            with_sound++;
+        }
+        for (double & v : mean) v /= std::max(1, with_sound);
+        for (AudioPrint & p : prints)
+            if (!p.sound.empty() && p.sound.size() == mean.size() && with_sound >= 3)
+                for (size_t k = 0; k < mean.size(); k++) p.sound[k] -= (float) mean[k];
+        const bool all_pairs = getenv("STUDIO_TEST_DUP_ALL") != nullptr;  // essai : tous les couples, pour régler les seuils
         std::vector<DupPair> out;
         for (size_t a = 0; a < done.size() && !j.cancel; a++) {
-            j.progress = 0.5f + 0.5f * a / std::max<size_t>(1, done.size());
+            j.progress = 0.90f + 0.10f * a / std::max<size_t>(1, done.size());
             for (size_t b = a + 1; b < done.size(); b++) {
                 const double t = jaccard(grams[a], grams[b]);
                 const double l = lines[a].size() >= 6 && lines[b].size() >= 6 ? jaccard(lines[a], lines[b]) : 0;
+                const float  sv = print_sound_similarity(prints[a], prints[b]);
+                const double s  = sv < -1.5f ? -2 : sv;  // -2 = pas d'empreinte du son ; négatif = sons opposés
+                const double m  = prints[a].chroma.empty() || prints[b].chroma.empty() ? -1 : print_melody_similarity(prints[a], prints[b]);
                 const bool same_family = done[a].parent == done[b].id || done[b].parent == done[a].id || (!done[a].parent.empty() && done[a].parent == done[b].parent);
-                if (t < 0.35 && l < 0.6) continue;
-                DupPair d{ done[a].id, done[b].id, display_title(done[a].title), display_title(done[b].title), {}, t, l };
-                d.why = same_family ? tr("même famille (suite, re-rendu ou nouvelle version)") : t >= 0.35 && l >= 0.6 ? tr("composition et paroles très proches")
-                        : t >= 0.35 ? tr("composition très proche") : tr("paroles très proches");
+                if (!all_pairs && t < 0.35 && l < 0.6 && s < DUP_SOUND && m < DUP_MELODY) continue;
+                DupPair d{ done[a].id, done[b].id, display_title(done[a].title), display_title(done[b].title), {}, t, l, s, m };
+                d.why = same_family              ? tr("même famille (suite, re-rendu ou nouvelle version)")
+                        : t >= 0.35 && l >= 0.6  ? tr("composition et paroles très proches")
+                        : t >= 0.35              ? tr("composition très proche")
+                        : l >= 0.6               ? tr("paroles très proches")
+                        : m >= DUP_MELODY        ? tr("même mélodie (à l'écoute)")
+                        : s >= DUP_SOUND         ? tr("son très proche (à l'écoute)")
+                                                 : std::string("-");
                 out.push_back(d);
             }
         }
-        std::sort(out.begin(), out.end(), [](const DupPair & x, const DupPair & y) { return std::max(x.tokens, x.lyrics) > std::max(y.tokens, y.lyrics); });
+        std::sort(out.begin(), out.end(), [](const DupPair & x, const DupPair & y) {
+            return std::max({ x.tokens, x.lyrics, x.sound, x.melody }) > std::max({ y.tokens, y.lyrics, y.sound, y.melody });
+        });
         std::error_code ec;
         fs::create_directories(report.parent_path(), ec);
         {
             std::ofstream r(report, std::ios::binary | std::ios::trunc);
             r << "\xEF\xBB\xBF";
             for (const DupPair & d : out)
-                r << d.label_a << "  <->  " << d.label_b << "  (" << (int) (d.tokens * 100) << " % composition, " << (int) (d.lyrics * 100) << " % paroles) : " << d.why << "\n";
+                r << d.label_a << "  <->  " << d.label_b << "  (" << (int) (d.tokens * 100) << " % composition, " << (int) (d.lyrics * 100) << " % paroles, "
+                  << (d.sound < -1.5 ? std::string("-") : std::to_string((int) (std::max(0.0, d.sound) * 100)) + " %") << " son, "
+                  << (d.melody < 0 ? std::string("-") : std::to_string((int) (d.melody * 100)) + " %") << " mélodie) : " << d.why << "\n";
         }
         { std::lock_guard<std::mutex> lock(j.mutex); *found = out; }
         j.progress = 1;
