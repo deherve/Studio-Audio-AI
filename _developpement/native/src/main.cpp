@@ -15,6 +15,7 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <deque>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -35,6 +36,7 @@ using std::min;
 #include "player.hpp"
 #include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 #include "studio.hpp"
+#include "journal.hpp"
 #include "analysis.hpp"
 #include "suno.hpp"
 #include "fiches.hpp"
@@ -583,6 +585,15 @@ static const ChipGroup STYLE_GROUPS[] = {
                       "minimal", "wall of sound", "polished production" } },
 };
 
+// 1.1.011 : balises réellement proposées (Réglages › Styles) : celles de STYLE_GROUPS sans les retirées, plus les ajoutées.
+// Reconstruites au début d'une image (rebuild_style_tags) : les pointeurs restent valables pendant toute l'image.
+static std::deque<std::string>      g_tag_store;
+static std::vector<const char *>    g_eff_items[5];
+static bool                         g_eff_on = false;
+static const std::vector<const char *> & group_items(const ChipGroup & g) {
+    return g_eff_on ? g_eff_items[std::clamp(g.color, 0, 4)] : g.items;
+}
+
 static ImVec4 category_color(int index) {
     const ImVec4 * colors[] = { &P.violet, &P.pink, &P.orange, &P.green, &P.blue };
     return *colors[std::clamp(index, 0, 4)];
@@ -598,7 +609,7 @@ static bool is_voice_tag(const std::string & tag) {
     if (t.rfind("no ", 0) == 0 || t.rfind("without ", 0) == 0) return false;  // 1.0.37 : « no vocals » est gardé
     for (const ChipGroup & g : STYLE_GROUPS) {
         if (g.color != 2) continue;
-        for (const char * item : g.items) if (t == low(item)) return true;
+        for (const char * item : group_items(g)) if (t == low(item)) return true;
     }
     for (const char * w : { "vocal", "voice", "choir", "falsetto", "a cappella", "acapella", "spoken", "beatbox" }) {
         if (t.find(w) != std::string::npos) return true;
@@ -844,6 +855,8 @@ struct Settings {
     int                 mark_style = 1;         // marques validé / à problème : 0 pouces, 1 coche et croix (défaut 1.0.31, livrable de Herve), 2 commutateur
     int                 card_mode  = 0;         // cartes de la bibliothèque : 0 détaillée, 1 compacte, 2 pochette
     int                 style_mode = 0;         // bloc Style : 0 classique, 1 pastilles, 2 constructeur
+    bool                save_group_style = false;  // 1.1.011 : enregistrer le style sous le nom du groupe à chaque morceau lancé
+    std::vector<std::string> tag_added[5], tag_hidden[5];  // 1.1.011 : Réglages › Styles : balises ajoutées / retirées par catégorie
     bool                analysis_auto = true;   // analyser le fichier choisi pour une reprise dès sa sélection
     bool                lyrics_web    = true;   // reprise : chercher les paroles sur Internet (LRCLIB) pour corriger Whisper
     std::string         update_url;             // adresse de recherche de mise à jour ; vide = UPDATE_MANIFEST_URL (version.hpp)
@@ -1031,6 +1044,22 @@ static void parse_settings(Settings & s, yyjson_val * r) {
     if (yyjson_is_int(v)) s.card_mode = std::clamp((int) yyjson_get_int(v), 0, 3);
     v = yyjson_obj_get(r, "style_mode");
     if (yyjson_is_int(v)) s.style_mode = std::clamp((int) yyjson_get_int(v), 0, 2);
+    v = yyjson_obj_get(r, "save_group_style");
+    if (yyjson_is_bool(v)) s.save_group_style = yyjson_get_bool(v);
+    for (int gi = 0; gi < 5; gi++) {
+        for (int kind = 0; kind < 2; kind++) {
+            auto &      list = kind ? s.tag_hidden[gi] : s.tag_added[gi];
+            std::string key  = std::string(kind ? "tags_hidden_" : "tags_added_") + std::to_string(gi);
+            yyjson_val * ta = yyjson_obj_get(r, key.c_str());
+            if (!yyjson_is_arr(ta)) continue;  // le fichier est relu pour chaque fichier de réglages : ne rien effacer s'il n'a pas la clé
+            list.clear();
+            size_t       ti, tm;
+            yyjson_val * tv;
+            yyjson_arr_foreach(ta, ti, tm, tv) {
+                if (yyjson_is_str(tv)) list.push_back(yyjson_get_str(tv));
+            }
+        }
+    }
     v = yyjson_obj_get(r, "analysis_auto");
     if (yyjson_is_bool(v)) s.analysis_auto = yyjson_get_bool(v);
     v = yyjson_obj_get(r, "update_url");
@@ -1178,6 +1207,29 @@ static bool parse_settings_file(Settings & s, const fs::path & file) {
 
 
 // path = config\reglages.json
+// 1.1.011 : recalcule les balises proposées d'après les réglages (par défaut, moins les retirées, plus les ajoutées).
+static void rebuild_style_tags(const Settings & st) {
+    g_tag_store.clear();
+    for (int gi = 0; gi < 5; gi++) {
+        g_eff_items[gi].clear();
+        auto has = [](const std::vector<std::string> & v, const std::string & t) {
+            for (const std::string & x : v) if (lower(x) == lower(t)) return true;
+            return false;
+        };
+        for (const char * item : STYLE_GROUPS[gi].items) {
+            if (!has(st.tag_hidden[gi], item)) g_eff_items[gi].push_back(item);
+        }
+        for (const std::string & t : st.tag_added[gi]) {
+            bool dup = false;
+            for (const char * e : g_eff_items[gi]) dup = dup || lower(e) == lower(t);
+            if (dup) continue;
+            g_tag_store.push_back(t);
+            g_eff_items[gi].push_back(g_tag_store.back().c_str());
+        }
+    }
+    g_eff_on = true;
+}
+
 static void load_settings(Settings & s, const fs::path & path) {
     parse_settings_file(s, path);
     for (const auto & [name, keys] : SETTINGS_FILES) parse_settings_file(s, path.parent_path() / name);
@@ -1211,6 +1263,17 @@ static void save_settings(const Settings & s, const fs::path & path) {
     yyjson_mut_obj_add_int(doc, o, "layout", s.layout);
     yyjson_mut_obj_add_int(doc, o, "card_mode", s.card_mode);
     yyjson_mut_obj_add_int(doc, o, "style_mode", s.style_mode);
+    yyjson_mut_obj_add_bool(doc, o, "save_group_style", s.save_group_style);
+    for (int gi = 0; gi < 5; gi++) {
+        for (int kind = 0; kind < 2; kind++) {
+            const auto & list = kind ? s.tag_hidden[gi] : s.tag_added[gi];
+            if (list.empty()) continue;
+            std::string      key = std::string(kind ? "tags_hidden_" : "tags_added_") + std::to_string(gi);
+            yyjson_mut_val * ta  = yyjson_mut_arr(doc);
+            yyjson_mut_obj_add(o, yyjson_mut_strcpy(doc, key.c_str()), ta);  // clé copiée : « key » disparaît à la fin du tour
+            for (const std::string & t : list) yyjson_mut_arr_add_strcpy(doc, ta, t.c_str());
+        }
+    }
     yyjson_mut_obj_add_bool(doc, o, "analysis_auto", s.analysis_auto);
     yyjson_mut_obj_add_bool(doc, o, "lyrics_web", s.lyrics_web);
     yyjson_mut_obj_add_bool(doc, o, "translate_web", s.translate_web);
@@ -4560,6 +4623,7 @@ struct App {
     }
 
     void notify(const std::string & text) {
+        journal::event("message", text);
         toast       = text;
         toast_until = ImGui::GetTime() + 4.0;
     }
@@ -4762,6 +4826,10 @@ struct App {
         }
         if (trial_ids.size() > 1) trial_groups.push_back(trial_ids);  // 1.0.97 : meilleur essai
         const std::string quoted = trim(f.title);
+        journal::event("file", "Morceau ajouté à la file : « " + quoted + " » (" + (f.instrumental ? "instrumental" : "chanson") + ", groupe « " +
+                                   trim(f.artist) + " », album « " + trim(f.album) + " », " + std::to_string(f.versions) + " version(s)" +
+                                   (held ? ", en pause" : "") + ") style : " + style.substr(0, 200));
+        if (settings.save_group_style && !trim(f.artist).empty() && !style.empty()) auto_group_style(trim(f.artist), style);
         if (submit_quiet) return;  // album IA : un seul message pour tout l'album
         if (f.versions > 1) {
             notify(held ? trf("%d versions de « %s » ajoutées à la file, en pause.", f.versions, quoted.c_str())
@@ -5389,6 +5457,7 @@ struct App {
         f.dirty |= input_line("##artist", tr("Groupe ou chanteur"), f.artist, half);
         ImGui::SameLine();
         f.dirty |= input_line("##album", tr("Album"), f.album);
+        draw_group_style_checkbox();
 
         // Type et reprise sur une ligne
         ImGui::AlignTextToFramePadding();
@@ -5562,7 +5631,7 @@ struct App {
         // Balises par catégorie, chacune à sa couleur
         auto group_of = [&](const std::string & tag) -> const ChipGroup * {
             for (const ChipGroup & g : STYLE_GROUPS) {
-                for (const char * item : g.items) if (lower(item) == lower(tag)) return &g;
+                for (const char * item : group_items(g)) if (lower(item) == lower(tag)) return &g;
             }
             return nullptr;
         };
@@ -5612,7 +5681,7 @@ struct App {
                 ImGui::PopStyleColor();
                 first = false;
                 if (open) {
-                    f.dirty |= style_chips(group.items, f.style, color);
+                    f.dirty |= style_chips(group_items(group), f.style, color);
                     ImGui::Dummy(ImVec2(0, 2 * g_dpi));
                 }
             }
@@ -5624,7 +5693,7 @@ struct App {
                     ImVec4                   color = category_color(group.color);
                     std::vector<std::string> tags  = split_tags(f.style), chosen;
                     for (const std::string & t : tags) {
-                        for (const char * item : group.items) {
+                        for (const char * item : group_items(group)) {
                             if (lower(item) == lower(t)) chosen.push_back(t);
                         }
                     }
@@ -5643,7 +5712,7 @@ struct App {
                     if (ImGui::BeginPopup("##choices")) {
                         ImGui::TextColored(color, "%s", tr(group.name));
                         ImGui::Dummy(ImVec2(0, 2 * g_dpi));
-                        f.dirty |= style_chips(group.items, f.style, color);
+                        f.dirty |= style_chips(group_items(group), f.style, color);
                         ImGui::EndPopup();
                     }
                     ImGui::PopID();
@@ -5662,7 +5731,7 @@ struct App {
                 ImGui::PopStyleColor(4);
                 if (open) {
                     ImGui::Dummy(ImVec2(0, 1 * g_dpi));
-                    f.dirty |= style_chips(group.items, f.style, color);
+                    f.dirty |= style_chips(group_items(group), f.style, color);
                     ImGui::EndTabItem();
                 }
             }
@@ -6843,6 +6912,191 @@ struct App {
         save_settings(settings, settings_path);
         notify(trf("Style « %s » enregistré dans vos styles.", np.name.c_str()));
     }
+    // 1.1.011 : « Sauvegarder le style de ce groupe » : le style du morceau lancé est enregistré sous le nom du groupe,
+    // seulement si aucun de vos styles ne porte déjà ce nom (un style existant n'est jamais remplacé en silence).
+    void auto_group_style(const std::string & group, const std::string & style) {
+        if (personal_preset_exists(group)) return;
+        Preset np;
+        np.name  = group;
+        np.style = style;
+        for (const LoraUse & u : form.loras)
+            if (u.enabled && lora_files.count(u.file) && u.file != INSTRUMENTAL_FILE) np.loras.push_back(u);
+        const std::string neg = join_style(split_style(form.negative_style));
+        if (!neg.empty()) {
+            np.has_negative   = true;
+            np.negative_style = neg;
+            np.negative_scale = form.negative_scale;
+        }
+        settings.presets.push_back(np);
+        save_settings(settings, settings_path);
+        journal::event("style", "Style du groupe « " + group + " » enregistré : " + style.substr(0, 200));
+        notify(trf("Style « %s » enregistré dans vos styles.", group.c_str()));
+    }
+    void draw_group_style_checkbox() {
+        if (ImGui::Checkbox(tr("Sauvegarder le style de ce groupe"), &settings.save_group_style)) save_settings(settings, settings_path);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", tr("À chaque morceau lancé, le style est enregistré dans vos styles sous le nom du groupe (s'il n'existe pas déjà), pour reproduire le même groupe plus tard."));
+    }
+    // Albums › « Style perso… » : style personnalisé au nom du groupe, avec les balises communes à au moins la moitié de ses morceaux.
+    void open_group_style(const std::vector<Song> & all, const std::string & artist) {
+        std::vector<const Song *> mine;
+        for (const Song & s : all) if (s.status == "done" && fold(s.artist) == fold(artist)) mine.push_back(&s);
+        if (mine.empty()) return;
+        std::map<std::string, int> count;
+        std::vector<std::string>   order;
+        for (const Song * s : mine) {
+            std::set<std::string> seen;
+            for (const std::string & t : split_tags(s->style)) {
+                const std::string k = lower(t);
+                if (!seen.insert(k).second) continue;
+                if (!count.count(k)) order.push_back(t);
+                count[k]++;
+            }
+        }
+        std::vector<std::string> keep;
+        for (const std::string & t : order) if (count[lower(t)] * 2 >= (int) mine.size()) keep.push_back(t);
+        const std::string style = keep.empty() ? mine[0]->style : join_style(keep);
+        open_song_style_save(*mine[0]);
+        ai_style_text = style;
+        ai_style_name = artist;
+    }
+
+    // ---- 1.1.011 : Réglages › Styles : ajouter / retirer des balises de Genres, Ambiance, Voix, Instruments, Son
+    bool        tags_dirty = true;  // la liste effective est refaite au début de l'image
+    std::string style_tag_new[5];
+    static bool tag_in(const std::vector<std::string> & v, const std::string & t) {
+        for (const std::string & x : v) if (lower(x) == lower(t)) return true;
+        return false;
+    }
+    static void tag_erase(std::vector<std::string> & v, const std::string & t) {
+        v.erase(std::remove_if(v.begin(), v.end(), [&](const std::string & x) { return lower(x) == lower(t); }), v.end());
+    }
+    void style_tags_changed() {
+        tags_dirty = true;
+        save_settings(settings, settings_path);
+    }
+    bool style_tags_customized() const {
+        for (int gi = 0; gi < 5; gi++) if (!settings.tag_added[gi].empty() || !settings.tag_hidden[gi].empty()) return true;
+        return false;
+    }
+    // Une pastille de la liste : renvoie vrai au clic.
+    bool style_tag_chip(const std::string & text, const ImVec4 & color, float avail, float & x, bool first, int id) {
+        ImGuiStyle & st = ImGui::GetStyle();
+        float        w  = ImGui::CalcTextSize(text.c_str()).x + st.FramePadding.x * 2;
+        if (!first && x + st.ItemSpacing.x * 0.6f + w <= avail) {
+            ImGui::SameLine(0, st.ItemSpacing.x * 0.6f);
+            x += st.ItemSpacing.x * 0.6f + w;
+        } else {
+            x = w;
+        }
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 999.f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.f);
+        ImGui::PushStyleColor(ImGuiCol_Button, alpha(color, 0.22f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, alpha(color, 0.45f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, alpha(color, 0.65f));
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::PushID(id);
+        const bool clicked = ImGui::SmallButton(text.c_str());
+        ImGui::PopID();
+        ImGui::PopStyleColor(4);
+        ImGui::PopStyleVar(2);
+        return clicked;
+    }
+    void draw_style_tags_settings() {
+        ImGui::PushFont(g_bold);
+        ImGui::TextColored(P.accent, "%s", tr("Balises de style"));
+        ImGui::PopFont();
+        muted_wrapped(tr("Balises proposées dans le bloc Style de « Nouveau morceau ». La croix retire une balise de la liste (un style déjà écrit la garde) ; le champ en ajoute de nouvelles, en anglais comme le modèle (plusieurs séparées par des virgules). Les balises ajoutées sont précédées d'un point."));
+        ImGui::Dummy(ImVec2(0, 4 * g_dpi));
+        for (int gi = 0; gi < 5; gi++) {
+            const ChipGroup & g     = STYLE_GROUPS[gi];
+            const ImVec4      color = category_color(g.color);
+            begin_card(color, ("c_style_tags" + std::to_string(gi)).c_str());
+            const std::vector<const char *> items = group_items(g);
+            ImGui::PushFont(g_bold);
+            ImGui::TextColored(color, "%s", tr(g.name));
+            ImGui::PopFont();
+            ImGui::SameLine();
+            ImGui::TextColored(P.muted, "%s", trf("%d balises", (int) items.size()).c_str());
+            ImGui::PushID(gi);
+            std::string remove;
+            {
+                float avail = ImGui::GetContentRegionAvail().x, x = 0;
+                for (size_t i = 0; i < items.size(); i++) {
+                    const bool custom = tag_in(settings.tag_added[gi], items[i]);
+                    if (style_tag_chip(std::string(custom ? "• " : "") + items[i] + "  ×", color, avail, x, i == 0, (int) i)) remove = items[i];
+                }
+            }
+            if (!remove.empty()) {
+                if (tag_in(settings.tag_added[gi], remove)) tag_erase(settings.tag_added[gi], remove);
+                else settings.tag_hidden[gi].push_back(remove);
+                journal::action("Balise retirée (" + std::string(g.name) + ") : " + remove);
+                style_tags_changed();
+            }
+            ImGui::Dummy(ImVec2(0, 3 * g_dpi));
+            const float add_w = ImGui::CalcTextSize(tr("Ajouter")).x + ImGui::GetStyle().FramePadding.x * 2 + ImGui::GetStyle().ItemSpacing.x;
+            ImGui::SetNextItemWidth(std::min(340 * g_dpi, ImGui::GetContentRegionAvail().x - add_w));
+            const bool enter = tx::InputTextWithHint("##tag_new", tr("Nouvelle balise (en anglais, ex. : dream pop)"), &style_tag_new[gi], ImGuiInputTextFlags_EnterReturnsTrue);
+            ImGui::SameLine();
+            ImGui::BeginDisabled(trim(style_tag_new[gi]).empty());
+            if ((ImGui::Button(tr("Ajouter")) || enter) && !trim(style_tag_new[gi]).empty()) {
+                for (const std::string & t : split_tags(style_tag_new[gi])) {
+                    if (tag_in(settings.tag_hidden[gi], t)) {
+                        tag_erase(settings.tag_hidden[gi], t);  // balise par défaut retirée avant : elle revient
+                    } else {
+                        bool present = tag_in(settings.tag_added[gi], t);
+                        for (const char * e : items) present = present || lower(e) == lower(t);
+                        if (!present) settings.tag_added[gi].push_back(t);
+                    }
+                    journal::action("Balise ajoutée (" + std::string(g.name) + ") : " + t);
+                }
+                style_tag_new[gi].clear();
+                style_tags_changed();
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(settings.tag_added[gi].empty() && settings.tag_hidden[gi].empty());
+            if (ImGui::Button(tr("Rétablir ce groupe"))) {
+                settings.tag_added[gi].clear();
+                settings.tag_hidden[gi].clear();
+                style_tags_changed();
+            }
+            ImGui::EndDisabled();
+            if (!settings.tag_hidden[gi].empty()) {  // balises retirées : un clic les remet
+                ImGui::TextColored(P.muted, "%s", tr("Balises retirées (cliquez pour les remettre) :"));
+                std::string back;
+                float       avail = ImGui::GetContentRegionAvail().x, x = 0;
+                for (size_t i = 0; i < settings.tag_hidden[gi].size(); i++)
+                    if (style_tag_chip("+ " + settings.tag_hidden[gi][i], P.muted, avail, x, i == 0, 1000 + (int) i)) back = settings.tag_hidden[gi][i];
+                if (!back.empty()) {
+                    tag_erase(settings.tag_hidden[gi], back);
+                    style_tags_changed();
+                }
+            }
+            ImGui::PopID();
+            end_card();
+        }
+        ImGui::BeginDisabled(!style_tags_customized());
+        if (ImGui::Button(tr("Tout réinitialiser"))) ImGui::OpenPopup("##tags_reset_all");
+        ImGui::EndDisabled();
+        if (ImGui::BeginPopup("##tags_reset_all")) {
+            ImGui::PushTextWrapPos(380 * g_dpi);
+            ImGui::TextWrapped("%s", tr("Remettre toutes les balises par défaut ? Vos balises ajoutées sont supprimées et les balises retirées reviennent."));
+            ImGui::PopTextWrapPos();
+            if (accent_button(tr("Réinitialiser"), ImVec2(0, 0), &P.danger)) {
+                for (int gi = 0; gi < 5; gi++) {
+                    settings.tag_added[gi].clear();
+                    settings.tag_hidden[gi].clear();
+                }
+                style_tags_changed();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(tr("Annuler"))) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+    }
+
     void draw_ai_style_modal() {
         const char * title = tr("Enregistrer comme style personnalisé");
         if (ai_style_open) {
@@ -7957,6 +8211,7 @@ struct App {
                                                 : trf("Groupe existant : son son est repris, et ses %d titres et %d album(s) ne seront pas réutilisés.",
                                                       (int) probe.used_titles.size(), (int) probe.used_albums.size()));
             }
+            draw_group_style_checkbox();
             // Pochettes (1.0.36) : créées après l'écriture des morceaux et leur mise en file
             ImGui::AlignTextToFramePadding();
             ImGui::TextColored(P.muted, "%s", tr("Pochettes"));
@@ -11951,6 +12206,11 @@ struct App {
         for (auto & j : jobs) {
             if (j->state != 0 && !j->announced) {
                 j->announced = true;
+                {
+                    std::lock_guard<std::mutex> lock(j->mutex);
+                    if (j->state == 1) journal::event("travail", j->name + " : terminé.");
+                    else journal::error("travail", j->name + " : échec" + (j->message.empty() ? "" : " (" + j->message + ")"));
+                }
                 notify(j->name + (j->state == 1 ? tr(" : terminé.") : tr(" : échec.")));
             }
         }
@@ -13114,6 +13374,12 @@ struct App {
             ImGui::TextUnformatted(a.album.c_str());
             ImGui::PopFont();
             ImGui::TextColored(P.blue, "%s", a.artist.empty() ? tr("(sans groupe)") : a.artist.c_str());
+            if (!a.artist.empty()) {  // 1.1.011 : style personnalisé au nom du groupe
+                ImGui::SameLine();
+                if (ImGui::SmallButton(tr("Style perso…"))) open_group_style(all, a.artist);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("%s", tr("Crée un style personnalisé au nom du groupe, avec les balises communes à ses morceaux."));
+            }
             ImGui::TextColored(P.muted, tr("%d terminé(s) · %d validé(s)"), a.done, a.validated);
             if (a.pending > 0) {
                 ImGui::SameLine();
@@ -13348,6 +13614,7 @@ struct App {
             draw_cover_splash();  // 1.0.37 : au-dessus de « Albums »
         }
         draw_rename_album_modal();  // 1.0.41
+        if (!page) draw_ai_style_modal();  // 1.1.011 : « Style perso… » d'un groupe, dans la fenêtre Albums (en page : dessinée plus bas)
         draw_album_tool_modals();   // 1.0.46 : aperçu, toutes les pochettes, suppression
         // « Régénérer » (1.0.36) : remplacer une image existante seulement après confirmation
         const char * regen_title = tr("Remplacer l'image ?");
@@ -13793,7 +14060,7 @@ struct App {
             struct Cat { const char * label; const ImVec4 * color; };
             const Cat cats[] = { { N_("Interface"), &P.accent }, { N_("Génération"), &P.teal }, { N_("Analyse et paroles"), &P.pink },
                                  { N_("LoRA"), &P.violet }, { N_("Système"), &P.blue }, { N_("Bibliothèque"), &P.danger },
-                                 { N_("IA (paroles)"), &P.amber } };
+                                 { N_("IA (paroles)"), &P.amber }, { N_("Styles"), &P.green } };
             const float foot   = page ? 0.f : ImGui::GetFrameHeight() + 12 * g_dpi;
             const bool  narrow = ImGui::GetContentRegionAvail().x < 820 * g_dpi;
             if (page) {
@@ -14154,6 +14421,14 @@ struct App {
         ImGui::PopFont();
         draw_update_settings();
         ImGui::PushFont(g_bold);
+        ImGui::TextColored(P.blue, "%s", tr("Journal de débogage"));
+        ImGui::PopFont();
+        muted_wrapped(tr("Le Studio note ce qui se passe (démarrage, clics, travaux lancés, erreurs et ce qui les a précédées) : à joindre à un message en cas de problème."));
+        if (soft_button(tr("Ouvrir le journal"), P.blue)) {
+            std::error_code jec;
+            if (fs::exists(journal::path(), jec)) ShellExecuteW(nullptr, L"open", journal::path().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        ImGui::PushFont(g_bold);
         ImGui::TextColored(P.blue, tr("Recommandations pour ce PC"));
         ImGui::PopFont();
         draw_advice();
@@ -14227,6 +14502,7 @@ struct App {
         end_card();
         }
         if (cat == 6) draw_ai_settings();
+        if (cat == 7) draw_style_tags_settings();
         ImGui::EndChild();  // contenu
         if (!page) {
             ImGui::Dummy(ImVec2(0, 4 * g_dpi));
@@ -14556,6 +14832,16 @@ struct App {
                 const std::string key = item.substr(0, eq), val = eq == std::string::npos ? std::string() : item.substr(eq + 1);
                 if (key == "filter") filter_text = val;
                 else if (key == "cards") settings.card_mode = atoi(val.c_str());
+                else if (key == "fakejob") {  // 1.1.011 : un travail qui ne finit pas (menu de gauche) ; 2 = il échoue après 12 s (journal)
+                    auto fj = new_job("Essai du point lumineux");
+                    if (atoi(val.c_str()) == 2)
+                        fj->thread = std::thread([fj] {
+                            std::this_thread::sleep_for(std::chrono::seconds(12));
+                            { std::lock_guard<std::mutex> lock(fj->mutex); fj->message = "Échec voulu pour l'essai du journal"; }
+                            fj->state = 2;
+                        });
+                }
+                else if (key == "groupstyle") settings.save_group_style = atoi(val.c_str()) != 0;  // 1.1.011
                 else if (key == "layout") settings.layout = std::clamp(atoi(val.c_str()), 0, 2);  // 1.1.002
                 else if (key == "page") b_page = std::clamp(atoi(val.c_str()), 0, 3);  // 1.1.003 : page de la disposition B (1.1.005 : 2 réglages, 3 aide)
                 else if (key == "libtab") lib_tab = lib_tab_request = std::clamp(atoi(val.c_str()), 0, 1);  // 1.1.005 : 1 = onglet Albums
@@ -14944,8 +15230,8 @@ struct App {
     int lib_tab    = 0;  // page bibliothèque : 0 morceaux, 1 albums (1.1.005)
     int lib_tab_request = -1;  // onglet à sélectionner (menu de gauche, « Albums… »)
     int settings_cat = 0;  // catégorie des Réglages (fenêtre ou page)
-    static constexpr const char * SET_CATS[] = { N_("Interface"), N_("Génération"), N_("Analyse et paroles"), N_("LoRA"), N_("Système"), N_("Bibliothèque"), N_("IA (paroles)") };
-    static constexpr int SET_CAT_COUNT = 7;
+    static constexpr const char * SET_CATS[] = { N_("Interface"), N_("Génération"), N_("Analyse et paroles"), N_("LoRA"), N_("Système"), N_("Bibliothèque"), N_("IA (paroles)"), N_("Styles") };
+    static constexpr int SET_CAT_COUNT = 8;
     int form_shown = 0;  // onglet affiché par draw_form (0 Nouveau morceau, 1 Composer avec l'IA, 2 Partition)
     void draw_nav(const std::vector<Song> & songs) {
         int running = 0, waiting = 0;
@@ -14958,10 +15244,27 @@ struct App {
             ImGui::Dummy(ImVec2(0, 6 * g_dpi));
             ImGui::TextColored(P.muted, "%s", label);
         };
-        auto entry = [&](const char * label, bool on) {
+        // 1.1.011 : point lumineux à droite de l'entrée quand un travail correspondant est en cours
+        const bool jobs_busy = std::any_of(jobs.begin(), jobs.end(), [](const std::shared_ptr<Job> & j) { return j->state == 0; });
+        const bool covers_busy = (cover_job && cover_job->state == 0) || desc_job != nullptr;
+        const bool ai_busy     = ai_job != nullptr || ai_album != nullptr;
+        const bool score_busy  = plan_job != nullptr && !plan_job->done;
+        const bool dl_busy     = downloads_running();
+        const bool help_busy   = help_job && !help_job->finished;
+        any_active |= jobs_busy || covers_busy || ai_busy || score_busy || help_busy;
+        auto entry = [&](const char * label, bool on, bool busy = false) {
             ImGui::PushStyleColor(ImGuiCol_Header, P.accent_soft);
             const bool clicked = ImGui::Selectable(label, on, 0, item);
             ImGui::PopStyleColor();
+            if (busy) {
+                const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+                const ImVec2 c(b.x - 14 * g_dpi, (a.y + b.y) * 0.5f);
+                const float  pulse = 0.55f + 0.45f * std::sin((float) ImGui::GetTime() * 4.f);
+                ImDrawList * dl    = ImGui::GetWindowDrawList();
+                dl->AddCircleFilled(c, 9 * g_dpi, ImGui::GetColorU32(alpha(P.ok, 0.22f * pulse)));
+                dl->AddCircleFilled(c, 6 * g_dpi, ImGui::GetColorU32(alpha(P.ok, 0.45f)));
+                dl->AddCircleFilled(c, 3.8f * g_dpi, ImGui::GetColorU32(P.ok));
+            }
             if (on) {  // trait de couleur à gauche de l'entrée choisie
                 const ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
                 ImGui::GetWindowDrawList()->AddRectFilled(a, ImVec2(a.x + 3 * g_dpi, b.y), ImGui::GetColorU32(P.accent));
@@ -14971,19 +15274,19 @@ struct App {
         auto go_form = [&](int tab) { b_page = 0; form_tab_request = tab; };
         group(tr("Créer"));
         if (entry(tr("Nouveau morceau"), b_page == 0 && form_shown == 0)) go_form(0);
-        if (entry(tr("Composer avec l'IA"), b_page == 0 && form_shown == 1)) go_form(1);
-        if (entry(tr("Partition"), b_page == 0 && form_shown == 2)) go_form(2);
+        if (entry(tr("Composer avec l'IA"), b_page == 0 && form_shown == 1, ai_busy)) go_form(1);
+        if (entry(tr("Partition"), b_page == 0 && form_shown == 2, score_busy)) go_form(2);
         group(tr("Bibliothèque"));
         const std::string lib = trf("Morceaux (%d)", (int) songs.size());
-        if (entry(lib.c_str(), b_page == 1 && lib_tab == 0)) b_page = 1, lib_tab = 0, lib_tab_request = 0;
-        if (entry(tr("Albums"), b_page == 1 && lib_tab == 1)) b_page = 1, lib_tab = 1, lib_tab_request = 1;  // 1.1.005 : onglet de la page
+        if (entry(lib.c_str(), b_page == 1 && lib_tab == 0, running + waiting > 0 || jobs_busy)) b_page = 1, lib_tab = 0, lib_tab_request = 0;
+        if (entry(tr("Albums"), b_page == 1 && lib_tab == 1, covers_busy || jobs_busy)) b_page = 1, lib_tab = 1, lib_tab_request = 1;  // 1.1.005 : onglet de la page
         if (running + waiting > 0) {
             const std::string q = trf("File : %d en cours, %d en attente", running, waiting);
             ImGui::TextColored(running ? P.accent : P.blue, "● %s", q.c_str());
             if (ImGui::IsItemClicked()) b_page = 1, lib_tab = 0, lib_tab_request = 0;
         }
         group(tr("Aide et réglages"));
-        if (entry(tr("Réglages"), b_page == 2)) open_settings = true;  // 1.1.005 : page, catégories dessous
+        if (entry(tr("Réglages"), b_page == 2, dl_busy)) open_settings = true;  // 1.1.005 : page, catégories dessous
         if (b_page == 2) {
             ImGui::Indent(14 * g_dpi);
             for (int i = 0; i < SET_CAT_COUNT; i++) {
@@ -14993,7 +15296,7 @@ struct App {
             }
             ImGui::Unindent(14 * g_dpi);
         }
-        if (entry(tr("Aide"), b_page == 3)) open_help();
+        if (entry(tr("Aide"), b_page == 3, help_busy)) open_help();
         if (entry(tr("Question…"), false)) open_helpq = true;
     }
 
@@ -15034,6 +15337,10 @@ struct App {
     // les PopStyleColor en cours remettaient les anciennes couleurs (fonds sombres restés sur un thème clair).
     bool theme_pending = false;
     void frame() {
+        if (tags_dirty) {  // 1.1.011 : balises de style (Réglages › Styles)
+            tags_dirty = false;
+            rebuild_style_tags(settings);
+        }
         if (theme_pending) {
             theme_pending = false;
             apply_theme(g_system_light, g_dpi);
@@ -15444,6 +15751,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     // Premier lancement : télécharger le modèle ou indiquer le dossier qui le contient déjà.
     if (!ensure_models(instance, fs::path(exe).parent_path(), paths)) return 0;
+    journal::init(paths.root / "journal", STUDIO_VERSION);  // 1.1.011
 
     Gdiplus::GdiplusStartupInput gdiplus_input;
     ULONG_PTR                    gdiplus_token = 0;
@@ -15476,6 +15784,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
+    journal::imgui_install();
     ImGuiIO & io    = ImGui::GetIO();
     io.IniFilename  = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -15492,6 +15801,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     app.settings_path = paths.config / "reglages.json";
     load_draft(app.form, app.draft_path);
     load_settings(app.settings, app.settings_path);
+    journal::event("appli", "Réglages chargés : disposition " + std::to_string(app.settings.layout) + ", thème " + std::to_string(app.settings.theme) +
+                                ", langue « " + app.settings.ui_language + " »");
     app.load_last_album();  // 1.0.36 : dernier album de « Composer avec l'IA »
     g_theme = app.settings.theme;  // thème choisi (le thème par défaut suit Windows)
     g_collapsed.insert(app.settings.collapsed.begin(), app.settings.collapsed.end());
@@ -16437,6 +16748,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
         app.frame();
+        journal::imgui_frame_end();
         ImGui::Render();
         const float clear[4] = { P.bg.x, P.bg.y, P.bg.z, 1.f };
         g_context->OMSetRenderTargets(1, &g_rtv, nullptr);
@@ -16458,6 +16770,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     studio.shutdown();  // la génération en cours devient « interrompue », relançable
 
     release_thumbs();
+    journal::event("appli", "Arrêt du Studio.");
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();

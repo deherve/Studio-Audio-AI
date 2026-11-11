@@ -1,4 +1,5 @@
 #include "studio.hpp"
+#include "journal.hpp"
 #include "util.hpp"  // 1.1.001 : trim, lower, read_text, write_text, url_encode
 
 #include <windows.h>
@@ -1899,9 +1900,17 @@ void Studio::worker() {
             continue;
         }
         try {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                const Song & js = songs_[id];
+                journal::event("morceau", "Génération lancée : « " + js.title + " » (" + js.kind + (js.instrumental ? ", instrumental" : "") +
+                                              ", durée visée " + std::to_string((int) js.duration) + " s) style : " + js.style.substr(0, 160));
+            }
             generate(id);
             launch_long_part(id);  // 1.0.48
+            journal::event("morceau", "Génération terminée : " + id);
         } catch (const std::exception & e) {
+            journal::error("morceau", "Génération en échec (" + id + ") : " + e.what());
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 running_id_.clear();

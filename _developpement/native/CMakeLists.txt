@@ -42,6 +42,7 @@ add_executable(StudioYuE2 WIN32
     src/i18n.cpp
     src/analysis.cpp
     src/util.cpp
+    src/journal.cpp
     src/app.rc
     ${IMGUI}/imgui.cpp
     ${IMGUI}/imgui_draw.cpp
@@ -54,7 +55,7 @@ add_executable(StudioYuE2 WIN32
     ${YYJSON}/yyjson.c
 )
 target_include_directories(StudioYuE2 PRIVATE ${IMGUI} ${IMGUI}/backends ${YYJSON} ${ORT}/include ${CMAKE_CURRENT_SOURCE_DIR}/third_party/webview2/include)
-target_compile_definitions(StudioYuE2 PRIVATE UNICODE _UNICODE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN IMGUI_DISABLE_DEMO_WINDOWS)
+target_compile_definitions(StudioYuE2 PRIVATE UNICODE _UNICODE NOMINMAX _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN IMGUI_DISABLE_DEMO_WINDOWS IMGUI_ENABLE_TEST_ENGINE)  # 1.1.011 : crochets d'ImGui pour le journal (journal.cpp)
 target_compile_options(StudioYuE2 PRIVATE /utf-8 /W3 $<$<CONFIG:Release>:/O2 /GL>)
 target_link_options(StudioYuE2 PRIVATE $<$<CONFIG:Release>:/LTCG /OPT:REF /OPT:ICF>)
 target_link_libraries(StudioYuE2 PRIVATE d3d11 dxgi d3dcompiler winmm dwmapi comdlg32 shell32 advapi32 gdiplus ole32 winhttp comctl32 pdh crypt32 ${ORT}/lib/onnxruntime.lib
@@ -82,6 +83,7 @@ add_executable(CreateurStyles WIN32
     src/lyrics_web.cpp
     src/net.cpp
     src/studio.cpp
+    src/journal.cpp
     src/fiches.cpp
     src/score.cpp
     src/gpuinfo.cpp
