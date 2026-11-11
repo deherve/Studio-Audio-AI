@@ -1587,6 +1587,7 @@
   "Composition du morceau (%d s)": "Composing the track (%d s)",
   "Synthèse audio (%d/%d)": "Audio synthesis (%d/%d)",
   "Décodage du son": "Decoding the sound",
+  "Mémoire de la carte graphique pleine : nouvel essai dans 20 s": "Graphics card memory full: retrying in 20 s",
   "yue-synth a échoué (code %d)": "yue-synth failed (code %d)",
   "Assemblage des deux parties": "Joining the two parts",
   "Assemblage des deux parties impossible (partie 1 introuvable ou ffmpeg en erreur).": "Cannot join the two parts (part 1 not found or ffmpeg error).",

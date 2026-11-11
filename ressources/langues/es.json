@@ -1587,6 +1587,7 @@
   "Composition du morceau (%d s)": "Componiendo la canción (%d s)",
   "Synthèse audio (%d/%d)": "Síntesis de audio (%d/%d)",
   "Décodage du son": "Decodificando el sonido",
+  "Mémoire de la carte graphique pleine : nouvel essai dans 20 s": "Memoria de la tarjeta gráfica llena: nuevo intento en 20 s",
   "yue-synth a échoué (code %d)": "yue-synth falló (código %d)",
   "Assemblage des deux parties": "Unión de las dos partes",
   "Assemblage des deux parties impossible (partie 1 introuvable ou ffmpeg en erreur).": "No se pueden unir las dos partes (parte 1 no encontrada o error de ffmpeg).",

@@ -11005,7 +11005,9 @@ struct App {
         ImGui::EndPopup();
     }
     // Petit bouton « Paroles » des cartes : ouvre la fenêtre ci-dessus.
-    float lyrics_button_width() const { return ImGui::CalcTextSize(tr("Paroles")).x + 2 * ImGui::GetStyle().FramePadding.x; }
+    // 1.1.010 : cartes repliées : « Instrumental » au lieu de « Paroles » pour un instrumental (même fenêtre : structure du morceau)
+    static const char * lyrics_button_label(const Song & s, bool compact) { return compact && s.instrumental ? tr("Instrumental") : tr("Paroles"); }
+    float lyrics_button_width(const Song & s) const { return ImGui::CalcTextSize(lyrics_button_label(s, true)).x + 2 * ImGui::GetStyle().FramePadding.x; }
     // ====================================================================== 1.1.006 : refaire à partir d'ici
     // Le début du morceau est gardé (codes du moteur jusqu'au point choisi), tout ce qui suit est recomposé. Pour une chanson,
     // le point est le début d'une section, calé par les paroles synchronisées (paroles.lrc, Whisper) ; pour un instrumental,
@@ -11137,8 +11139,11 @@ struct App {
         redo_seconds = (float) std::max(2.0, s.audio_seconds / 2);
     }
 
-    void lyrics_button(const Song & s) {
-        if (ImGui::SmallButton(tr("Paroles"))) { lyrics_view_id = s.id; open_lyrics_view = true; }
+    void lyrics_button(const Song & s, bool compact = false) {
+        ImGui::PushID("lyrics_btn");
+        const bool clicked = ImGui::SmallButton(lyrics_button_label(s, compact));
+        ImGui::PopID();
+        if (clicked) { lyrics_view_id = s.id; open_lyrics_view = true; }
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Affiche les paroles et la structure du morceau, à sélectionner et copier."));
     }
 
@@ -11305,7 +11310,7 @@ struct App {
         float thumb_sz = 22 * g_dpi, arrow_w = 30 * g_dpi, gap = 6 * g_dpi;
         std::string summary = song_summary(s);
         float logos_w = clip_logos_width(s);
-        float right_w = lyrics_button_width() + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + 10 * g_dpi : 0);
+        float right_w = lyrics_button_width(s) + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + 10 * g_dpi : 0);
         if (accent_button(playing ? "⏸" : "▶", ImVec2(32 * g_dpi, 0), &P.green)) toggle_play(s);
         ImGui::SameLine(0, 10 * g_dpi);
         ImGui::AlignTextToFramePadding();
@@ -11332,7 +11337,7 @@ struct App {
             ImGui::SetCursorPosY(y);
             ImGui::AlignTextToFramePadding();
         }
-        lyrics_button(s);  // 1.0.95
+        lyrics_button(s, true);  // 1.0.95 ; 1.1.010 : « Instrumental » pour un instrumental
         ImGui::SameLine(0, gap);
         ImGui::TextColored(P.muted, "%s", summary.c_str());
         ImGui::SameLine(0, gap);
@@ -11405,7 +11410,7 @@ struct App {
         ImGui::SameLine(0, 10 * g_dpi);
         std::string summary = song_summary(s);
         float       logos_w = clip_logos_width(s);
-        float       right_w = lyrics_button_width() + gap + play_w + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + gap : 0);
+        float       right_w = lyrics_button_width(s) + gap + play_w + gap + ImGui::CalcTextSize(summary.c_str()).x + gap + marks_width(settings.mark_style, thumb_sz) + (logos_w > 0 ? logos_w + gap : 0);
         float       title_w = ImGui::GetContentRegionAvail().x - right_w - 14 * g_dpi;
         ImGui::BeginGroup();
         ImGui::PushFont(g_bold);
@@ -11433,7 +11438,7 @@ struct App {
             ImGui::SameLine(0, gap);
         }
         ImGui::SetCursorPosY(center_y);
-        lyrics_button(s);  // 1.0.95
+        lyrics_button(s, true);  // 1.0.95 ; 1.1.010 : « Instrumental » pour un instrumental
         ImGui::SameLine(0, gap);
         ImGui::SetCursorPosY(center_y);
         bool playing = player.id() == s.id && player.playing();

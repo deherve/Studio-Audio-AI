@@ -1587,6 +1587,7 @@
   "Composition du morceau (%d s)": "곡 작곡 중(%d초)",
   "Synthèse audio (%d/%d)": "오디오 합성(%d/%d)",
   "Décodage du son": "소리 디코딩 중",
+  "Mémoire de la carte graphique pleine : nouvel essai dans 20 s": "그래픽 카드 메모리 부족: 20초 후 다시 시도",
   "yue-synth a échoué (code %d)": "yue-synth 실패(코드 %d)",
   "Assemblage des deux parties": "두 부분을 잇는 중",
   "Assemblage des deux parties impossible (partie 1 introuvable ou ffmpeg en erreur).": "두 부분을 이을 수 없습니다(1부가 없거나 ffmpeg 오류).",

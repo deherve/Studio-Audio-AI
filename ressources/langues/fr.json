@@ -1587,6 +1587,7 @@
   "Composition du morceau (%d s)": "Composition du morceau (%d s)",
   "Synthèse audio (%d/%d)": "Synthèse audio (%d/%d)",
   "Décodage du son": "Décodage du son",
+  "Mémoire de la carte graphique pleine : nouvel essai dans 20 s": "",
   "yue-synth a échoué (code %d)": "yue-synth a échoué (code %d)",
   "Assemblage des deux parties": "",
   "Assemblage des deux parties impossible (partie 1 introuvable ou ffmpeg en erreur).": "",

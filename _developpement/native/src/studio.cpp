@@ -2307,6 +2307,33 @@ void Studio::generate(const std::string & id) {
     };
     int code = run_process(cmd, on_line, track);
     write_file_atomic(folder / "generation.log", log.data(), log.size());
+    // 1.1.009 : la mémoire de la carte peut être momentanément trop pleine pour la phase audio d'un long morceau (vu le 11/11 :
+    // « [NAR] FATAL: graph alloc failed for T_lat=7250 », partie 2 d'un instrumental très long ; le même morceau relancé à la
+    // main est passé). Un seul nouvel essai automatique, après une pause qui laisse la carte se libérer ; journal du premier
+    // essai gardé à côté (generation_echec.log). Le morceau est recomposé depuis le début, comme avec « Relancer ».
+    if (code != 0 && fatal.find("graph alloc failed") != std::string::npos && !check_cancel()) {
+        write_file_atomic(folder / "generation_echec.log", log.data(), log.size());
+        update(id, [](Song & s) {
+            s.stage    = tr("Mémoire de la carte graphique pleine : nouvel essai dans 20 s");
+            s.message.clear();
+            s.progress = 0.01;
+        });
+        for (int k = 0; k < 40 && !check_cancel(); k++) std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (!check_cancel()) {
+            log.clear();
+            fatal.clear();
+            measured = Song();
+            run.phase_t0 = run.last_step_t = run.step_sum = 0;
+            run.steps_done = 0;
+            update(id, [&](Song & s) {
+                s.stage  = tr("Chargement du modèle");
+                s.eta    = eta0;
+                s.eta_at = now_seconds();
+            });
+            code = run_process(cmd, on_line, track);
+            write_file_atomic(folder / "generation.log", log.data(), log.size());
+        }
+    }
 
     if (check_cancel()) {
         finish_stopped(id, wav);

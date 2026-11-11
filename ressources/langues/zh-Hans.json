@@ -1587,6 +1587,7 @@
   "Composition du morceau (%d s)": "正在作曲（%d 秒）",
   "Synthèse audio (%d/%d)": "音频合成（%d/%d）",
   "Décodage du son": "正在解码声音",
+  "Mémoire de la carte graphique pleine : nouvel essai dans 20 s": "显卡内存已满：20 秒后重试",
   "yue-synth a échoué (code %d)": "yue-synth 失败（代码 %d）",
   "Assemblage des deux parties": "正在拼接两部分",
   "Assemblage des deux parties impossible (partie 1 introuvable ou ffmpeg en erreur).": "无法拼接两部分（找不到第 1 部分或 ffmpeg 出错）。",
