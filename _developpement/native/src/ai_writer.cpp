@@ -1473,11 +1473,14 @@ std::string ai_track_context(const AiAlbumPlan & plan, int index) {
 const std::vector<LocalImageModel> & local_image_models() {
     // Tailles relevées sur Hugging Face (Z-Image le 24/10/2026, klein et MOSS le 28/10/2026). Licences Apache 2.0.
     static const std::vector<LocalImageModel> list = {
-        { "klein", "FLUX.2 klein 4B", "flux2-klein",
-          { { "leejet/FLUX.2-klein-4B-GGUF", "flux-2-klein-4b-Q4_0.gguf", "flux-2-klein-4b-Q4_0.gguf", 2460378560ull },
-            { "unsloth/Qwen3-4B-GGUF", "Qwen3-4B-Q4_K_M.gguf", "Qwen3-4B-Q4_K_M.gguf", 2497281312ull },
+        // 1.1.012 : FLUX.3 klein (5,6 Md de paramètres, Black Forest Labs, 15/10/2026) remplace FLUX.2 klein 4B : même identifiant « klein »
+        // (réglages et clips inchangés), nouveau dossier ; encodeur de texte Qwen3-VL 4B, même VAE FLUX.2 ; 16 étapes, cfg 1,0. Licence
+        // FLUX Kommunity (pas Apache). Banc du 12/11/2026 (RX 6700 XT, sd-cli master-1086) : 43 s en 768 × 768, graphe déchargé en RAM, 4,4 Go de mémoire vidéo en plus (compteur Windows).
+        { "klein", "FLUX.3 klein", "flux3-klein",
+          { { "leejet/flux-3-image-klein-GGUF", "flux3-image-klein-Q4_0.gguf", "flux3-image-klein-Q4_0.gguf", 3514023104ull },
+            { "Qwen/Qwen3-VL-4B-Instruct-GGUF", "Qwen3VL-4B-Instruct-Q4_K_M.gguf", "Qwen3VL-4B-Instruct-Q4_K_M.gguf", 2497281664ull },
             { "unsloth/MOSS-Image-SFT-FP8", "vae/diffusion_pytorch_model.safetensors", "flux2_vae.safetensors", 249521372ull } },
-          4, 1.0f, 14, 5.9f },
+          16, 1.0f, 43, 4.5f },
         { "zimage", "Z-Image Turbo", "",
           { { "leejet/Z-Image-Turbo-GGUF", "z_image_turbo-Q4_0.gguf", "z_image_turbo-Q4_0.gguf", 3683370944ull },
             { "unsloth/Qwen3-4B-Instruct-2507-GGUF", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf", 2497281120ull },

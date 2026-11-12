@@ -4430,7 +4430,8 @@ struct App {
             { N_("Analyse audio"), "Essentia (MTG)", "CC BY-NC-SA 4.0", true },
             { N_("LoRA"), "—", N_("licence propre à chaque LoRA (voir sa page)"), false },
             { N_("Transcription des paroles"), "Whisper", "MIT", false },
-            { N_("Pochettes et clips"), "FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image", "Apache 2.0", false },
+            { N_("Pochettes et clips"), "Z-Image Turbo, MOSS-Image", "Apache 2.0", false },
+            { N_("Pochettes et clips"), "FLUX.3 klein", N_("FLUX Kommunity : commercial seulement sous 5 M$ de revenus"), true },
             { N_("Pochettes et clips"), "SDXL-Lightning", "CreativeML OpenRAIL++-M", false },
             { N_("IA de texte"), "Mistral Nemo, Mistral Small, Qwen 3, Qwen 2.5 (7B, 14B)", "Apache 2.0", false },
             { N_("IA de texte"), "Qwen 2.5 3B", "Qwen Research", true },
@@ -8768,7 +8769,7 @@ struct App {
                     ImGui::TextColored(P.muted, "%s", trf("≈ %d s par image · %.1f Go de mémoire vidéo · %s à télécharger", m.seconds, m.vram_gb,
                                                          fmt_mb(local_image_bytes(m)).c_str()).c_str());
                     ImGui::Indent(24 * g_dpi);
-                    if (std::string(m.id) == "klein") muted_wrapped(tr("Le plus rapide, très bon rendu, titre bien écrit dans l'image ; tient sur une carte de 8 Go."));
+                    if (std::string(m.id) == "klein") muted_wrapped(tr("Très beau rendu, texte bien écrit dans l'image, mais environ trois fois plus lent que l'ancien FLUX.2 klein. Licence FLUX Kommunity (voir le tableau des licences dans Réglages › Système)."));
                     else if (std::string(m.id) == "zimage") muted_wrapped(tr("Rendu proche de la photo ; il faut environ 9 Go de mémoire vidéo."));
                     else if (std::string(m.id) == "sdxl") muted_wrapped(tr("Très rapide (≈ 17 s en 1344 × 768), beau rendu, mais suit moins fidèlement la description. Licence OpenRAIL++."));
                     else {
@@ -8797,7 +8798,7 @@ struct App {
                     ImGui::PopID();
                 }
                 path_line(image_models_dir());
-                muted_wrapped(tr("Modèles sous licence Apache 2.0 (FLUX.2 klein : Black Forest Labs ; Z-Image Turbo : Alibaba ; MOSS-Image : OpenMOSS)."));
+                muted_wrapped(tr("Modèles sous licence Apache 2.0 (Z-Image Turbo : Alibaba ; MOSS-Image : OpenMOSS). FLUX.3 klein (Black Forest Labs) : FLUX Kommunity License, voir le tableau des licences."));
             }
         }
         end_card();

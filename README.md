@@ -4,6 +4,8 @@
 
 **[English](#english) · [Français](#français)**
 
+[![Donate with PayPal / Faire un don avec PayPal](https://img.shields.io/badge/PayPal-Donate%20%2F%20Faire%20un%20don-0070ba?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=CASVBK5K77DHC)
+
 ---
 
 ## Soutenir le projet / Support the project
@@ -34,7 +36,7 @@
 
 **Albums, covers and videos**
 - Library organised as `Audios\<Band>\<Album>\<NN. Title>\`, with filters, sorting, 4 card layouts, approved / to-check marks.
-- Covers drawn locally (FLUX.2 klein, Z-Image Turbo, SDXL-Lightning, MOSS) or by an online service, in 1:1, 16:9 and 9:16.
+- Covers drawn locally (FLUX.3 klein, Z-Image Turbo, SDXL-Lightning, MOSS) or by an online service, in 1:1, 16:9 and 9:16.
 - Export of an album to FLAC / MP3 / WAV with embedded cover.
 - Videos for YouTube (16:9), TikTok (9:16) and Instagram (1:1): still image, or **animated clip** with lyrics synchronised by Whisper and one image per scene written by the local AI from the lyrics.
 - **Shorts** (9:16, 15 to 90 s) centred on the chorus, one at a time or in series for an album or the whole library.
@@ -85,6 +87,16 @@ Then run `_developpement/build_studio_natif.cmd`, and `_developpement/native/mak
 
 Built with C++20, Win32, DirectX 11 and [Dear ImGui](https://github.com/ocornut/imgui).
 
+### Support the project
+
+Studio Audio AI is free and will stay free, with no licence, no limits and no paid features. I develop it on my own, with the help of an AI assistant, and my current subscription is too limited for sustained development: I regularly have to stop and wait for the usage quota to reset.
+
+If the program is useful to you, a donation would help me move to a higher subscription and keep improving it without those interruptions. Donations are entirely voluntary and give no special access: everyone gets the same program.
+
+[Donate with PayPal](https://www.paypal.com/donate/?hosted_button_id=CASVBK5K77DHC)
+
+Thank you for your support!
+
 ### Licences and usage
 
 > **Non-commercial use.** The **YuE2** music models are released under **CC BY-NC 4.0** and the **Essentia** audio-analysis models under **CC BY-NC-SA 4.0**. Selling the tracks, covers and videos made with Studio Audio AI is subject to the licences of the models used: refer to the table below (also shown in Settings › System).
@@ -101,7 +113,8 @@ Built with C++20, Win32, DirectX 11 and [Dear ImGui](https://github.com/ocornut/
 | Qwen 2.5 3B (text AI) | Qwen Research (non-commercial) |
 | Llama 3.1, Gemma 2/3 (text AI) | Llama 3.1 Community License, Gemma Terms of Use |
 | SDXL-Lightning (covers) | CreativeML OpenRAIL++-M |
-| FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image (covers) | Apache 2.0 |
+| Z-Image Turbo, MOSS-Image (covers) | Apache 2.0 |
+| FLUX.3 klein (covers) | FLUX Kommunity License (commercial use of the images only under US$5M annual revenue, with content filtering and AI disclosure where required) |
 | ffmpeg (distribution build) | GPL v3 |
 
 The component licences shipped with the program are in the `LICENSES` folder of the zip. The source code of Studio Audio AI itself is released under the **MIT licence** (see [LICENSE](LICENSE)); this does not change the licences of the models.
@@ -133,7 +146,7 @@ Models are downloaded from their official Hugging Face pages; check each model's
 
 **Albums, pochettes et vidéos**
 - Bibliothèque rangée en `Audios\<Groupe>\<Album>\<NN. Titre>\`, avec filtres, tris, 4 présentations de cartes, marques « validé » / « à problème ».
-- Pochettes dessinées en local (FLUX.2 klein, Z-Image Turbo, SDXL-Lightning, MOSS) ou par un service en ligne, en 1:1, 16:9 et 9:16.
+- Pochettes dessinées en local (FLUX.3 klein, Z-Image Turbo, SDXL-Lightning, MOSS) ou par un service en ligne, en 1:1, 16:9 et 9:16.
 - Export d'un album en FLAC / MP3 / WAV avec la pochette intégrée.
 - Vidéos pour YouTube (16:9), TikTok (9:16) et Instagram (1:1) : image fixe, ou **clip animé** avec les paroles synchronisées par Whisper et une image par scène, écrite par l'IA locale d'après les paroles.
 - **Shorts** (9:16, 15 à 90 s) centrés sur le refrain, un par un ou en série pour un album ou toute la bibliothèque.
@@ -182,6 +195,16 @@ Puis lancer `_developpement/build_studio_natif.cmd`, et `_developpement/native/m
 
 Écrit en C++20, Win32, DirectX 11 et [Dear ImGui](https://github.com/ocornut/imgui).
 
+### Soutenir le projet
+
+Studio Audio AI est gratuit et le restera, sans licence, sans limitation et sans fonction payante. Je le développe seul, avec l'aide d'un assistant IA, et mon abonnement actuel est trop limité pour un développement soutenu : je dois régulièrement m'arrêter et attendre que mon quota d'utilisation se renouvelle.
+
+Si le programme vous est utile, un don m'aiderait à passer à un abonnement plus complet et à continuer de l'améliorer sans ces interruptions. Les dons sont entièrement libres et ne donnent aucun accès particulier : tout le monde a le même programme.
+
+[Faire un don avec PayPal](https://www.paypal.com/donate/?hosted_button_id=CASVBK5K77DHC)
+
+Merci pour votre soutien !
+
 ### Licences et usage
 
 > **Usage non commercial.** Les modèles musicaux **YuE2** sont publiés sous licence **CC BY-NC 4.0** et les modèles d'analyse audio **Essentia** sous **CC BY-NC-SA 4.0**. La commercialisation des morceaux, pochettes et vidéos créés avec Studio Audio AI est soumise aux licences des modèles utilisés : référez-vous au tableau ci-dessous (aussi affiché dans Réglages › Système).
@@ -198,7 +221,8 @@ Puis lancer `_developpement/build_studio_natif.cmd`, et `_developpement/native/m
 | Qwen 2.5 3B (IA de texte) | Qwen Research (non commercial) |
 | Llama 3.1, Gemma 2/3 (IA de texte) | Llama 3.1 Community License, Gemma Terms of Use |
 | SDXL-Lightning (pochettes) | CreativeML OpenRAIL++-M |
-| FLUX.2 klein 4B, Z-Image Turbo, MOSS-Image (pochettes) | Apache 2.0 |
+| Z-Image Turbo, MOSS-Image (pochettes) | Apache 2.0 |
+| FLUX.3 klein (pochettes) | FLUX Kommunity License (usage commercial des images seulement sous 5 M$ de revenus annuels, avec filtrage du contenu et mention IA si la loi l'exige) |
 | ffmpeg (version livrée) | GPL v3 |
 
 Les licences des composants livrés sont dans le dossier `LICENSES` du zip. Le code source de Studio Audio AI lui-même est publié sous **licence MIT** (voir [LICENSE](LICENSE)) ; cela ne change pas les licences des modèles.
