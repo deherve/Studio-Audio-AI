@@ -18,6 +18,7 @@
 #include "score.hpp"
 #include "suno.hpp"
 #include "i18n.hpp"
+#include "journal.hpp"
 
 void Job::stop() {
     cancel = true;
@@ -93,6 +94,20 @@ static void finish_job(Job & job, bool ok, const std::string & message, const fs
     job.state   = ok ? 1 : 2;
 }
 
+// 1.1.013 : fil d'un travail de fond protégé. Une erreur imprévue (fichier illisible, disque plein, mémoire…) termine le
+// travail « en échec » avec son message, notée dans le journal ; avant, elle arrêtait tout le Studio (std::terminate).
+template <class F>
+static std::thread guarded(const std::shared_ptr<Job> & job, F && body) {
+    return std::thread([job, body = std::forward<F>(body)]() mutable {
+        try {
+            body();
+        } catch (const std::exception & e) {
+            journal::error("travail", job->name + " : erreur imprévue : " + e.what());
+            finish_job(*job, false, e.what(), {});
+        }
+    });
+}
+
 // ffmpeg avec suivi du processus (pour l'annulation). Renvoie le code de sortie.
 static int ffmpeg(Job & job, const std::wstring & args, const std::function<void(const std::string &)> & on_line = nullptr,
                   bool read_stdout = false) {
@@ -107,7 +122,7 @@ static std::string two(int n) {
 
 void start_export(const std::shared_ptr<Job> & job, const Paths & paths, std::vector<Song> songs, std::string artist,
                   std::string album, fs::path cover, fs::path dest_parent, bool flac, bool mp3, bool wav) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job &    j    = *job;
         fs::path dest = dest_parent;  // 1.0.46 : <dossier de l'album>\Audios (choisi par l'appelant)
         std::error_code ec;
@@ -209,7 +224,7 @@ static bool video_is_sound(Job & j, const fs::path & file, std::string & why) {
 // Une vidéo par titre : image fixe + audio du morceau (qualité maximale), écrite dans un fichier temporaire
 // puis renommée une fois contrôlée — jamais de fichier à moitié écrit sous le nom final.
 void start_videos(const std::shared_ptr<Job> & job, const Paths & paths, std::vector<VideoTask> tasks) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job &       j = *job;
         int         made = 0;
         std::string errors;
@@ -509,7 +524,7 @@ static void write_lyric_files(const Song & s, const std::vector<ClipLine> & line
 
 void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vector<ClipTask> tasks) {
     (void) paths;
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job &       j = *job;
         int         made = 0;
         std::string errors, notes;
@@ -831,7 +846,7 @@ void write_descriptions(const std::vector<Song> & songs, const std::string & lan
 // ---- 1.0.83 : contrôle qualité
 void start_quality(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path whisper_exe, fs::path whisper_model, fs::path report,
                    std::shared_ptr<std::vector<QualityFinding>> found) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job &              j = *job;
         std::error_code    ec;
         const bool         with_whisper = !whisper_exe.empty() && fs::exists(whisper_exe, ec) && fs::exists(whisper_model, ec);
@@ -968,7 +983,7 @@ static std::wstring wfmt(const char * f, double v) {
 }
 
 void start_master(const std::shared_ptr<Job> & job, std::vector<Song> songs, double lufs, double tp, bool mp3) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job & j = *job;
         std::error_code ec;
         int done = 0;
@@ -1019,7 +1034,7 @@ static std::string stamp(double t, bool srt) {
 }
 
 void start_lrc(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path whisper_exe, fs::path whisper_model) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job & j = *job;
         std::error_code ec;
         std::string errors;
@@ -1089,7 +1104,7 @@ static std::string file_url(const fs::path & p) {
 }
 
 void start_booklet(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::string artist, std::string album, fs::path cover, fs::path dest) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job & j = *job;
         std::error_code ec;
         fs::create_directories(dest, ec);
@@ -1140,7 +1155,7 @@ void start_booklet(const std::shared_ptr<Job> & job, std::vector<Song> songs, st
 }
 
 void start_daw_export(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path dest) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job & j = *job;
         std::error_code ec;
         int n = 0;
@@ -1254,7 +1269,7 @@ static const double DUP_SOUND = 0.60, DUP_MELODY = 0.85;
 
 void start_duplicates(const std::shared_ptr<Job> & job, std::vector<Song> songs, std::shared_ptr<std::vector<DupPair>> found, fs::path report,
                       fs::path analysis_models) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job & j = *job;
         std::vector<Song> done;
         for (const Song & s : songs) if (s.status == "done" && s.long_rest.empty()) done.push_back(s);
@@ -1366,7 +1381,7 @@ int best_trial(const std::vector<Song> & trials, std::vector<std::string> & prob
 }
 
 void start_stems(const std::shared_ptr<Job> & job, std::vector<Song> songs, fs::path demucs_exe, fs::path demucs_model) {
-    job->thread = std::thread([=]() mutable {
+    job->thread = guarded(job, [=]() mutable {
         Job & j = *job;
         std::error_code ec;
         int done = 0;

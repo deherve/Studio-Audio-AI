@@ -15,6 +15,7 @@
 #include <fstream>
 #include <random>
 #include <sstream>
+#include <unordered_map>
 
 #include "fiches.hpp"
 #include "score.hpp"  // 1.0.90
@@ -122,11 +123,16 @@ static std::wstring quote(const std::wstring & arg) {
 static void write_file_atomic(const fs::path & path, const char * data, size_t size) {
     fs::path tmp = path;
     tmp += L".tmp";
+    bool written = false;
     {
         std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
         out.write(data, (std::streamsize) size);
+        out.flush();
+        written = out.good();
     }
-    MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
+    // 1.1.013 : écriture incomplète (disque plein…) : l'ancien fichier est gardé tel quel, le brouillon est retiré.
+    if (written) MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING);
+    else DeleteFileW(tmp.c_str());
 }
 
 // ---------------------------------------------------------------------------- lanceur commun (1.0.99, voir studio.hpp)
@@ -1286,7 +1292,7 @@ std::string Studio::submit(Song song, bool held) {
     if (!song.instrumental && !song.lyrics.empty()) song.lyrics_lang = detect_lyrics_language(song.style, song.lyrics, &song.lyrics_lang_declared);
     song.status   = "queued";
     song.held     = held;
-    song.stage    = held ? "En pause" : "En attente";
+    song.stage    = held ? tr("En pause") : tr("En attente");
     song.progress = 0;
     song.created  = now_seconds();
     song.local    = true;
@@ -1364,7 +1370,7 @@ void Studio::set_held(const std::string & id, bool held) {
         if (s.status == "queued") {
             s.held  = held;
             s.local = true;
-            s.stage = held ? "En pause" : "En attente";
+            s.stage = held ? tr("En pause") : tr("En attente");
             save(s);
         } else if (s.status == "running" && held && id == running_id_) {
             cancel_running_ = true;  // arrêt : le morceau repart en file, en pause (reprise depuis le début)
@@ -1761,24 +1767,28 @@ void Studio::rescan() {
             continue;
         }
         fs::path meta = it->path() / "meta.json";
-        if (fs::exists(meta, ec)) {
-            metas.emplace_back(meta, fs::last_write_time(meta, ec));
+        // 1.1.013 : présence et date en un seul appel (avant : fs::exists + fs::last_write_time, deux ouvertures par morceau,
+        // toutes les 2 secondes). Même valeur que fs::last_write_time (100 ns depuis 1601), comparée à mtimes_.
+        WIN32_FILE_ATTRIBUTE_DATA fa;
+        if (GetFileAttributesExW(meta.c_str(), GetFileExInfoStandard, &fa) && !(fa.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            const long long ticks = ((long long) fa.ftLastWriteTime.dwHighDateTime << 32) | fa.ftLastWriteTime.dwLowDateTime;
+            metas.emplace_back(meta, fs::file_time_type(fs::file_time_type::duration(ticks)));
             it.disable_recursion_pending();  // un morceau ne contient pas d'autre morceau
         }
     }
     bool                        changed = false;
     std::map<std::string, bool> seen;
+    // 1.1.013 : dossier -> identifiant, construit une fois (avant : toute la liste parcourue pour chaque morceau)
+    std::unordered_map<std::wstring, std::string> by_dir;
+    {
+        std::lock_guard<std::mutex> lock(g_folders_m);
+        by_dir.reserve(g_folders.size());
+        for (const auto & [k, v] : g_folders) by_dir.emplace(v.native(), k);
+    }
     for (auto & [meta, mtime] : metas) {
         // identifiant : celui de meta.json (dossier nommé par le titre), mémorisé par dossier pour les scans suivants
         std::string id;
-        {
-            std::lock_guard<std::mutex> lock(g_folders_m);
-            for (const auto & [k, v] : g_folders)
-                if (v == meta.parent_path()) {
-                    id = k;
-                    break;
-                }
-        }
+        if (auto found = by_dir.find(meta.parent_path().native()); found != by_dir.end()) id = found->second;
         if (id.empty()) {
             Song probe;
             if (!load_song(meta, probe)) continue;
@@ -2164,7 +2174,7 @@ void Studio::generate(const std::string & id) {
                 s.stage    = tr("Transcription de la partition");
                 s.progress = 0.03;
             });
-            fs::path src = song.source_file;
+            fs::path src = widen(song.source_file);  // 1.1.013 : UTF-8 (noms accentués)
             fs::path input = src;
             std::string ext = narrow(src.extension().wstring());
             for (auto & c : ext) c = (char) tolower((unsigned char) c);
@@ -2483,7 +2493,7 @@ void Studio::set_gate(bool closed) {
         }
         for (auto & [id, s] : songs_) {  // libellé des morceaux déjà en attente
             if (s.local && s.status == "queued" && !s.held) {
-                s.stage = closed ? "En attente (jeu en cours)" : "En attente";
+                s.stage = closed ? tr("En attente (jeu en cours)") : tr("En attente");
                 save(s);
             }
         }

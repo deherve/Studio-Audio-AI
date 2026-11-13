@@ -106,6 +106,7 @@ bool http_fetch(const std::wstring & url, const fs::path & dest, unsigned long l
     unsigned long long have = fs::exists(part, ec) ? (unsigned long long) fs::file_size(part, ec) : 0;
     if (expected && have >= expected) {
         fs::remove(part, ec);
+        if (done.load() >= have) done -= have;  // 1.1.013 : ces octets ne comptent plus (ni dépassement, ni passage sous zéro)
         have = 0;
     }
     URL_COMPONENTSW uc{ sizeof(uc) };
@@ -134,7 +135,7 @@ bool http_fetch(const std::wstring & url, const fs::path & dest, unsigned long l
             DWORD status = 0, len = sizeof(status);
             WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &len, nullptr);
             if (status == 200 && have > 0) {  // le serveur ignore la reprise : on repart de zéro
-                done -= have;
+                if (done.load() >= have) done -= have;  // 1.1.013 : jamais sous zéro (appelants dont le compteur part de 0)
                 have = 0;
             }
             if (status == 200 || status == 206) {
@@ -226,18 +227,13 @@ std::shared_ptr<DownloadJob> Downloader::start(const std::string & key, const st
             fs::path part = dest;
             part += L".part";
             // Les octets déjà reçus d'un téléchargement interrompu comptent d'emblée.
-            std::atomic<unsigned long long> local{ 0 };
-            if (fs::exists(part, ec2)) {
-                unsigned long long have = (unsigned long long) fs::file_size(part, ec2);
-                local                    = have;
-                raw->done += have;
-            }
+            if (fs::exists(part, ec2)) raw->done += (unsigned long long) fs::file_size(part, ec2);
             std::wstring error;
             bool         ok = false;
             for (int attempt = 0; attempt < 4 && !ok && !raw->cancel; attempt++) {
-                unsigned long long before = local;
-                ok = http_fetch(std::wstring(f.url.begin(), f.url.end()), dest, f.bytes, local, raw->cancel, error);
-                raw->done += local - before;
+                // 1.1.013 : le compteur du travail est donné directement à http_fetch : la barre avance pendant le fichier
+                // (avant : un compteur à part, reporté seulement à la fin de chaque fichier ; un modèle de 3,5 Go restait à 0).
+                ok = http_fetch(std::wstring(f.url.begin(), f.url.end()), dest, f.bytes, raw->done, raw->cancel, error);
                 if (!ok && !raw->cancel) Sleep(1500);
             }
             if (!ok) {

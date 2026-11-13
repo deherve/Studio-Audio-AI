@@ -91,7 +91,11 @@ void check_for_update(std::shared_ptr<UpdateInfo> info, std::string manifest_url
         return;
     }
     if (latest[0] == 'v' || latest[0] == 'V') latest = latest.substr(1);
-    if (notes.size() > 600) notes = notes.substr(0, 600) + "…";
+    if (notes.size() > 600) {
+        size_t cut = 600;
+        while (cut > 0 && ((unsigned char) notes[cut] & 0xC0) == 0x80) cut--;  // 1.1.013 : jamais au milieu d'un caractère accentué
+        notes = notes.substr(0, cut) + "…";
+    }
     info->latest = latest;
     info->url    = url;
     info->notes  = notes;

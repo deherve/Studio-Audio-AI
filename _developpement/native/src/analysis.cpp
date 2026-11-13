@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <thread>
 #include <cmath>
 #include <complex>
 #include <cstdio>
@@ -349,6 +350,13 @@ bool analysis_installed(const fs::path & dir) {
 
 // ------------------------------------------------------------------ analyse
 
+// 1.1.013 : fils de calcul du modèle de style : un par cœur physique (2 à 8) au lieu de 4 fixes.
+// STUDIO_TEST_ORT_THREADS : valeur imposée pour les mesures.
+static int ort_threads() {
+    if (const char * t = getenv("STUDIO_TEST_ORT_THREADS")) return std::clamp(atoi(t), 1, 32);
+    return std::clamp((int) std::thread::hardware_concurrency() / 2, 2, 8);
+}
+
 bool analyze_audio(const fs::path & audio, const fs::path & models_dir, const fs::path & work_dir, const fs::path & transcribe_exe,
                    const fs::path & sheetsage_gguf, const fs::path & whisper_exe, const fs::path & whisper_model,
                    const std::function<void(const std::string &, float)> & progress,
@@ -399,7 +407,7 @@ bool analyze_audio(const fs::path & audio, const fs::path & models_dir, const fs
         }
         Ort::Env            env(ORT_LOGGING_LEVEL_ERROR, "analysis");
         Ort::SessionOptions so;
-        so.SetIntraOpNumThreads(4);
+        so.SetIntraOpNumThreads(ort_threads());
         so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
         Ort::Session eff(env, (models_dir / L"discogs-effnet-bsdynamic-1.onnx").c_str(), so);
         Ort::MemoryInfo     mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -950,7 +958,7 @@ bool audio_print(const fs::path & audio, const fs::path & models_dir, const fs::
             if (!starts.empty()) {
                 static Ort::Env     env(ORT_LOGGING_LEVEL_ERROR, "empreinte");
                 Ort::SessionOptions so;
-                so.SetIntraOpNumThreads(4);
+                so.SetIntraOpNumThreads(ort_threads());
                 so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
                 Ort::Session            eff(env, (models_dir / L"discogs-effnet-bsdynamic-1.onnx").c_str(), so);
                 Ort::MemoryInfo         mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);

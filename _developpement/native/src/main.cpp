@@ -12238,29 +12238,42 @@ struct App {
 
     // Existence d'un fichier, mémorisée 3 secondes (1.0.30) : les cartes de la bibliothèque la demandent à chaque image
     // (pochettes, codes du re-rendu) ; sans ce cache, plusieurs accès disque par carte et par image.
-    mutable std::map<std::wstring, std::pair<bool, double>> exists_cache;
+    // 1.1.013 : sous Audios, la réponse reste valable tant que Windows ne signale aucun changement dans ce dossier (fs_gen,
+    // avancé par la boucle principale, au plus toutes les 3 s) et 60 s au plus ; avant, tout était revérifié toutes les 3 s :
+    // ≈ 1 800 accès disque d'un coup pour 148 morceaux, soit une image saccadée toutes les 3 s dans la bibliothèque.
+    // Ailleurs (ou sans surveillance possible) : 3 secondes, comme avant.
+    unsigned     fs_gen = 0;        // avancé quand le dossier Audios a changé
+    std::wstring fs_watch_root;     // dossier surveillé, en minuscules, avec « \ » final ; vide = pas de surveillance
+    struct FsEntry { int value; double at; unsigned gen; bool watched; };
+    bool fs_entry_valid(const FsEntry & e, double now) const {
+        return e.watched ? e.gen == fs_gen && now - e.at < 60.0 : now - e.at < 3.0;
+    }
+    bool fs_watched(const std::wstring & path) const {
+        return !fs_watch_root.empty() && path.size() > fs_watch_root.size() && _wcsnicmp(path.c_str(), fs_watch_root.c_str(), fs_watch_root.size()) == 0;
+    }
+    mutable std::map<std::wstring, FsEntry> exists_cache;
     bool cached_exists(const fs::path & p) const {
         double now = ImGui::GetTime();
         auto   it  = exists_cache.find(p.native());
-        if (it != exists_cache.end() && now - it->second.second < 3.0) return it->second.first;
+        if (it != exists_cache.end() && fs_entry_valid(it->second, now)) return it->second.value != 0;
         std::error_code ec;
         bool            e = fs::exists(p, ec);
         if (exists_cache.size() > 4096) exists_cache.clear();
-        exists_cache[p.native()] = { e, now };
+        exists_cache[p.native()] = { e ? 1 : 0, now, fs_gen, fs_watched(p.native()) };
         return e;
     }
 
     // 1.0.51 : nombre de vidéos (.mp4) d'un dossier, mémorisé 3 secondes comme cached_exists (voyants de la fenêtre Albums).
-    mutable std::map<std::wstring, std::pair<int, double>> video_cache;
+    mutable std::map<std::wstring, FsEntry> video_cache;
     int video_count(const fs::path & dir) const {
         double now = ImGui::GetTime();
         auto   it  = video_cache.find(dir.native());
-        if (it != video_cache.end() && now - it->second.second < 3.0) return it->second.first;
+        if (it != video_cache.end() && fs_entry_valid(it->second, now)) return it->second.value;
         int             n = 0;
         std::error_code ec;
         for (fs::directory_iterator d(dir, ec), e; !ec && d != e; d.increment(ec)) n += _wcsicmp(d->path().extension().c_str(), L".mp4") == 0;
         if (video_cache.size() > 1024) video_cache.clear();
-        video_cache[dir.native()] = { n, now };
+        video_cache[dir.native()] = { n, now, fs_gen, fs_watched(dir.native() + L"\\") };
         return n;
     }
     std::string album_open;          // 1.0.51 : album déplié dans la fenêtre Albums (un seul à la fois)
@@ -15516,13 +15529,15 @@ static void build_fonts(bool runtime) {
     io.Fonts->Clear();
 
     static const ImWchar text_ranges[] = { 0x0020, 0x017F, 0x0370, 0x052F, 0x1E00, 0x1EFF, 0x2010, 0x205E, 0x20A0, 0x20CF, 0x2248, 0x2248, 0 };
-    static const ImWchar symbol_ranges[] = { 0x2190, 0x21FF, 0x23F8, 0x23FA, 0x25A0, 0x25FF, 0x2713, 0x2713, 0 };
+    // 1.1.013 : signe moins (2212), étoiles ★ ☆ (2605-2606), note ♪ (266A) et croix ✕ (2715) ajoutés : ils s'affichaient « ? »
+    // (étoiles des modèles d'IA, boutons d'annulation, pastilles du style, pochette sans image).
+    static const ImWchar symbol_ranges[] = { 0x2190, 0x21FF, 0x2212, 0x2212, 0x23F8, 0x23FA, 0x25A0, 0x25FF, 0x2605, 0x2606, 0x266A, 0x266A, 0x2713, 0x2715, 0 };
     static const ImWchar punct[] = { 0x2010, 0x2027, 0x3000, 0x303F, 0x3040, 0x30FF, 0xFF00, 0xFFEF, 0 };
     struct Asian { const char * script; const char * regular; const char * bold; };
     static const Asian asian[4] = { { "ja", "YuGothM.ttc", "YuGothB.ttc" }, { "ko", "malgun.ttf", "malgunbd.ttf" },
                                     { "zh-Hans", "msyh.ttc", "msyhbd.ttc" }, { "zh-Hant", "msjh.ttc", "msjhbd.ttc" } };
     auto is_base = [](char32_t c) { return c < 0x250 || (c >= 0x370 && c <= 0x52F) || (c >= 0x1E00 && c <= 0x1EFF) || (c >= 0x2000 && c <= 0x206F) || (c >= 0x20A0 && c <= 0x20CF); };
-    auto is_sym  = [](char32_t c) { return (c >= 0x2190 && c <= 0x21FF) || (c >= 0x23F8 && c <= 0x23FA) || (c >= 0x25A0 && c <= 0x25FF) || c == 0x2713 || c == 0x2248; };
+    auto is_sym  = [](char32_t c) { return (c >= 0x2190 && c <= 0x21FF) || (c >= 0x23F8 && c <= 0x23FA) || (c >= 0x25A0 && c <= 0x25FF) || (c >= 0x2713 && c <= 0x2715) || c == 0x2248 || c == 0x2212 || c == 0x2605 || c == 0x2606 || c == 0x266A; };
 
     ImFontGlyphRangesBuilder latin, cjk[4];
     latin.AddRanges(text_ranges);
@@ -16693,7 +16708,25 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     bool   done        = false;
     int    frames      = 3;
     double last_rescan = 0;
+    bool   library_dirty = false, fs_dirty = false;
+    const wchar_t * fscache_out  = _wgetenv(L"STUDIO_TEST_FSCACHE");
+    int             fscache_step = 0;
+    double          fscache_t0   = 0;
+    std::string     fscache_log;
+    double last_fs_gen   = -10;
+    HANDLE library_watch = FindFirstChangeNotificationW(paths.library.c_str(), TRUE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
+                                                                                         FILE_NOTIFY_CHANGE_LAST_WRITE);
+    if (library_watch != INVALID_HANDLE_VALUE) {
+        app.fs_watch_root = paths.library.native();
+        if (!app.fs_watch_root.empty() && app.fs_watch_root.back() != L'\\') app.fs_watch_root += L'\\';
+    }
+    // Banc de mesure (1.1.013) : « STUDIO_TEST_BENCH=<fichier> » dessine 60 images d'échauffement puis 300 images mesurées
+    // (calcul de l'image seulement, sans l'attente de l'écran), mesure aussi rescan() et snapshot(), écrit le fichier et quitte.
+    const wchar_t *     bench_out = _wgetenv(L"STUDIO_TEST_BENCH");
+    int                 bench_n   = 0;
+    std::vector<double> bench_ms;
     while (!done) {
+        if (bench_out) frames = 3;
         if (frames <= 0) {
             bool  busy    = app.player.playing() || app.any_active;  // compte à rebours et progression
             DWORD timeout = busy ? 250 : 1000;
@@ -16723,9 +16756,57 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         if (g_tray_cmd != TRAY_NONE) frames = 3;
         g_tray_cmd = TRAY_NONE;
 
-        if (ImGui::GetTime() - last_rescan > 2.0) {
-            studio.rescan();  // morceaux produits par la version web
-            last_rescan = ImGui::GetTime();
+        // 1.1.013 : la bibliothèque n'est relue que si Windows signale un changement sous Audios (au plus toutes les 2 s),
+        // et de toute façon toutes les 30 s ; avant : relecture complète toutes les 2 s, même au repos (≈ 17 ms à chaque fois
+        // pour 148 morceaux). Sans surveillance possible (dossier réseau…), on garde la relecture toutes les 2 s.
+        if (library_watch != INVALID_HANDLE_VALUE && WaitForSingleObject(library_watch, 0) == WAIT_OBJECT_0) {
+            library_dirty = fs_dirty = true;
+            FindNextChangeNotification(library_watch);
+        }
+        if (fs_dirty && now_seconds() - last_fs_gen >= 3.0) {  // pendant une génération, le dossier change sans arrêt : 3 s au moins
+            app.fs_gen++;
+            fs_dirty    = false;
+            last_fs_gen = now_seconds();
+            frames      = std::max(frames, 2);  // cartes redessinées avec les fichiers apparus ou disparus
+        }
+        // Essai (1.1.013) : « STUDIO_TEST_FSCACHE=<fichier> » crée puis supprime un fichier sous Audios et mesure en combien de
+        // temps cached_exists le voit apparaître puis disparaître (marche aussi fenêtre masquée : pas besoin de capture).
+        if (fscache_out) {
+            const fs::path probe = paths.library / L"essai_cache_1113.tmp";
+            const double   now   = now_seconds();
+            const bool     seen  = app.cached_exists(probe);
+            if (fscache_step == 0 && fscache_t0 == 0) fscache_t0 = now;
+            if (fscache_step == 0 && now - fscache_t0 > 6.0) {  // démarrage passé ; le fichier n'existe pas encore (réponse gardée en cache)
+                fscache_log += seen ? "ERREUR : vu avant sa creation\n" : "absent au depart : OK\n";
+                { std::ofstream f(probe, std::ios::binary); f << "essai"; }
+                fscache_t0   = now;
+                fscache_step = 1;
+            } else if (fscache_step == 1 && (seen || now - fscache_t0 > 20)) {
+                char line[96];
+                snprintf(line, sizeof(line), "%s apres creation en %.1f s\n", seen ? "vu" : "ERREUR : jamais vu", now - fscache_t0);
+                fscache_log += line;
+                std::error_code fec;
+                fs::remove(probe, fec);
+                fscache_t0   = now;
+                fscache_step = 2;
+            } else if (fscache_step == 2 && (!seen || now - fscache_t0 > 20)) {
+                char line[96];
+                snprintf(line, sizeof(line), "%s apres suppression en %.1f s\n", !seen ? "disparu" : "ERREUR : toujours vu", now - fscache_t0);
+                fscache_log += line;
+                if (FILE * f = _wfopen(fscache_out, L"wb")) {
+                    fputs(fscache_log.c_str(), f);
+                    fclose(f);
+                }
+                fscache_out = nullptr;
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            }
+            frames = std::max(frames, 1);  // la boucle continue de tourner pendant l'essai
+        }
+        const double since_rescan = now_seconds() - last_rescan;  // horloge réelle : avance aussi fenêtre masquée
+        if (since_rescan > 2.0 && (library_dirty || library_watch == INVALID_HANDLE_VALUE || since_rescan > 30.0)) {
+            studio.rescan();  // morceaux ajoutés, modifiés ou retirés en dehors du Studio
+            last_rescan   = now_seconds();
+            library_dirty = false;
         }
         if (g_occluded && g_swapchain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED) {
             // Fenêtre masquée : la pastille continue d'être tenue à jour.
@@ -16745,12 +16826,37 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         if (!app.pending_language.empty()) {
             app.apply_language();
         }
+        const auto bench_t0 = std::chrono::steady_clock::now();
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
         app.frame();
         journal::imgui_frame_end();
         ImGui::Render();
+        if (bench_out && ++bench_n > 60) {
+            bench_ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - bench_t0).count());
+            if (bench_ms.size() >= 300) {
+                std::sort(bench_ms.begin(), bench_ms.end());
+                double sum = 0;
+                for (double v : bench_ms) sum += v;
+                auto timed = [](int n, auto && fn) {
+                    const auto t0 = std::chrono::steady_clock::now();
+                    for (int i = 0; i < n; i++) fn();
+                    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / n;
+                };
+                const double rescan_ms = timed(10, [&] { studio.rescan(); });
+                size_t       count     = 0;
+                const double snap_ms   = timed(200, [&] { count = studio.snapshot().size(); });
+                if (FILE * f = _wfopen(bench_out, L"wb")) {
+                    fprintf(f, "morceaux=%d image_moy_ms=%.3f image_mediane_ms=%.3f image_p95_ms=%.3f image_max_ms=%.3f rescan_ms=%.3f snapshot_ms=%.4f\n",
+                            (int) count, sum / bench_ms.size(), bench_ms[bench_ms.size() / 2], bench_ms[bench_ms.size() * 95 / 100], bench_ms.back(),
+                            rescan_ms, snap_ms);
+                    fclose(f);
+                }
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                bench_out = nullptr;
+            }
+        }
         const float clear[4] = { P.bg.x, P.bg.y, P.bg.z, 1.f };
         g_context->OMSetRenderTargets(1, &g_rtv, nullptr);
         g_context->ClearRenderTargetView(g_rtv, clear);
@@ -16762,6 +16868,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         if (!ImGui::GetCurrentContext()->InputEventsQueue.empty()) frames = std::max(frames, 2);
     }
 
+    if (library_watch != INVALID_HANDLE_VALUE) FindCloseChangeNotification(library_watch);
     if (app.form.dirty) save_draft(app.form, app.draft_path);
     for (auto & j : app.jobs) j->stop();
     app.jobs.clear();
