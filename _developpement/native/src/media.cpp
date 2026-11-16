@@ -447,7 +447,13 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
             say(trf("Images de « %s » : %d sur %d…", s.title.c_str(), (int) k + 1, (int) sb.scenes.size()));
             // 1.0.61 : modèle gardé chargé ; sans serveur, ou s'il échoue, une image à la fois comme avant
             ImageServerSlot & slot = *eng.images;
-            if (!slot.server && !slot.failed) {
+            // 1.1.016 : image de référence du groupe (FLUX.3 klein) : le serveur d'images ne la gère pas, sd-cli image par image
+            const fs::path ref = std::string(eng.image_model->id) == "klein" ? group_reference(s.artist) : fs::path();
+            if (!ref.empty()) {
+                slot.server.reset();
+                journal::event("clip", "Image de scène avec référence du groupe : " + narrow(ref.wstring()));
+            }
+            if (ref.empty() && !slot.server && !slot.failed) {
                 auto server = std::make_shared<LocalImageServer>(eng.sd_cli, eng.image_root, *eng.image_model, eng.offload);
                 if (server->start(&j.cancel)) slot.server = server;
                 else slot.failed = true;
@@ -456,8 +462,8 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
             if (slot.server) r = slot.server->generate(sb.scenes[k].prompt, 1344, 768, png, &j.cancel, seed);
             if (!r.ok && !j.cancel) {
                 slot.server.reset();  // libère la mémoire vidéo pour sd-cli
-                slot.failed = true;
-                r = ai_image_local(eng.sd_cli, eng.image_root, *eng.image_model, sb.scenes[k].prompt, 1344, 768, png, &j.cancel, eng.offload, seed);
+                if (ref.empty()) slot.failed = true;
+                r = ai_image_local(eng.sd_cli, eng.image_root, *eng.image_model, sb.scenes[k].prompt, 1344, 768, png, &j.cancel, eng.offload, seed, ref);
             }
             if (!r.ok || !fs::exists(png, ec)) {
                 if (j.cancel) return false;

@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 SRC = os.path.join(ROOT, "native", "src")
 LANG_DIR = os.path.join(ROOT, "..", "ressources", "langues")  # 1.0.45 : ROOT = music/_developpement, langues dans music/ressources
-FILES = ["main.cpp", "studio.cpp", "setup.cpp", "media.cpp", "download.cpp", "suno.cpp", "player.cpp", "gpumem.cpp", "lora_catalog.hpp", "analysis.cpp", "ai_writer.cpp", "clip.cpp", "fiches.cpp"]
+FILES = ["main.cpp", "app.hpp", "app_models.cpp", "app_form.cpp", "app_ai.cpp", "app_cover.cpp", "app_aiset.cpp", "app_score.cpp", "app_media.cpp", "app_albums.cpp", "app_ui.cpp", "studio.cpp", "setup.cpp", "media.cpp", "download.cpp", "suno.cpp", "player.cpp", "gpumem.cpp", "lora_catalog.hpp", "analysis.cpp", "ai_writer.cpp", "clip.cpp", "fiches.cpp"]
 
 LIT = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 CALL = re.compile(r'(?<![A-Za-z0-9_])(?:tr|trf|wtr|N_)\(\s*(?=")')

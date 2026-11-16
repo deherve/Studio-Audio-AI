@@ -140,6 +140,9 @@ class Studio {
     ~Studio();
 
     std::vector<Song> snapshot();
+    // 1.1.015 : temps estimé (secondes) pour générer ce morceau en entier, d'après les mesures de l'historique (même modèle que la
+    // barre de progression). Un morceau en cours : voir Song::eta. 0 si le morceau n'est pas à générer.
+    double            eta_for(const Song & s);
     std::string       submit(Song song, bool held = false);
     void              cancel(const std::string & id);
     void              set_held(const std::string & id, bool held);  // pause / reprise ; en cours : arrêt puis pause
@@ -269,6 +272,10 @@ fs::path            app_temp_dir();                         // <app>\cache\temp 
 // 1.0.43 : morceaux rangés dans Audios\<Groupe>\<Album>\<NN. Titre>\ (sans album : Audios\<Groupe>\<Titre>\).
 fs::path            song_folder(const std::string & id);    // dossier actuel d'un morceau
 fs::path            album_folder(const std::string & artist, const std::string & album);  // album vide : dossier du groupe
+// 1.1.016 : image de référence du groupe (<groupe>\reference_visuelle.png / .jpg / .webp), vide s'il n'y en a pas.
+fs::path            group_reference(const std::string & artist);
+// Copie « image » dans le dossier du groupe comme image de référence (remplace l'ancienne) ; faux en cas d'échec.
+bool                set_group_reference(const std::string & artist, const fs::path & image);
 void                merge_folder(const fs::path & from, const fs::path & to);             // sans écraser, avec journal
 fs::path            app_resource_dir(const wchar_t * name);  // <app>\ressources\<name> s'il existe, sinon <app>\<name>
 bool                recycle_to_bin(const std::vector<fs::path> & paths, std::string & error);  // 1.0.98 : Corbeille de Windows, jamais hors du dossier du programme

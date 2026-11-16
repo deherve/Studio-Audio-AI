@@ -19,6 +19,15 @@ endif()
 
 add_executable(StudioYuE2 WIN32
     src/main.cpp
+    src/app_models.cpp
+    src/app_form.cpp
+    src/app_ai.cpp
+    src/app_cover.cpp
+    src/app_aiset.cpp
+    src/app_score.cpp
+    src/app_media.cpp
+    src/app_albums.cpp
+    src/app_ui.cpp
     src/studio.cpp
     src/player.cpp
     src/suno.cpp

@@ -1558,7 +1558,8 @@ static std::wstring image_weights(const fs::path & dir, const std::vector<ImageM
 }
 
 AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_root, const LocalImageModel & m, const std::string & prompt,
-                            int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload, long long seed) {
+                            int width, int height, const fs::path & out_png, std::atomic<bool> * cancel, bool offload, long long seed,
+                            const fs::path & reference) {
     AiCallResult r;
     if (sd_cli.empty()) {
         r.error = N_("Moteur d'images introuvable (dossier « outils\\sd-vulkan »).");
@@ -1577,13 +1578,22 @@ AiCallResult ai_image_local(const fs::path & sd_cli, const fs::path & images_roo
     const fs::path dir = local_image_dir(images_root, m);
     std::string    p   = prompt;
     for (char & c : p) if (c == '"' || c == '\r' || c == '\n') c = c == '"' ? '\'' : ' ';
+    // 1.1.016 : image de référence (mode « édition » de FLUX.3 : -r) : même style et mêmes sujets que l'image donnée
+    std::wstring ref_arg;
+    {
+        std::error_code rec;
+        if (std::string(m.id) == "klein" && !reference.empty() && fs::exists(reference, rec)) {
+            ref_arg = L" -r \"" + reference.wstring() + L"\"";
+            p       = "Keep the same visual identity, style and main subject as the reference image. " + p;
+        }
+    }
     std::error_code ec;
     fs::remove(out_png, ec);
     // Réglages de la fiche du modèle (étapes, cfg) ; graine au hasard ; décodage découpé si la mémoire manque (automatique).
     wchar_t cfg[16];
     swprintf(cfg, 16, L"%.1f", m.cfg);
     std::wstring weights = image_weights(dir, f) + (f.size() == 1 ? L" --sampling-method euler --scheduler sgm_uniform" : L"");
-    std::wstring cmd = L"\"" + sd_cli.wstring() + L"\"" + weights +
+    std::wstring cmd = L"\"" + sd_cli.wstring() + L"\"" + weights + ref_arg +
                        (offload ? L" --offload-to-cpu" : L"") + L" -p \"" + widen(p) + L"\" --cfg-scale " + cfg + L" --steps " +
                        std::to_wstring(m.steps) + L" -W " + std::to_wstring(width) + L" -H " + std::to_wstring(height) +
                        L" --seed " + std::to_wstring(seed < 0 ? -1 : seed) + L" -o \"" + out_png.wstring() + L"\"";

@@ -833,6 +833,27 @@ static fs::path wanted_folder(const Song & s) {
     return album_folder(s.artist, s.album) / folder_component(name, L"Sans titre");
 }
 
+fs::path group_reference(const std::string & artist) {
+    const fs::path dir = album_folder(artist, std::string());
+    std::error_code ec;
+    for (const wchar_t * ext : { L".png", L".jpg", L".jpeg", L".webp" }) {
+        const fs::path f = dir / (std::wstring(L"reference_visuelle") + ext);
+        if (fs::exists(f, ec)) return f;
+    }
+    return {};
+}
+
+bool set_group_reference(const std::string & artist, const fs::path & image) {
+    const fs::path dir = album_folder(artist, std::string());
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    std::wstring ext = image.extension().wstring();
+    for (auto & c : ext) c = (wchar_t) towlower(c);
+    for (const wchar_t * old : { L".png", L".jpg", L".jpeg", L".webp" }) fs::remove(dir / (std::wstring(L"reference_visuelle") + old), ec);
+    fs::copy_file(image, dir / (std::wstring(L"reference_visuelle") + ext), fs::copy_options::overwrite_existing, ec);
+    return !ec;
+}
+
 fs::path song_folder(const std::string & id) {
     std::lock_guard<std::mutex> lock(g_folders_m);
     auto                        it = g_folders.find(id);
@@ -1699,6 +1720,25 @@ const SolverSpec & solver_spec(const std::string & key) {
 // Coût relatif de la phase NAR selon le solveur, en part du coût de MP 32 (64 évaluations).
 static double solver_factor(const std::string & solver) {
     return solver_spec(solver).evals / 64.0;
+}
+
+double Studio::eta_for(const Song & s) {
+    EtaModel m;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        m = model_;
+    }
+    const bool   rerender = s.kind == "rerender", extend = s.kind == "extend";
+    const double solver   = solver_factor(s.solver);
+    const bool   has_score = s.cot != "off" && !rerender && !extend && s.kind != "cover" && s.abc.empty();
+    double       frames;
+    if (s.expected_seconds > 0) frames = std::min(s.expected_seconds, s.duration > 0 ? s.duration : s.expected_seconds) * 25;
+    else frames = s.duration * 25 * (s.instrumental ? m.fill_inst : m.fill_song);
+    if (frames <= 0) return 0;
+    double t = 6;  // chargement du modèle
+    if (has_score) t += 1100 / m.score_rate;
+    if (!rerender) t += frames / m.sem_rate;
+    return t + 32 * m.nar_step(frames) * solver + 12;
 }
 
 void Studio::refit_model() {
