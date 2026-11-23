@@ -20,8 +20,53 @@
 #include "i18n.hpp"
 #include "journal.hpp"
 
+static void nt_proc(void * h, bool suspend) {  // 1.1.017
+    using NtProc = LONG(NTAPI *)(HANDLE);
+    HMODULE nt = GetModuleHandleW(L"ntdll.dll");
+    auto    f  = nt ? (NtProc) GetProcAddress(nt, suspend ? "NtSuspendProcess" : "NtResumeProcess") : nullptr;
+    if (f) f((HANDLE) h);
+}
+
+void Job::set_proc(void * h) {
+    std::lock_guard<std::mutex> lock(pause_m);
+    proc = h;
+    if (!h) {
+        suspended = nullptr;
+        return;
+    }
+    if (paused && suspended.load() != h) {
+        nt_proc(h, true);
+        suspended = h;
+    }
+}
+
+void Job::set_paused(bool p) {
+    std::function<void()> release;
+    {
+        std::lock_guard<std::mutex> lock(pause_m);
+        if (paused.exchange(p) == p) return;
+        if (p) {
+            if (void * h = proc.load()) {
+                nt_proc(h, true);
+                suspended = h;
+            }
+            std::lock_guard<std::mutex> lk(mutex);
+            release = on_pause;
+        } else if (void * h = suspended.exchange(nullptr)) {
+            nt_proc(h, false);
+        }
+    }
+    journal::event("travail", name + (p ? " : pause" : " : reprise"));
+    if (release) release();
+}
+
+void Job::wait_if_paused() {
+    while (paused && !cancel) Sleep(200);
+}
+
 void Job::stop() {
     cancel = true;
+    paused = false;
     if (void * p = proc.load()) TerminateProcess((HANDLE) p, 1);
 }
 
@@ -109,9 +154,53 @@ static std::thread guarded(const std::shared_ptr<Job> & job, F && body) {
 }
 
 // ffmpeg avec suivi du processus (pour l'annulation). Renvoie le code de sortie.
+// 1.1.017 : la progression (-progress pipe:1) passe sur le flux d'erreurs (pipe:2) : les deux arrivent par le meme tuyau, la
+// progression va a on_line et le reste (le message d'erreur de ffmpeg) est garde dans job.ffmpeg_err, ecrit au journal en cas d'echec.
+static bool ffmpeg_progress_line(const std::string & l) {
+    static const char * keys[] = { "frame=", "fps=", "stream_", "bitrate=", "total_size=", "out_time_us=", "out_time_ms=", "out_time=",
+                                   "dup_frames=", "drop_frames=", "speed=", "progress=" };
+    for (const char * k : keys)
+        if (l.rfind(k, 0) == 0) return true;
+    return false;
+}
+
 static int ffmpeg(Job & job, const std::wstring & args, const std::function<void(const std::string &)> & on_line = nullptr,
                   bool read_stdout = false) {
-    return run_command(ffmpeg_exe() + L" -v error -y " + args, on_line, [&job](void * h) { job.proc = h; }, read_stdout);
+    { std::lock_guard<std::mutex> lock(job.mutex); job.ffmpeg_err.clear(); }
+    std::wstring       a    = args;
+    const std::wstring from = L"-progress pipe:1";
+    bool               on_stderr = false;
+    if (read_stdout) {
+        const size_t p = a.find(from);
+        if (p != std::wstring::npos) {
+            a.replace(p, from.size(), L"-progress pipe:2");
+            on_stderr = true;
+        }
+    }
+    auto handler = [&](const std::string & l) {
+        const bool progress = on_stderr && ffmpeg_progress_line(l);
+        if (!progress) {
+            std::lock_guard<std::mutex> lock(job.mutex);
+            job.ffmpeg_err += l + "\n";
+            if (job.ffmpeg_err.size() > 1500) job.ffmpeg_err.erase(0, job.ffmpeg_err.size() - 1500);
+        }
+        if (on_line && (progress || !on_stderr)) on_line(l);
+    };
+    return run_command(ffmpeg_exe() + L" -v error -y " + a, handler, [&job](void * h) { job.set_proc(h); }, on_stderr ? false : read_stdout);
+}
+
+// Message d'echec d'une video : code de ffmpeg et, quand il en a donne un, sa raison (aussi ecrite au journal).
+static std::string ffmpeg_fail(Job & j, int code, const fs::path & file) {
+    std::string text = trf("échec ffmpeg (%d) : %s", code, narrow(file.filename().wstring()).c_str());
+    std::string tail;
+    { std::lock_guard<std::mutex> lock(j.mutex); tail = j.ffmpeg_err; }
+    while (!tail.empty() && (tail.back() == '\n' || tail.back() == ' ')) tail.pop_back();
+    if (!tail.empty()) {
+        for (size_t p = 0; (p = tail.find('\n', p)) != std::string::npos; p += 5) tail.replace(p, 1, "\n    ");
+        text += "\n    " + tail;
+        journal::error("ffmpeg", text);
+    }
+    return text;
 }
 
 static std::string two(int n) {
@@ -224,12 +313,15 @@ static bool video_is_sound(Job & j, const fs::path & file, std::string & why) {
 // Une vidéo par titre : image fixe + audio du morceau (qualité maximale), écrite dans un fichier temporaire
 // puis renommée une fois contrôlée — jamais de fichier à moitié écrit sous le nom final.
 void start_videos(const std::shared_ptr<Job> & job, const Paths & paths, std::vector<VideoTask> tasks) {
+    job->pausable = true;  // 1.1.017
     job->thread = guarded(job, [=]() mutable {
         Job &       j = *job;
         int         made = 0;
         std::string errors;
         fs::path    folder = tasks.empty() ? fs::path() : tasks[0].output.parent_path();
         for (size_t i = 0; i < tasks.size() && !j.cancel; i++) {
+            j.wait_if_paused();
+            if (j.cancel) break;
             const VideoTask & t = tasks[i];
             j.total = (int) tasks.size();
             j.item  = (int) i + 1;
@@ -261,7 +353,7 @@ void start_videos(const std::shared_ptr<Job> & job, const Paths & paths, std::ve
             }
             std::string why;
             if (code != 0 || !fs::exists(tmp)) {
-                errors += trf("échec ffmpeg (%d) : %s", (int) code, narrow(t.output.filename().wstring()).c_str()) + "\n";
+                errors += ffmpeg_fail(j, (int) code, t.output) + "\n";
             } else if (!video_is_sound(j, tmp, why)) {
                 errors += trf("vidéo invalide (%s) : %s", why.c_str(), narrow(t.output.filename().wstring()).c_str()) + "\n";
             } else if (MoveFileExW(tmp.c_str(), t.output.c_str(), MOVEFILE_REPLACE_EXISTING) == 0) {
@@ -444,6 +536,13 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
         snprintf(name, sizeof(name), "scene_%02d.png", (int) k + 1);
         fs::path png = dir / widen(name);
         if (!fs::exists(png, ec) || fs::file_size(png, ec) < 10000) {
+            if (j.paused) {  // 1.1.017 : pause : serveur d'images arrete (carte graphique rendue), repris a la reprise
+                { std::lock_guard<std::mutex> lk(eng.images->m); eng.images->server.reset(); }
+                say(tr("En pause : carte graphique libérée."));
+                j.wait_if_paused();
+                if (j.cancel) return false;
+            }
+            std::unique_lock<std::mutex> slot_lock(eng.images->m);  // une pause ne decharge pas le serveur pendant une image
             say(trf("Images de « %s » : %d sur %d…", s.title.c_str(), (int) k + 1, (int) sb.scenes.size()));
             // 1.0.61 : modèle gardé chargé ; sans serveur, ou s'il échoue, une image à la fois comme avant
             ImageServerSlot & slot = *eng.images;
@@ -530,6 +629,22 @@ static void write_lyric_files(const Song & s, const std::vector<ClipLine> & line
 
 void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vector<ClipTask> tasks) {
     (void) paths;
+    job->pausable = true;  // 1.1.017 : pause = ffmpeg suspendu + modele d'images decharge (carte graphique rendue)
+    {
+        std::vector<std::shared_ptr<ImageServerSlot>> slots;
+        for (const ClipTask & t : tasks)
+            if (t.images && std::find(slots.begin(), slots.end(), t.images) == slots.end()) slots.push_back(t.images);
+        if (!slots.empty()) {
+            std::lock_guard<std::mutex> lk(job->mutex);
+            job->on_pause = [slots]() {
+                for (auto & s : slots)
+                    if (s->m.try_lock()) {  // occupe (image en cours) : le travail le decharge lui-meme a l'image suivante
+                        s->server.reset();
+                        s->m.unlock();
+                    }
+            };
+        }
+    }
     job->thread = guarded(job, [=]() mutable {
         Job &       j = *job;
         int         made = 0;
@@ -566,7 +681,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
                         std::wstring lang = t.song.lyrics_lang.empty() ? L"auto" : widen(t.song.lyrics_lang);
                         std::wstring cmd  = quote_arg(t.whisper_exe.wstring()) + L" -m " + quote_arg(t.whisper_model.wstring()) + L" -f " +
                                            quote_arg(wav.wstring()) + L" -l " + lang + L" -ml 1 -sow -mc 0 -oj -np -of " + quote_arg(base.wstring());
-                        run_command(cmd, nullptr, [&j](void * h) { j.proc = h; });
+                        run_command(cmd, nullptr, [&j](void * h) { j.set_proc(h); });
                         std::ifstream f(base.wstring() + L".json", std::ios::binary);
                         std::string   json((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
                         heard = clip_parse_words(json);
@@ -582,6 +697,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
         // 1.0.61 : tous les scénarios d'abord ; ensuite le modèle d'images reste chargé d'un morceau à l'autre
         std::set<std::string> planned;
         for (const ClipTask & t : tasks) {
+            j.wait_if_paused();
             if (j.cancel || !t.make_scenario || !planned.insert(t.song.id).second) continue;
             fs::path audio = song_folder(t.song.id) / "audio.flac";
             if (!fs::exists(audio)) audio = song_folder(t.song.id) / "audio.wav";
@@ -596,6 +712,8 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
             if (!j.cancel) t.make_scenario(j, t.song, lines, seconds, unused, note);
         }
         for (size_t i = 0; i < tasks.size() && !j.cancel; i++) {
+            j.wait_if_paused();
+            if (j.cancel) break;
             const ClipTask & t = tasks[i];
             j.total = (int) tasks.size();
             j.item  = (int) i + 1;
@@ -695,7 +813,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
             }
             std::string why;
             if (code != 0 || !fs::exists(tmp)) {
-                errors += trf("échec ffmpeg (%d) : %s", (int) code, narrow(t.output.filename().wstring()).c_str()) + "\n";
+                errors += ffmpeg_fail(j, (int) code, t.output) + "\n";
             } else if (!video_is_sound(j, tmp, why)) {
                 errors += trf("vidéo invalide (%s) : %s", why.c_str(), narrow(t.output.filename().wstring()).c_str()) + "\n";
             } else if (MoveFileExW(tmp.c_str(), t.output.c_str(), MOVEFILE_REPLACE_EXISTING) == 0) {
@@ -707,6 +825,7 @@ void start_clips(const std::shared_ptr<Job> & job, const Paths & paths, std::vec
             fs::remove_all(work, ec);
             j.progress = (float) (i + 1) / tasks.size();
         }
+        { std::lock_guard<std::mutex> lk(j.mutex); j.on_pause = nullptr; }  // 1.1.017 : lache aussi les serveurs d'images
         tasks.clear();  // 1.0.100 : arrête le serveur d'images (gardé d'un morceau à l'autre) et rend la carte avant d'annoncer la fin
         if (j.cancel) {
             finish_job(j, false, trf("Création des clips annulée (%d terminé(s)).", (int) made), folder);

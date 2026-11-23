@@ -939,7 +939,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
                 test_tasks.push_back(t2);
             }
             start_clips(job, studio.paths(), test_tasks);
+            std::thread pause_t;
+            if (const wchar_t * pz = _wgetenv(L"STUDIO_TEST_PAUSE")) {  // 1.1.017 : « a,b » : pause apres a s, pendant b s
+                int a = 0, b = 0;
+                swscanf(pz, L"%d,%d", &a, &b);
+                pause_t = std::thread([job, a, b] { Sleep(a * 1000); job->set_paused(true); Sleep(b * 1000); job->set_paused(false); });
+            }
             while (job->state == 0) Sleep(500);
+            if (pause_t.joinable()) pause_t.join();
             std::wstring report = std::wstring(argv[5]) + L".txt";
             if (FILE * f = _wfopen(report.c_str(), L"wb")) {
                 std::lock_guard<std::mutex> lock(job->mutex);

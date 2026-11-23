@@ -26,6 +26,16 @@ struct Job {
     std::string        message, chapters;
     fs::path           output;
     std::thread        thread;
+    // 1.1.017 : pause (clips et videos) : le processus en cours est suspendu et le modele d'images decharge (carte graphique rendue).
+    std::atomic<bool>   paused{ false };
+    bool                pausable = false;
+    std::atomic<void *> suspended{ nullptr };
+    std::mutex          pause_m;
+    std::function<void()> on_pause;  // sous mutex : decharge le modele d'images
+    std::string         ffmpeg_err;  // sous mutex : dernieres lignes d'erreur de ffmpeg (pour le journal et le message d'echec)
+    void set_paused(bool p);
+    void set_proc(void * h);   // processus courant (ffmpeg, Whisper) : suspendu tout de suite si le travail est en pause
+    void wait_if_paused();     // bloque tant que le travail est en pause (ou annule)
     bool               announced = false;  // rÃ©sultat dÃ©jÃ  signalÃ© Ã  l'utilisateur
 
     void stop();
@@ -64,6 +74,7 @@ struct ClipScenes {
 // 1.0.61 : serveur d'images commun Ã  tous les morceaux d'une mÃªme crÃ©ation de clips (partagÃ© par les copies de SceneEngine).
 struct ImageServerSlot {
     std::shared_ptr<LocalImageServer> server;
+    std::mutex                        m;  // 1.1.017 : tenu pendant une image ; une pause ne decharge le serveur que s'il est libre
     bool                              failed = false;  // pas de serveur : une image Ã  la fois avec sd-cli
 };
 // Moteurs du scÃ©nario (IA locale de texte, puis modÃ¨le d'images local) : prÃ©parÃ©s par l'application.
@@ -87,6 +98,7 @@ fs::path clip_scenes_dir(const SceneEngine & eng, const Song & song);
 bool make_clip_scenes(const SceneEngine & eng, Job & job, const Song & song, const std::vector<ClipLine> & lines, double seconds,
                       ClipScenes & out, std::string & note, bool scenario_only = false);
 struct ClipTask : VideoTask {
+    std::shared_ptr<ImageServerSlot> images;  // 1.1.017 : serveur d'images a decharger pendant une pause
     fs::path    whisper_exe, whisper_model;
     std::string text_start, text_end;  // 1.0.54 : textes personnalisÃ©s de la carte de dÃ©but et de la carte de fin (voir clip.hpp)
     bool        karaoke = false;        // 1.0.98 : paroles défilantes, lues dans paroles.lrc si elles existent

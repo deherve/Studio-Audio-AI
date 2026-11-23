@@ -433,6 +433,9 @@ void App::create_videos() {
             }
         }
     }
+    const bool skip_done = skip_existing_clips || (video_skip_done && !video_redo);  // 1.1.017
+    int        skipped   = 0;
+    auto       skip_note = [&]() { return skipped ? std::string(" ") + trf("%d vidéo(s) déjà faite(s) : ignorée(s).", skipped) : std::string(); };
     video_redo = false;
     auto clip_task = [&](const VideoTask & t) {
         ClipTask c;
@@ -445,6 +448,7 @@ void App::create_videos() {
         c.whisper_exe   = studio->paths().whisper;
         c.whisper_model = studio->paths().models_dir / "voix" / whisper_file().name;
         if (with_scenes) {
+            c.images = scene_engine.images;  // 1.1.017 : dechargé par la pause
             c.make_scenes = [scene_engine](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out,
                                            std::string & note) { return make_clip_scenes(scene_engine, j, sg, lines, seconds, out, note); };
             c.make_scenario = [scene_engine](Job & j, const Song & sg, const std::vector<ClipLine> & lines, double seconds, ClipScenes & out,
@@ -472,9 +476,12 @@ void App::create_videos() {
             // 1.0.52 : un clip animé se range dans le même dossier de format que la vidéo fixe, suffixe « _Clip »
             t.output = video_dest / (n.w > n.h ? L"YouTube" : n.w == n.h ? L"IG" : L"TikTok") /
                        (widen(safe_filename(display_title(s.title))) + L"_" + n.suffix + (clip ? L"_Clip.mp4" : L".mp4"));
-            if (clip && skip_existing_clips) {
+            if (skip_done) {
                 std::error_code ec5;
-                if (fs::exists(t.output, ec5)) continue;
+                if (fs::exists(t.output, ec5)) {
+                    skipped++;
+                    continue;
+                }
             }
             if (clip) {
                 clips.push_back(clip_task(t));
@@ -502,7 +509,10 @@ void App::create_videos() {
             }
             t.output = dest / L"Shorts" / (widen(safe_filename(display_title(s.title))) + L"_Short.mp4");
             std::error_code ec7;
-            if (skip_existing_clips && fs::exists(t.output, ec7)) continue;
+            if (skip_done && fs::exists(t.output, ec7)) {
+                skipped++;
+                continue;
+            }
             ClipTask c      = clip_task(t);
             c.short_seconds = std::clamp(atoi(settings.clip_short_seconds.c_str()), 15, 90);
             clips.push_back(std::move(c));
@@ -510,7 +520,11 @@ void App::create_videos() {
     if (!clips.empty()) {
         auto job = new_job(tr("Clips — ") + video_title + " (" + std::to_string(clips.size()) + ")");
         start_clips(job, studio->paths(), std::move(clips));
-        notify(trf("%d titre(s) : création des clips en cours.", (int) video_songs.size()));
+        notify(trf("%d titre(s) : création des clips en cours.", (int) video_songs.size()) + skip_note());
+        return;
+    }
+    if (tasks.empty() && skipped > 0) {
+        notify(tr("Toutes les vidéos demandées existent déjà (décochez « Reprendre » pour les refaire)."));
         return;
     }
     if (tasks.empty()) {
@@ -519,7 +533,7 @@ void App::create_videos() {
     }
     auto job = new_job(tr("Vidéos — ") + video_title + " (" + std::to_string(tasks.size()) + ")");
     start_videos(job, studio->paths(), std::move(tasks));
-    notify(trf("%d titre(s) : création des vidéos en cours.", job ? (int) video_songs.size() : 0));
+    notify(trf("%d titre(s) : création des vidéos en cours.", job ? (int) video_songs.size() : 0) + skip_note());
 }
 
 // Bloc d'un réseau dans la fenêtre vidéo : case, aperçu de l'image, choix de l'image.
@@ -691,6 +705,8 @@ void App::draw_video_modal() {
                 ImGui::EndCombo();
             }
         }
+        ImGui::Checkbox(tr("Reprendre : ne pas refaire les vidéos déjà créées"), &video_skip_done);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Après une interruption, seules les vidéos qui manquent sont créées. Sans effet si « Refaire le scénario et les images » est coché."));
         ImGui::Checkbox(tr("Refaire le scénario et les images (sinon ceux déjà faits sont réutilisés : montage seul, plus rapide)"), &video_redo);
         {  // 1.0.98 (atelier clip, point 8) : graine commune aux images d'un même clip
             bool same = settings.clip_same_seed == "1";
@@ -861,6 +877,13 @@ void App::draw_jobs() {
                 muted_wrapped(line);
             }
             progress_bar(j.progress, ImVec2(-FLT_MIN, 0));
+            if (j.pausable) {  // 1.1.017 : pause = ffmpeg suspendu, modèle d'images déchargé (carte graphique rendue)
+                const bool pz = j.paused;
+                if (pz) muted_wrapped(tr("En pause : le travail reprendra au clic sur « Reprendre »."));
+                if (soft_button(pz ? tr("Reprendre") : tr("Pause"), P.teal)) j.set_paused(!pz);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Suspend la création et rend la carte graphique (à la fin de l'image en cours). La création reprend là où elle s'est arrêtée."));
+                ImGui::SameLine();
+            }
             if (danger_button(tr("Annuler"))) j.stop();
         } else {
             muted_wrapped(msg);

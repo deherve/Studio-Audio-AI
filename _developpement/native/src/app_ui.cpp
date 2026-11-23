@@ -153,6 +153,7 @@ void App::draw_modals() {
             else if (key == "cards") settings.card_mode = atoi(val.c_str());
             else if (key == "fakejob") {  // 1.1.011 : un travail qui ne finit pas (menu de gauche) ; 2 = il échoue après 12 s (journal)
                 auto fj = new_job("Essai du point lumineux");
+                if (atoi(val.c_str()) == 3) fj->pausable = true;  // 1.1.017 : bouton Pause
                 if (atoi(val.c_str()) == 2)
                     fj->thread = std::thread([fj] {
                         std::this_thread::sleep_for(std::chrono::seconds(12));
@@ -160,6 +161,14 @@ void App::draw_modals() {
                         fj->state = 2;
                     });
             }
+            else if (key == "videodlg") {  // 1.1.017 : fenetre « Creer des videos » de l'album « Groupe|Album »
+                const size_t bar = val.find('|');
+                if (bar != std::string::npos) {
+                    const std::string k = album_key(val.substr(0, bar), val.substr(bar + 1));
+                    open_video_dialog(album_songs(studio->snapshot(), k, false), val.substr(bar + 1), k, true);
+                }
+            }
+            else if (key == "videogo") create_videos();  // 1.1.017 : lance « Créer les vidéos » (essai de la reprise)
             else if (key == "groupstyle") settings.save_group_style = atoi(val.c_str()) != 0;  // 1.1.011
             else if (key == "layout") settings.layout = std::clamp(atoi(val.c_str()), 0, 2);  // 1.1.002
             else if (key == "page") b_page = std::clamp(atoi(val.c_str()), 0, 3);  // 1.1.003 : page de la disposition B (1.1.005 : 2 réglages, 3 aide)

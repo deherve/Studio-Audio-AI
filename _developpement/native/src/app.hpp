@@ -2671,6 +2671,7 @@ struct App {
     int               clip_style = 0;      // 1.0.53 : type de rendu des images (index dans clip_styles())
     bool              clip_style_loaded = false;
     bool              video_short = false;  // 1.0.74 : Short 9:16 de 30 s centré sur le refrain (dossier « Shorts »)
+    bool              video_skip_done = true;  // 1.1.017 : reprise : une video deja creee n'est pas refaite (sans effet si « Refaire » est coche)
     bool              video_redo = false;  // 1.0.55 : refaire le scénario et les images du clip (sinon ceux déjà faits sont réutilisés)
     // 1.0.56 : par morceau de la fenêtre (id) : lignes de paroles et nombre d'images recommandé (clip_recommend_images)
     std::map<std::string, int> video_lines, video_rec;
