@@ -736,6 +736,8 @@
   "%d doublon(s) retiré(s) de la liste des mots à éviter.": "피할 단어 목록에서 중복 %d개를 제거했습니다.",
   "Aucun doublon dans la liste des mots à éviter.": "피할 단어 목록에 중복이 없습니다.",
   "Retire les mots en double, sans tenir compte des accents, des majuscules ni du pluriel (« Rêve » et « rêves » comptent pour un) ; le premier est gardé.": "악센트, 대소문자, 복수형을 무시하고 중복된 단어를 제거합니다(“Rêve”와 “rêves”는 하나로 셈). 첫 번째 단어가 남습니다.",
+  "Paroles plus naturelles : consignes anti-style « IA » (humanizer)": "더 자연스러운 가사: 'AI 문체' 방지 규칙(humanizer)",
+  "Ajoute aux demandes de paroles des règles d'écriture naturelle dans la langue choisie : images concrètes, pas de « ce n'est pas X, c'est Y », pas de formules toutes faites ni de calques de l'anglais (règles supplémentaires pour le français). Inspiré des skills humanizer et humanizer-fr (MIT).": "가사 요청에 선택한 언어의 자연스러운 글쓰기 규칙을 추가합니다. 구체적인 이미지, 'X가 아니라 Y' 표현 금지, 상투적인 문구와 영어 직역 금지(프랑스어는 추가 규칙). humanizer 및 humanizer-fr 스킬(MIT)에서 영감을 받았습니다.",
   "Éviter aussi les mots qui reviennent dans les derniers morceaux écrits par l'IA": "AI가 최근에 쓴 곡에서 자주 반복되는 단어도 피하기",
   "Aucun pour l'instant (%d morceau(x) retenu(s)).": "아직 없음(기억한 곡 %d개).",
   "Mots évités en ce moment : %s": "현재 피하는 단어: %s",

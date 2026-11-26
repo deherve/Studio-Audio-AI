@@ -736,6 +736,8 @@
   "%d doublon(s) retiré(s) de la liste des mots à éviter.": "已經由要避開嘅字清單刪咗 %d 個重複。",
   "Aucun doublon dans la liste des mots à éviter.": "要避開嘅字清單冇重複。",
   "Retire les mots en double, sans tenir compte des accents, des majuscules ni du pluriel (« Rêve » et « rêves » comptent pour un) ; le premier est gardé.": "刪除重複嘅字，唔理重音、大細楷同複數（「Rêve」同「rêves」當一個）；保留第一個。",
+  "Paroles plus naturelles : consignes anti-style « IA » (humanizer)": "更自然嘅歌詞：避免「AI 腔」嘅規則（humanizer）",
+  "Ajoute aux demandes de paroles des règles d'écriture naturelle dans la langue choisie : images concrètes, pas de « ce n'est pas X, c'est Y », pas de formules toutes faites ni de calques de l'anglais (règles supplémentaires pour le français). Inspiré des skills humanizer et humanizer-fr (MIT).": "喺歌詞請求入面加入所選語言嘅自然寫作規則：用具體意象，避免「唔係X而係Y」、套語同英文直譯（法文另有補充規則）。靈感來自 humanizer 同 humanizer-fr 技能（MIT）。",
   "Éviter aussi les mots qui reviennent dans les derniers morceaux écrits par l'IA": "都避開 AI 最近寫嘅曲入面成日重複出現嘅字",
   "Aucun pour l'instant (%d morceau(x) retenu(s)).": "暫時冇（記住咗 %d 首曲）。",
   "Mots évités en ce moment : %s": "而家避開緊嘅字：%s",

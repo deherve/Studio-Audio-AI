@@ -455,6 +455,7 @@ AiRequest App::ai_request() const {
     r.instrumental = settings.ai_instrumental;
     r.length       = settings.ai_length;
     r.avoid        = ai_avoid_words();
+    ai_set_natural(settings.ai_natural);  // 1.1.018
     r.negative     = join_style(split_style(settings.ai_negative));  // 1.0.34
     return r;
 }

@@ -160,6 +160,8 @@ struct AiRequest {
 // construite par l'interface ; ici la consigne complète envoyée à l'IA (en anglais : mieux suivie par tous les modèles).
 std::string ai_system_prompt(bool instrumental);
 std::string ai_user_prompt(const AiRequest & r);
+// 1.1.018 : consignes d'ecriture naturelle ajoutees aux demandes de paroles (reglage « ai_natural », Reglages > IA).
+void        ai_set_natural(bool on);
 // Rappel ajouté lors du second essai quand la première réponse était illisible.
 std::string ai_retry_prompt();
 

@@ -736,6 +736,8 @@
   "%d doublon(s) retiré(s) de la liste des mots à éviter.": "%d duplicate(s) removed from the list of words to avoid.",
   "Aucun doublon dans la liste des mots à éviter.": "No duplicates in the list of words to avoid.",
   "Retire les mots en double, sans tenir compte des accents, des majuscules ni du pluriel (« Rêve » et « rêves » comptent pour un) ; le premier est gardé.": "Removes duplicate words, ignoring accents, capitals and plurals (“Dream” and “dreams” count as one); the first one is kept.",
+  "Paroles plus naturelles : consignes anti-style « IA » (humanizer)": "More natural lyrics: anti “AI style” rules (humanizer)",
+  "Ajoute aux demandes de paroles des règles d'écriture naturelle dans la langue choisie : images concrètes, pas de « ce n'est pas X, c'est Y », pas de formules toutes faites ni de calques de l'anglais (règles supplémentaires pour le français). Inspiré des skills humanizer et humanizer-fr (MIT).": "Adds natural-writing rules to the lyrics requests, in the chosen language: concrete images, no “it's not X, it's Y”, no stock phrases or calques from English (extra rules for French). Inspired by the humanizer and humanizer-fr skills (MIT).",
   "Éviter aussi les mots qui reviennent dans les derniers morceaux écrits par l'IA": "Also avoid words that keep coming back in the latest tracks written by the AI",
   "Aucun pour l'instant (%d morceau(x) retenu(s)).": "None for now (%d track(s) remembered).",
   "Mots évités en ce moment : %s": "Words currently avoided: %s",

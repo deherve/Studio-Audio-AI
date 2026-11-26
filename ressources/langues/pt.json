@@ -736,6 +736,8 @@
   "%d doublon(s) retiré(s) de la liste des mots à éviter.": "%d duplicado(s) removido(s) da lista de palavras a evitar.",
   "Aucun doublon dans la liste des mots à éviter.": "Nenhum duplicado na lista de palavras a evitar.",
   "Retire les mots en double, sans tenir compte des accents, des majuscules ni du pluriel (« Rêve » et « rêves » comptent pour un) ; le premier est gardé.": "Remove as palavras repetidas, sem considerar acentos, maiúsculas nem plurais («Sonho» e «sonhos» contam como uma); a primeira é mantida.",
+  "Paroles plus naturelles : consignes anti-style « IA » (humanizer)": "Letras mais naturais: regras contra o estilo «IA» (humanizer)",
+  "Ajoute aux demandes de paroles des règles d'écriture naturelle dans la langue choisie : images concrètes, pas de « ce n'est pas X, c'est Y », pas de formules toutes faites ni de calques de l'anglais (règles supplémentaires pour le français). Inspiré des skills humanizer et humanizer-fr (MIT).": "Acrescenta aos pedidos de letras regras de escrita natural na língua escolhida: imagens concretas, nada de «não é X, é Y», nem frases feitas nem decalques do inglês (regras adicionais para o francês). Inspirado nos skills humanizer e humanizer-fr (MIT).",
   "Éviter aussi les mots qui reviennent dans les derniers morceaux écrits par l'IA": "Evitar também as palavras que se repetem nas últimas faixas escritas pela IA",
   "Aucun pour l'instant (%d morceau(x) retenu(s)).": "Nenhuma por enquanto (%d faixa(s) memorizada(s)).",
   "Mots évités en ce moment : %s": "Palavras evitadas no momento: %s",

@@ -492,6 +492,31 @@ std::string ai_system_prompt(bool instrumental) {
     return p;
 }
 
+// 1.1.018 : écriture naturelle. Règles inspirées des skills « humanizer » (blader, MIT) et « humanizer-fr » (ferr079, MIT),
+// réduites à ce qui sert à des paroles (consignes courtes : une IA locale en suit peu à la fois). Désactivable (Réglages › IA).
+static std::atomic<bool> g_natural{ true };
+void ai_set_natural(bool on) { g_natural = on; }
+
+static std::string natural_rules(const std::string & lang) {
+    std::string p =
+        "\nNatural writing (important): write like a native songwriter of " + lang + " speaks and writes, not like a chatbot. "
+        "Each line must say something concrete (a place, an object, a gesture, a person) instead of announcing a feeling. "
+        "Do not write lines built as \"it's not X, it's Y\" or \"not just X but Y\", nor lines that sound like a deep saying "
+        "(\"at the core\", \"the real question\"), nor lists of three abstract nouns used as filler. "
+        "Avoid stock AI words and images (tapestry, symphony, echoes, whispers, journey, beacon, embrace, a dance of light and shadow, "
+        "testament), inflated or promotional words, and word-for-word translations of English expressions. "
+        "Vary the length of the lines and keep a spoken rhythm; only the chorus repeats identically. "
+        "Never use dashes or markdown inside a line.";
+    if (lang == "French")
+        p += "\nFrench lyrics: use everyday French as it is sung, with the elisions and contractions a French songwriter would write. "
+             "Avoid calques from English (\"adresser un problème\", \"supporter\" for \"to support\", \"délivrer\", \"au final\", \"faire du sens\", "
+             "\"une opportunité\" for a chance), report-style connectors (ainsi, en effet, par ailleurs, de plus, notamment), "
+             "empty verbs and phrases (mettre en lumière, s'inscrire dans, venir + infinitive, se veut), filler words (véritable, essentiel, "
+             "crucial, fluide, robuste, pierre angulaire), and lines like \"pas X mais Y\" or \"ce n'est pas X, c'est Y\". "
+             "Prefer the plain verbs être and avoir.";
+    return p;
+}
+
 // trim est défini plus bas (lecture des réponses) : petite copie pour les consignes.
 static std::string trim_text(const std::string & s) {
     size_t a = s.find_first_not_of(" \t\r\n,"), b = s.find_last_not_of(" \t\r\n,");
@@ -527,6 +552,7 @@ std::string ai_user_prompt(const AiRequest & r) {
     // Anti-répétition (1.0.33) : vocabulaire et titres neufs.
     if (!r.instrumental) {
         p += "\nUse fresh, concrete and surprising images; avoid the usual clichés of AI-written songs.";
+        if (g_natural) p += natural_rules(lang);  // 1.1.018
         if (!r.avoid.empty()) {
             p += "\nNever use these words, nor their plural, in the title or the lyrics: ";
             for (size_t i = 0; i < r.avoid.size(); i++) p += (i ? ", " : "") + r.avoid[i];
@@ -1134,6 +1160,7 @@ void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> 
             for (size_t i = 0; i < avoid.size(); i++) u += (i ? ", " : "") + avoid[i];
             u += ".";
         }
+        if (g_natural) u += natural_rules(song.language.empty() ? std::string("English") : song.language);  // 1.1.018
         u += "\n\nReply with the new sections only, as plain text with their [Section] tags: no JSON, no comment.";
         AiCallResult r = ask("You are a songwriter. You only answer with a JSON object.", u);
         if (!r.ok) return;

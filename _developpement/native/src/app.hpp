@@ -857,6 +857,7 @@ struct Settings {
     int                 mark_style = 1;         // marques validé / à problème : 0 pouces, 1 coche et croix (défaut 1.0.31, livrable de Herve), 2 commutateur
     int                 card_mode  = 0;         // cartes de la bibliothèque : 0 détaillée, 1 compacte, 2 pochette
     int                 style_mode = 0;         // bloc Style : 0 classique, 1 pastilles, 2 constructeur
+    bool                ai_natural = true;  // 1.1.018 : consignes d'écriture naturelle pour les paroles écrites par l'IA
     bool                save_group_style = false;  // 1.1.011 : enregistrer le style sous le nom du groupe à chaque morceau lancé
     std::vector<std::string> tag_added[5], tag_hidden[5];  // 1.1.011 : Réglages › Styles : balises ajoutées / retirées par catégorie
     bool                analysis_auto = true;   // analyser le fichier choisi pour une reprise dès sa sélection
@@ -1046,6 +1047,8 @@ inline void parse_settings(Settings & s, yyjson_val * r) {
     if (yyjson_is_int(v)) s.card_mode = std::clamp((int) yyjson_get_int(v), 0, 3);
     v = yyjson_obj_get(r, "style_mode");
     if (yyjson_is_int(v)) s.style_mode = std::clamp((int) yyjson_get_int(v), 0, 2);
+    v = yyjson_obj_get(r, "ai_natural");
+    if (yyjson_is_bool(v)) s.ai_natural = yyjson_get_bool(v);
     v = yyjson_obj_get(r, "save_group_style");
     if (yyjson_is_bool(v)) s.save_group_style = yyjson_get_bool(v);
     for (int gi = 0; gi < 5; gi++) {
@@ -1265,6 +1268,7 @@ inline void save_settings(const Settings & s, const fs::path & path) {
     yyjson_mut_obj_add_int(doc, o, "layout", s.layout);
     yyjson_mut_obj_add_int(doc, o, "card_mode", s.card_mode);
     yyjson_mut_obj_add_int(doc, o, "style_mode", s.style_mode);
+    yyjson_mut_obj_add_bool(doc, o, "ai_natural", s.ai_natural);
     yyjson_mut_obj_add_bool(doc, o, "save_group_style", s.save_group_style);
     for (int gi = 0; gi < 5; gi++) {
         for (int kind = 0; kind < 2; kind++) {

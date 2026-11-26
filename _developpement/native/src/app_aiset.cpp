@@ -180,6 +180,9 @@ void App::draw_ai_settings_inner() {
         settings.ai_avoid = ai_default_avoid_words();
         save_settings(settings, settings_path);
     }
+    if (ImGui::Checkbox(tr("Paroles plus naturelles : consignes anti-style « IA » (humanizer)"), &settings.ai_natural)) save_settings(settings, settings_path);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Ajoute aux demandes de paroles des règles d'écriture naturelle dans la langue choisie : images concrètes, pas de « ce n'est pas X, c'est Y », pas de formules toutes faites ni de calques de l'anglais (règles supplémentaires pour le français). Inspiré des skills humanizer et humanizer-fr (MIT)."));
     if (ImGui::Checkbox(tr("Éviter aussi les mots qui reviennent dans les derniers morceaux écrits par l'IA"), &settings.ai_auto_avoid)) save_settings(settings, settings_path);
     if (settings.ai_auto_avoid) {
         std::vector<std::string> autow = ai_auto_words();
