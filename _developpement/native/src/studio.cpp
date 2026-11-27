@@ -748,7 +748,7 @@ double media_duration(const fs::path & file) {
 
 // Calé sur les morceaux générés : une ligne chantée dure ≈ 6 s, chaque section ajoute ≈ 6 s
 // d'instrumental ; intro et fin ≈ 15 s. Les instrumentaux suivent la durée typique de chaque section.
-double estimate_seconds(const std::string & lyrics, bool instrumental) {
+double estimate_seconds(const std::string & lyrics, bool instrumental, double cap) {
     std::istringstream in(lyrics);
     std::string        line;
     double             total = 0;
@@ -772,7 +772,7 @@ double estimate_seconds(const std::string & lyrics, bool instrumental) {
             total += 6;
         }
     }
-    return std::clamp(total, 30.0, 360.0);
+    return std::clamp(total, 30.0, cap);
 }
 
 int run_command(std::wstring command, const std::function<void(const std::string &)> & on_line,

@@ -198,6 +198,11 @@ void        ai_lengthen_song(AiSong & song, int target, const std::vector<std::s
 int                      ai_drop_repeated_lines(std::string & lyrics, std::set<std::string> & known, int chorus_keep = -1);
 std::set<std::string>    ai_known_lines(const std::vector<std::string> & lines);
 std::vector<std::string> ai_song_lines(const std::string & lyrics);  // lignes chantées, sans balises
+// 1.1.021 : passe de relecture : l'IA ne réécrit que les lignes qui sonnent « IA » (images toutes faites, abstractions, calques de
+// l'anglais). Le résultat n'est gardé que si les sections et le nombre de lignes de chaque section sont identiques ; un refrain répété
+// reste identique partout. Rend le nombre de lignes changées (0 = paroles inchangées).
+int ai_polish_song(AiSong & song, const std::string & language, const std::vector<std::string> & avoid, const AiAsk & ask,
+                   const std::atomic<bool> * cancel);
 constexpr int AI_LONG_LINES = 110;  // « Très longue » : mesuré 94 lignes = 8 min 01 en 3 parties, soit ≈ 5,1 s par ligne
 // 1.0.37 : titre encore fautif après la relance → demande d'un titre seul, et sa lecture (JSON {"title"} ou texte).
 std::string ai_title_retry_prompt(const std::string & old_title, const std::vector<std::string> & found, const std::vector<std::string> & avoid);

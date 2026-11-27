@@ -259,7 +259,7 @@ double       now_seconds();
 bool         other_synth_running();
 double       media_duration(const fs::path & file);  // secondes, 0 si illisible (ffprobe)
 // Durée probable d'un morceau d'après ses sections et ses paroles (secondes).
-double       estimate_seconds(const std::string & lyrics, bool instrumental);
+double       estimate_seconds(const std::string & lyrics, bool instrumental, double cap = 360);  // 1.1.020 : plafond réglable (360 s par défaut)
 // 1.0.70 : dans long_rest, sépare les paroles de la partie suivante de celles de la dernière (morceau en 3 parties)
 inline const char LONG_PART_MARK[] = "\n[[partie suivante]]\n";
 

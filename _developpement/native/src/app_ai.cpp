@@ -547,7 +547,9 @@ void App::start_ai_compose() {
     int             layers = llm.vulkan ? ai_gpu_layers(ec ? 0 : (unsigned long long) size, gpu_profile().gpu.vram) : 0;
     std::vector<std::string> avoid = req.avoid;
     const bool very_long = req.length == 3 && !req.instrumental;
-    std::thread([job, system, user, ep, llm, model, layers, avoid, very_long] {
+    const bool polish    = settings.ai_polish && !req.instrumental;  // 1.1.021
+    const std::string lang = req.language;
+    std::thread([job, system, user, ep, llm, model, layers, avoid, very_long, polish, lang] {
         auto ask = [&](const std::string & u) {
             return job->local ? ai_local_chat(llm, model, layers, system, u, &job->stage, &job->cancel) : ai_chat(ep, system, u, 180000);
         };
@@ -591,6 +593,10 @@ void App::start_ai_compose() {
                 std::set<std::string> known;
                 ai_drop_repeated_lines(job->song.lyrics, known);
             }
+            if (polish && job->song.ok && !job->cancel)  // 1.1.021 : relecture avant la suite d'un morceau très long
+                ai_polish_song(job->song, lang, avoid, [&](const std::string & sy, const std::string & u) {
+                    return job->local ? ai_local_chat(llm, model, layers, sy, u, &job->stage, &job->cancel) : ai_chat(ep, sy, u, 180000);
+                }, &job->cancel);
             if (very_long)
                 ai_lengthen_song(job->song, AI_LONG_LINES, avoid, [&](const std::string & sy, const std::string & u) {
                     return job->local ? ai_local_chat(llm, model, layers, sy, u, &job->stage, &job->cancel) : ai_chat(ep, sy, u, 180000);

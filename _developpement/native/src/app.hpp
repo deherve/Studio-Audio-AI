@@ -858,6 +858,7 @@ struct Settings {
     int                 card_mode  = 0;         // cartes de la bibliothèque : 0 détaillée, 1 compacte, 2 pochette
     int                 style_mode = 0;         // bloc Style : 0 classique, 1 pastilles, 2 constructeur
     bool                ai_natural = true;  // 1.1.018 : consignes d'écriture naturelle pour les paroles écrites par l'IA
+    bool                ai_polish  = false; // 1.1.021 : passe de relecture des paroles (réécrit les lignes qui sonnent « IA ») ; décochée : +1 min par chanson
     bool                save_group_style = false;  // 1.1.011 : enregistrer le style sous le nom du groupe à chaque morceau lancé
     std::vector<std::string> tag_added[5], tag_hidden[5];  // 1.1.011 : Réglages › Styles : balises ajoutées / retirées par catégorie
     bool                analysis_auto = true;   // analyser le fichier choisi pour une reprise dès sa sélection
@@ -882,7 +883,7 @@ struct Settings {
     // Atelier clip (1.0.54) : textes affichés au début et à la fin des clips (« Rock Ballads Fr », « Abonnez-vous »…) et type de rendu
     std::string                        clip_text_start, clip_text_end, clip_style_id = "auto", clip_image_model = "klein", clip_image_count = "0", clip_image_mode = "rec";
     std::string                        clip_karaoke = "0", key_check_auto = "0";  // 1.0.98
-    std::string                        clip_end_pos = "0", clip_end_box = "0", clip_same_seed = "0";  // 1.0.98 : texte de fin, graine commune
+    std::string                        clip_end_pos = "0", clip_end_box = "0", clip_same_seed = "0", clip_fast_images = "1";  // 1.1.024 : images 1024 × 576  // 1.0.98 : texte de fin, graine commune
     std::string                        soundfont_bank;  // 1.0.97 : fichier .sf2 choisi (modeles\sons\banques)
     std::string                        night_action = "0";  // 1.0.97 : à la fin de la file : 0 rien, 1 veille, 2 extinction
     std::string                        clip_short_seconds = "30";  // 1.0.75 : durée des Shorts (15, 30, 45, 60 ou 90 s)
@@ -1049,6 +1050,8 @@ inline void parse_settings(Settings & s, yyjson_val * r) {
     if (yyjson_is_int(v)) s.style_mode = std::clamp((int) yyjson_get_int(v), 0, 2);
     v = yyjson_obj_get(r, "ai_natural");
     if (yyjson_is_bool(v)) s.ai_natural = yyjson_get_bool(v);
+    v = yyjson_obj_get(r, "ai_polish");
+    if (yyjson_is_bool(v)) s.ai_polish = yyjson_get_bool(v);
     v = yyjson_obj_get(r, "save_group_style");
     if (yyjson_is_bool(v)) s.save_group_style = yyjson_get_bool(v);
     for (int gi = 0; gi < 5; gi++) {
@@ -1117,7 +1120,7 @@ inline void parse_settings(Settings & s, yyjson_val * r) {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
         { "clip_short_seconds", &s.clip_short_seconds }, { "night_action", &s.night_action }, { "soundfont_bank", &s.soundfont_bank }, { "clip_karaoke", &s.clip_karaoke }, { "key_check_auto", &s.key_check_auto },
-        { "clip_end_pos", &s.clip_end_pos }, { "clip_end_box", &s.clip_end_box }, { "clip_same_seed", &s.clip_same_seed },  // 1.0.98
+        { "clip_end_pos", &s.clip_end_pos }, { "clip_end_box", &s.clip_end_box }, { "clip_same_seed", &s.clip_same_seed }, { "clip_fast_images", &s.clip_fast_images },  // 1.0.98, 1.1.024
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },
@@ -1269,6 +1272,7 @@ inline void save_settings(const Settings & s, const fs::path & path) {
     yyjson_mut_obj_add_int(doc, o, "card_mode", s.card_mode);
     yyjson_mut_obj_add_int(doc, o, "style_mode", s.style_mode);
     yyjson_mut_obj_add_bool(doc, o, "ai_natural", s.ai_natural);
+    yyjson_mut_obj_add_bool(doc, o, "ai_polish", s.ai_polish);
     yyjson_mut_obj_add_bool(doc, o, "save_group_style", s.save_group_style);
     for (int gi = 0; gi < 5; gi++) {
         for (int kind = 0; kind < 2; kind++) {
@@ -1309,7 +1313,7 @@ inline void save_settings(const Settings & s, const fs::path & path) {
         { "clip_text_start", &s.clip_text_start }, { "clip_text_end", &s.clip_text_end }, { "clip_style", &s.clip_style_id },
         { "clip_image_model", &s.clip_image_model }, { "clip_image_count", &s.clip_image_count }, { "clip_image_mode", &s.clip_image_mode },
         { "clip_short_seconds", &s.clip_short_seconds }, { "night_action", &s.night_action }, { "soundfont_bank", &s.soundfont_bank }, { "clip_karaoke", &s.clip_karaoke }, { "key_check_auto", &s.key_check_auto },
-        { "clip_end_pos", &s.clip_end_pos }, { "clip_end_box", &s.clip_end_box }, { "clip_same_seed", &s.clip_same_seed },  // 1.0.98
+        { "clip_end_pos", &s.clip_end_pos }, { "clip_end_box", &s.clip_end_box }, { "clip_same_seed", &s.clip_same_seed }, { "clip_fast_images", &s.clip_fast_images },  // 1.0.98, 1.1.024
         { "ai_engine", &s.ai_engine },           { "ai_last_service", &s.ai_last_service }, { "ai_local_model", &s.ai_local_model },
         { "ai_server_url", &s.ai_server_url },   { "ai_server_name", &s.ai_server_name },   { "ai_server_model", &s.ai_server_model },
         { "ai_custom_url", &s.ai_custom_url },   { "ai_influence", &s.ai_influence },       { "ai_theme", &s.ai_theme },

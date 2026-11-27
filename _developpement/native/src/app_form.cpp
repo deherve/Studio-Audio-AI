@@ -138,7 +138,20 @@ void App::submit(bool held) {
     std::string long_rest;
     if (f.long_track && f.cover.empty() && submit_abc.empty()) {  // 1.0.88 : une partition fournie couvre tout le morceau
         // 1.0.70 : 3 parties pour un texte de plus de 6 minutes (estimate_seconds plafonne à 360 s) : chacune reste sous la limite de mémoire vidéo d'une carte de 12 Go
-        const bool three = ai_sung_lines(words) >= 60 || (int) std::count(words.begin(), words.end(), '[') >= 18;
+        bool three = ai_sung_lines(words) >= 60 || (int) std::count(words.begin(), words.end(), '[') >= 18;
+        // 1.1.020 : aussi 3 parties quand la durée estimée de chaque moitié dépasse ce que la carte supporte (sur 12 Go : « Epic Journey »,
+        // 2 parties de 251 s et 290 s, a manqué de mémoire vidéo ; 3 parties de ≈ 180 s restent sous 220 s)
+        {
+            const GpuMem   gm         = gpu_monitor.get();
+            const unsigned long long vram = gm.total > 0 ? gm.total : (unsigned long long) gpu_profile().gpu.vram;  // moniteur pas encore lancé : profil de la carte
+            const bool     small_card = vram > 0 && vram <= (unsigned long long) (12.5 * 1073741824.0);
+            const double   target     = small_card ? 220.0 : 330.0;
+            const double   total_est  = estimate_seconds(words, f.instrumental, 3600);
+            if (!three && total_est > 2 * target) {
+                three = true;
+                notify(trf("Morceau long : coupé en 3 parties d'environ %s chacune pour tenir dans la mémoire de la carte graphique.", fmt_time(total_est / 3).c_str()));
+            }
+        }
         auto parts = split_long_lyrics(words, three ? 3 : 2);
         if (parts.second.empty()) {
             notify(tr("Morceau long : il faut au moins deux sections ([Verse], [Chorus]…) pour le couper en deux parties."));

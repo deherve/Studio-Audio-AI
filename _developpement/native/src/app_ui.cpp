@@ -168,6 +168,10 @@ void App::draw_modals() {
                     open_video_dialog(album_songs(studio->snapshot(), k, false), val.substr(bar + 1), k, true);
                 }
             }
+            else if (key == "videoopts") {  // 1.1.024 : essai : cases de « Créer des vidéos » (liste : yt, tt, ig, clip, short, redo ; les autres décochées)
+                auto has = [&](const char * w) { return (',' + val + ',').find(std::string(",") + w + ",") != std::string::npos; };
+                video_yt = has("yt"), video_tt = has("tt"), video_ig = has("ig"), video_clip = has("clip"), video_short = has("short"), video_redo = has("redo");
+            }
             else if (key == "videogo") create_videos();  // 1.1.017 : lance « Créer les vidéos » (essai de la reprise)
             else if (key == "groupstyle") settings.save_group_style = atoi(val.c_str()) != 0;  // 1.1.011
             else if (key == "layout") settings.layout = std::clamp(atoi(val.c_str()), 0, 2);  // 1.1.002

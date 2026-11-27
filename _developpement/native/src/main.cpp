@@ -486,6 +486,38 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             if (f) fclose(f);
             return 0;
         }
+        // Essai (1.1.021) : « --polish-test sortie.txt » : paroles françaises par l'IA locale, puis passe de relecture ; avant / après.
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--polish-test") {
+            app.local_llm = find_local_llm(app.app_dir());
+            AiRequest req    = app.ai_request();
+            req.language     = "French";
+            req.language_tag = "French";
+            req.instrumental = false;
+            req.length       = 0;
+            req.influence.clear();
+            req.theme = _wgetenv(L"STUDIO_TEST_THEME") ? narrow(_wgetenv(L"STUDIO_TEST_THEME")) : std::string("une gare de nuit en hiver");
+            fs::path        model = app.ai_models_dir() / widen(app.settings.ai_local_model);
+            std::error_code ec;
+            auto            size   = fs::file_size(model, ec);
+            int             layers = app.local_llm.vulkan ? ai_gpu_layers(ec ? 0 : (unsigned long long) size, gpu_profile().gpu.vram) : 0;
+            std::atomic<bool> stop{ false };
+            std::atomic<int>  stage{ 0 };
+            FILE *            f = _wfopen(argv[2], L"wb");
+            ai_local_session(app.local_llm, model, layers, &stage, &stop, [&](const AiAsk & ask) {
+                for (int n = 0; n < 2; n++) {
+                    AiCallResult a = ask(ai_system_prompt(false), ai_user_prompt(req));
+                    AiSong       s = a.ok ? ai_parse_song(a.text, false) : AiSong{};
+                    if (!s.ok) { if (f) fprintf(f, "=== essai %d : paroles illisibles\n%s\n", n, a.text.c_str()); continue; }
+                    std::string before = s.lyrics;
+                    auto        t0     = std::chrono::steady_clock::now();
+                    int         changed = ai_polish_song(s, "French", req.avoid, ask, &stop);
+                    double      secs    = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+                    if (f) fprintf(f, "=== essai %d : %s : %d ligne(s) changee(s) en %.0f s\n--- avant\n%s\n--- apres\n%s\n\n", n, s.title.c_str(), changed, secs, before.c_str(), s.lyrics.c_str());
+                }
+            });
+            if (f) fclose(f);
+            return 0;
+        }
         // Essai (1.0.70) : « --lengthen-test sortie.txt » : suite des paroles, d'abord avec une fausse IA, puis avec l'IA locale.
         if (argv && argc >= 3 && std::wstring(argv[1]) == L"--lengthen-test") {
             AiSong song;
@@ -599,6 +631,32 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             });
             if (f) fprintf(f, "\nreste apres tri : %d : %s\n", residual, residual == 0 ? "OK" : "ECHEC"), fclose(f);
             return residual == 0 ? 0 : 1;
+        }
+        // Essai (1.1.020) : « --splitrule-test sortie.txt » : morceau long instrumental de 12 puis de 16 sections, ajoutés en pause par
+        // submit() : nombre de parties choisi d'après la durée estimée (carte de 12 Go : 3 parties dès 440 s).
+        if (argv && argc >= 3 && std::wstring(argv[1]) == L"--splitrule-test") {
+            FILE * out = _wfopen(argv[2], L"wb");
+            for (int pairs : { 5, 7 }) {
+                Form & f        = app.form;
+                f.instrumental  = true;
+                f.long_track    = true;
+                f.title         = "Essai decoupe " + std::to_string(pairs);
+                f.artist        = "Groupe Essai";
+                f.style         = "instrumental, rock";
+                std::string s   = "[intro]\n";
+                for (int i = 0; i < pairs; i++) s += "[verse]\n[chorus]\n";
+                f.lyrics_inst   = s + "[outro]";
+                app.submit(true);
+                for (const Song & x : studio.snapshot())
+                    if (x.title.rfind(f.title, 0) == 0) {
+                        int marks = 0;
+                        for (size_t p = x.long_rest.find(LONG_PART_MARK); p != std::string::npos; p = x.long_rest.find(LONG_PART_MARK, p + 1)) marks++;
+                        if (out) fprintf(out, "%d sections, estimation %.0f s : parties = %d (%s)\n", 2 + 2 * pairs, estimate_seconds(f.lyrics_inst, true, 3600), 2 + marks, x.title.c_str());
+                    }
+            }
+            if (out) fclose(out);
+            studio.shutdown();
+            return 0;
         }
         // Essai (1.0.48) : « --long-test sortie.txt » : instrumental court en 3 parties (40 s puis les suites), assemblées.
         if (argv && argc >= 3 && std::wstring(argv[1]) == L"--long-test") {

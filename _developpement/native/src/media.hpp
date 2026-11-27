@@ -88,6 +88,7 @@ struct SceneEngine {
     bool                    offload = false;
     int                     scene_count = 0;  // nombre d'images demandÃ© ; 0 = automatique (6 Ã  12 selon les paroles)
     std::map<std::string, int> counts;        // nombre d'images propre Ã  chaque morceau (id) : prime sur scene_count
+    bool                    fast_images = false;  // 1.1.024 : images de scène en 1024 × 576 (au lieu de 1344 × 768)
     bool                    same_seed = false;  // 1.0.98 : même graine pour toutes les images d'un morceau (tirée de son id)
     std::string             style_id = "auto", style_prompt;  // type de rendu choisi (voir clip_styles) ; prompt vide = auto
 };

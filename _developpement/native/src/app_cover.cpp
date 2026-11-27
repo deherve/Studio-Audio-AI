@@ -527,7 +527,8 @@ void App::start_ai_album() {
     std::error_code ec;
     auto       size          = fs::file_size(model, ec);
     int        layers        = llm.vulkan ? ai_gpu_layers(ec ? 0 : (unsigned long long) size, gpu_profile().gpu.vram) : 0;
-    std::thread([job, req, base, ep, llm, model, layers] {
+    const bool polish = settings.ai_polish;  // 1.1.021
+    std::thread([job, req, base, ep, llm, model, layers, polish] {
         auto work = [&](const AiAsk & ask) {
             // 1. Plan de l'album (une nouvelle demande si illisible)
             job->stage                = -1;
@@ -599,6 +600,7 @@ void App::start_ai_album() {
                     std::set<std::string> known = ai_known_lines(album_lines);
                     ai_drop_repeated_lines(s.lyrics, known);
                 }
+                if (polish && s.ok && !r.instrumental && !job->cancel) ai_polish_song(s, req.language, r.avoid, ask, &job->cancel);  // 1.1.021
                 if (r.length == 3 && !r.instrumental) ai_lengthen_song(s, AI_LONG_LINES, r.avoid, ask, &job->cancel, album_lines);
                 if (s.ok && !r.instrumental)
                     for (const std::string & l : ai_song_lines(s.lyrics))

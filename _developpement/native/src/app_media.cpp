@@ -424,6 +424,7 @@ void App::create_videos() {
             scene_engine.style_id    = cs.id;
             scene_engine.style_prompt = cs.prompt;
             scene_engine.same_seed   = settings.clip_same_seed == "1";  // 1.0.98
+            scene_engine.fast_images = settings.clip_fast_images != "0";  // 1.1.024
             with_scenes              = true;
         }
         if (video_redo && with_scenes) {  // « Refaire » : scénario et images de ce rendu repartent de zéro
@@ -708,6 +709,15 @@ void App::draw_video_modal() {
         ImGui::Checkbox(tr("Reprendre : ne pas refaire les vidéos déjà créées"), &video_skip_done);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tr("Après une interruption, seules les vidéos qui manquent sont créées. Sans effet si « Refaire le scénario et les images » est coché."));
         ImGui::Checkbox(tr("Refaire le scénario et les images (sinon ceux déjà faits sont réutilisés : montage seul, plus rapide)"), &video_redo);
+        {  // 1.1.024 : taille des images de scène (mesure du 26/11/2026 : klein 38 s en 1024 × 576, 74 s en 1344 × 768)
+            bool fast = settings.clip_fast_images != "0";
+            if (ImGui::Checkbox(tr("Images du clip en 1024 × 576 (rapide)"), &fast)) {
+                settings.clip_fast_images = fast ? "1" : "0";
+                save_settings(settings, settings_path);
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", tr("Les images de scène sont créées en 1024 × 576 puis agrandies par le montage : environ 2 fois plus rapide qu'en 1344 × 768, un peu moins de détail (surtout dans les vidéos verticales). Ne change que les nouvelles images."));
+        }
         {  // 1.0.98 (atelier clip, point 8) : graine commune aux images d'un même clip
             bool same = settings.clip_same_seed == "1";
             if (ImGui::Checkbox(tr("Même graine pour toutes les images d'un clip (personnage et décor plus réguliers)"), &same)) {

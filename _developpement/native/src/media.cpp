@@ -558,11 +558,11 @@ bool make_clip_scenes(const SceneEngine & eng, Job & j, const Song & s, const st
                 else slot.failed = true;
             }
             AiCallResult r;
-            if (slot.server) r = slot.server->generate(sb.scenes[k].prompt, 1344, 768, png, &j.cancel, seed);
+            if (slot.server) r = slot.server->generate(sb.scenes[k].prompt, eng.fast_images ? 1024 : 1344, eng.fast_images ? 576 : 768, png, &j.cancel, seed);
             if (!r.ok && !j.cancel) {
                 slot.server.reset();  // libère la mémoire vidéo pour sd-cli
                 if (ref.empty()) slot.failed = true;
-                r = ai_image_local(eng.sd_cli, eng.image_root, *eng.image_model, sb.scenes[k].prompt, 1344, 768, png, &j.cancel, eng.offload, seed, ref);
+                r = ai_image_local(eng.sd_cli, eng.image_root, *eng.image_model, sb.scenes[k].prompt, eng.fast_images ? 1024 : 1344, eng.fast_images ? 576 : 768, png, &j.cancel, eng.offload, seed, ref);
             }
             if (!r.ok || !fs::exists(png, ec)) {
                 if (j.cancel) return false;

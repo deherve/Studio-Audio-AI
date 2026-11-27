@@ -1173,6 +1173,75 @@ void ai_lengthen_song(AiSong & song, int target, const std::vector<std::string> 
     }
 }
 
+int ai_polish_song(AiSong & song, const std::string & language, const std::vector<std::string> & avoid, const AiAsk & ask,
+                   const std::atomic<bool> * cancel) {
+    if (!song.ok || ai_sung_lines(song.lyrics) < 4 || (cancel && *cancel)) return 0;
+    const std::string lang = language.empty() ? std::string("English") : language;
+    std::string       u    = "Here are the lyrics of a song, in " + lang + ":\n\n" + song.lyrics +
+                      "\n\nEdit these lyrics. Rewrite ONLY the lines that sound generic or machine-written: stock images (shadows dancing, "
+                      "whispers in the wind, echoes, tapestries, a symphony of...), abstract or grand words, \"it is not X, it is Y\" "
+                      "constructions, lists of three empty words, and phrases translated word for word from English. Replace each of them with a "
+                      "concrete, specific and natural line that a native songwriter would write. Keep every other line exactly as it is. "
+                      "Keep the same [Section] tags, the same number of lines in each section, the same rhyme scheme and about the same "
+                      "number of syllables per line, so that the song stays singable. A line that is repeated (a chorus) must stay identical "
+                      "every time. Do not add or remove any line or section. Stay in " + lang + ".";
+    if (!avoid.empty()) {
+        u += " Never use these words: ";
+        for (size_t i = 0; i < avoid.size(); i++) u += (i ? ", " : "") + avoid[i];
+        u += ".";
+    }
+    if (g_natural) u += natural_rules(lang);
+    u += "\n\nReply with the full lyrics only, as plain text with their [Section] tags: no JSON, no comment, no explanation.";
+    AiCallResult r = ask("You are an experienced songwriter and lyrics editor. You only answer with plain text.", u);
+    if (!r.ok) return 0;
+    int         removed = 0;
+    std::string fresh   = ai_clean_lyrics(r.text, false, removed);
+    if (fresh.empty() || fresh.find('{') != std::string::npos) return 0;
+    struct Block {
+        std::string              tag;
+        std::vector<std::string> lines;
+    };
+    auto blocks_of = [](const std::string & text) {
+        std::vector<Block> blocks(1);
+        for (const std::string & l : lines_of(text)) {
+            std::string t = trim(l);
+            if (t.empty()) continue;
+            if (t[0] == '[') blocks.push_back({ t, {} });
+            else blocks.back().lines.push_back(t);
+        }
+        return blocks;
+    };
+    std::vector<Block> a = blocks_of(song.lyrics), b = blocks_of(fresh);
+    if (a.size() != b.size()) return 0;
+    for (size_t i = 0; i < a.size(); i++)
+        if (fold_word(a[i].tag) != fold_word(b[i].tag) || a[i].lines.size() != b[i].lines.size()) return 0;
+    std::map<std::string, std::string> chosen;  // ligne d'origine → ligne gardée : un refrain répété reste identique partout
+    int                                changed = 0;
+    std::string                        out;
+    for (size_t i = 0; i < a.size(); i++) {
+        if (a[i].tag.empty() && a[i].lines.empty()) continue;
+        if (!out.empty()) out += "\n\n";
+        out += a[i].tag;
+        for (size_t k = 0; k < a[i].lines.size(); k++) {
+            const std::string & o   = a[i].lines[k];
+            std::string         n   = b[i].lines[k];
+            const std::string   key = fold_line(o);
+            auto                it  = chosen.find(key);
+            if (it != chosen.end()) n = it->second;
+            else {
+                // une ligne devenue beaucoup plus longue ou plus courte ne se chanterait plus sur la même musique : l'originale reste
+                if (n.size() * 10 > o.size() * 22 || n.size() * 10 < o.size() * 4) n = o;
+                chosen[key] = n;
+            }
+            if (fold_line(n) != key) changed++;
+            out += (out.empty() ? "" : "\n") + n;
+        }
+    }
+    if (changed == 0 || ai_forbidden_found(out, avoid).size() > ai_forbidden_found(song.lyrics, avoid).size()) return 0;
+    song.lyrics = out;
+    return changed;
+}
+
 std::string ai_avoid_retry_prompt(const std::vector<std::string> & found) {
     std::string p = "Your song uses forbidden words: ";
     for (size_t i = 0; i < found.size(); i++) p += (i ? ", " : "") + found[i];
@@ -1519,6 +1588,22 @@ const std::vector<LocalImageModel> & local_image_models() {
             { "unsloth/MOSS-Image-SFT-FP8", "vae/diffusion_pytorch_model.safetensors", "flux2_vae.safetensors", 249521372ull },
             { "unsloth/MOSS-Image-SFT-FP8", "tokenizer/tokenizer.json", "tokenizer.json", 19989325ull } },
           20, 3.0f, 180, 8.4f },
+        // 1.1.022 : banc du 26/11/2026 (RX 6700 XT, sd-cli master-1086, 768 × 768, 5 prompts) : Iris 14 s, Qwen Turbo 54 s, Qwen 2.1 158 s ; poids en mémoire vidéo (pas de déchargement).
+        // Mage-Flow (int8 convrot) essayé : image grise, format non lu par ce moteur : non ajouté.
+        { "iris", "Iris-3B Turbo", "iris-3b",
+          { { "speridlabs/iris-3b", "turbo/model.safetensors", "iris-3b-turbo.safetensors", 5975089200ull },
+            { "Qwen/Qwen3-VL-4B-Instruct-GGUF", "Qwen3VL-4B-Instruct-Q4_K_M.gguf", "Qwen3VL-4B-Instruct-Q4_K_M.gguf", 2497281664ull } },
+          4, 1.0f, 14, 8.1f },
+        { "qwenturbo", "Qwen-Image 2.1 Turbo", "qwen-image-2.1-turbo",
+          { { "unsloth/Qwen-Image-2.1-Turbo-GGUF", "qwen-image-2.1-turbo-Q4_K_M.gguf", "qwen-image-2.1-turbo-Q4_K_M.gguf", 4199565120ull },
+            { "Qwen/Qwen3-VL-8B-Instruct-GGUF", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 5027784800ull },
+            { "Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", "qwen_image_2.1_vae_bf16.safetensors", 675509688ull } },
+          8, 1.0f, 54, 8.5f },
+        { "qwen21", "Qwen-Image 2.1", "qwen-image-2.1",
+          { { "leejet/Qwen-Image-2.1-GGUF", "qwen_image_2.1-Q4_K.gguf", "qwen_image_2.1-Q4_K.gguf", 4197494816ull },
+            { "Qwen/Qwen3-VL-8B-Instruct-GGUF", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 5027784800ull },
+            { "Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", "qwen_image_2.1_vae_bf16.safetensors", 675509688ull } },
+          20, 4.0f, 158, 8.5f },
         // 1.0.58 : un seul fichier (modèle, texte et VAE ensemble) ; 13 s en 768 × 768, 17 s en 1344 × 768 (banc du 31/10/2026)
         { "sdxl", "SDXL-Lightning", "sdxl-lightning",
           { { "ByteDance/SDXL-Lightning", "sdxl_lightning_4step.safetensors", "sdxl_lightning_4step.safetensors", 6938040682ull } },
@@ -1578,8 +1663,16 @@ const ImageService * find_image_service(const std::string & id) {
 
 // Fichiers du modèle pour sd-cli et sd-server. Un seul fichier = SDXL-Lightning : décodage par tuiles, sinon 48 s au lieu de 5,5 s.
 // 1.0.72 : Z-Image aussi : sans tuiles, 159 s de décodage en 1344 × 768 au lieu de 5 s.
+// 1.1.023 : Iris et Qwen-Image gardent leurs poids en mémoire vidéo (8 à 8,5 Go) : dès que d'autres programmes en prennent (Windows, navigateur : ≈ 2 Go),
+// la carte de 12 Go déborde et la génération devient 3 fois plus lente (Iris 768 × 768 : 48 s, 1344 × 768 : 74 s). L'encodeur de texte (2,4 à 5 Go) passe donc sur le
+// processeur (--backend te=cpu : +2 à 3 s par image) : Iris 14 s en 768 × 768 et 24 s en 1344 × 768, Qwen Turbo 79 s -> 51 s (mesures du 26/11/2026).
 static std::wstring image_weights(const fs::path & dir, const std::vector<ImageModelFile> & f) {
     if (f.size() == 1) return L" -m \"" + (dir / widen(f[0].file)).wstring() + L"\" --vae-tiling";
+    if (f.size() == 2)  // 1.1.022 : Iris-3B : modèle + encodeur de texte, pas de VAE séparé
+        return L" --diffusion-model \"" + (dir / widen(f[0].file)).wstring() + L"\" --llm \"" + (dir / widen(f[1].file)).wstring() + L"\" --backend \"te=cpu\"";  // 1.1.023 : voir ci-dessous
+    if (std::string(f[0].file).rfind("qwen", 0) == 0)  // 1.1.022 : Qwen-Image 2.1 : échantillonneur euler (celui du banc)
+        return L" --diffusion-model \"" + (dir / widen(f[0].file)).wstring() + L"\" --llm \"" + (dir / widen(f[1].file)).wstring() + L"\" --vae \"" +
+               (dir / widen(f[2].file)).wstring() + L"\" --sampling-method euler --backend \"te=cpu\"";
     return L" --diffusion-model \"" + (dir / widen(f[0].file)).wstring() + L"\" --llm \"" + (dir / widen(f[1].file)).wstring() + L"\" --vae \"" +
            (dir / widen(f[2].file)).wstring() + L"\"" + (f[0].file == std::string("z_image_turbo-Q4_0.gguf") ? L" --vae-tiling" : L"") + (f.size() > 3 ? L" --tokenizer \"" + (dir / widen(f[3].file)).wstring() + L"\"" : std::wstring());
 }

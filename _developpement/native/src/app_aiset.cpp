@@ -183,6 +183,9 @@ void App::draw_ai_settings_inner() {
     if (ImGui::Checkbox(tr("Paroles plus naturelles : consignes anti-style « IA » (humanizer)"), &settings.ai_natural)) save_settings(settings, settings_path);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", tr("Ajoute aux demandes de paroles des règles d'écriture naturelle dans la langue choisie : images concrètes, pas de « ce n'est pas X, c'est Y », pas de formules toutes faites ni de calques de l'anglais (règles supplémentaires pour le français). Inspiré des skills humanizer et humanizer-fr (MIT)."));
+    if (ImGui::Checkbox(tr("Relire les paroles : l'IA corrige les lignes qui sonnent « IA »"), &settings.ai_polish)) save_settings(settings, settings_path);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", tr("Après avoir écrit les paroles, l'IA les relit et ne réécrit que les lignes toutes faites ou traduites de l'anglais. Les sections, le nombre de lignes et les refrains restent identiques. Compter environ une minute de plus par chanson avec l'IA locale (quelques secondes en ligne). Décochée par défaut : avec une petite IA locale, l'effet reste modeste."));
     if (ImGui::Checkbox(tr("Éviter aussi les mots qui reviennent dans les derniers morceaux écrits par l'IA"), &settings.ai_auto_avoid)) save_settings(settings, settings_path);
     if (settings.ai_auto_avoid) {
         std::vector<std::string> autow = ai_auto_words();
@@ -264,6 +267,9 @@ void App::draw_ai_settings_inner() {
                 ImGui::Indent(24 * g_dpi);
                 if (std::string(m.id) == "klein") muted_wrapped(tr("Très beau rendu, texte bien écrit dans l'image, mais environ trois fois plus lent que l'ancien FLUX.2 klein. Licence FLUX Kommunity (voir le tableau des licences dans Réglages › Système)."));
                 else if (std::string(m.id) == "zimage") muted_wrapped(tr("Rendu proche de la photo ; il faut environ 9 Go de mémoire vidéo."));
+                else if (std::string(m.id) == "iris") muted_wrapped(tr("Le plus rapide des modèles qui écrivent bien le texte dans l'image (titre, nom du groupe) : environ 14 s par image. Licence Apache 2.0."));
+                else if (std::string(m.id) == "qwenturbo") muted_wrapped(tr("Très bon rendu et texte bien écrit dans l'image (accents parfois approximatifs), environ 1 minute par image, 8,5 Go de mémoire vidéo. Licence Qwen : usage commercial à vérifier (tableau des licences dans Réglages › Système)."));
+                else if (std::string(m.id) == "qwen21") muted_wrapped(tr("Version complète de Qwen-Image 2.1 : rendu sobre et soigné, mais environ 3 fois plus lent que la version Turbo (2 min 40 par image). Même licence Qwen que la version Turbo."));
                 else if (std::string(m.id) == "sdxl") muted_wrapped(tr("Très rapide (≈ 17 s en 1344 × 768), beau rendu, mais suit moins fidèlement la description. Licence OpenRAIL++."));
                 else {
                     muted_wrapped(tr("Rendu le plus soigné, surtout pour le texte (titre, nom du groupe), mais environ 3 minutes par image."));
@@ -291,7 +297,7 @@ void App::draw_ai_settings_inner() {
                 ImGui::PopID();
             }
             path_line(image_models_dir());
-            muted_wrapped(tr("Modèles sous licence Apache 2.0 (Z-Image Turbo : Alibaba ; MOSS-Image : OpenMOSS). FLUX.3 klein (Black Forest Labs) : FLUX Kommunity License, voir le tableau des licences."));
+            muted_wrapped(tr("Modèles sous licence Apache 2.0 (Z-Image Turbo : Alibaba ; MOSS-Image : OpenMOSS ; Iris-3B : Sperid Labs). FLUX.3 klein (Black Forest Labs) : FLUX Kommunity License ; Qwen-Image 2.1 : licence Qwen, voir le tableau des licences."));
         }
     }
     end_card();
